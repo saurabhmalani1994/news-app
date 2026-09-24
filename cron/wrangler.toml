@@ -1,0 +1,11 @@
+# C1: deploy config for the Almanac cron Worker. Its only job is to fire GitHub's
+# publish.yml workflow_dispatch once an hour, at minute 17, because GitHub's own
+# `schedule:` trigger is best effort and was observed skipping most hourly slots
+# (R44). No bindings. The one secret it needs, GH_DISPATCH_TOKEN, is set by
+# deploy-cron.yml from the repository secret DISPATCH_TOKEN and is never in this repo.
+name = "almanac-cron"
+main = "worker.js"
+compatibility_date = "2026-09-24"
+
+[triggers]
+crons = ["17 * * * *"]
