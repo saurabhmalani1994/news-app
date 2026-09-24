@@ -176,6 +176,7 @@ APP_SCRIPTS = ['<script src="js/offline-gate.js">', '<script src="js/rank-gate.j
                '<script type="module" src="js/story-actions.js">',
                '<script type="module" src="js/coverage-view.js">',
                '<script type="module" src="js/history/observe.js">',
+               '<script type="module" src="js/live-actions.js">',
                '<script src="js/sw-register.js" defer>', '<script src="js/offline.js">']
 
 

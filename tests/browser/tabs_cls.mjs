@@ -88,7 +88,7 @@ const check = (name, pass, detail) => { results[name] = { pass, ...detail }; ok 
 // 1. Lists: each panel equals the ranked pool filtered by the table, in ranked order.
 await load("dark");
 const input = await json(`JSON.parse(document.getElementById("rank-input").content.textContent)`);
-const pages = rankPages(input.pool, buildDefaultProfile(input.now), input.now, { buckets: input.buckets, leans: input.leans, names: input.names });
+const pages = rankPages(input.pool, buildDefaultProfile(input.now), input.now, { buckets: input.buckets, leans: input.leans, names: input.names, events: input.events || [] });
 const lists = await json(`Object.fromEntries([...document.querySelectorAll(".panel")].map((p) => [p.dataset.section, [...p.querySelectorAll("li.story[data-sid]")].map((li) => li.dataset.sid)]))`);
 const others = await json(`Object.fromEntries([...document.querySelectorAll(".panel")].map((p) => [p.dataset.section, [...p.querySelectorAll("li.story[data-sid] .other-side")].map((a) => [a.closest("li").dataset.sid, a.dataset.aid])]))`);
 const counts = {};
@@ -96,9 +96,11 @@ let listsOk = true;
 for (const section of SECTIONS) {
   const page = section.all ? pages.today : pages.sections.find((p) => p.id === section.id).stories;
   const want = page.map((s) => s.id);
+  // S33: a slot section's own "want" is now the live event's clusters, or empty when
+  // none is live; no longer always empty, so the general comparison below applies to
+  // it too (the live rows carry no other-side link either way).
   const wantOthers = page.filter((s) => s.other_side).map((s) => [s.id, s.other_side.article_id]);
   counts[section.label] = lists[section.id]?.length ?? null;
-  if (section.slot) { listsOk &&= (lists[section.id] || []).length === 0; continue; }
   listsOk &&= JSON.stringify(lists[section.id]) === JSON.stringify(want) && JSON.stringify(others[section.id]) === JSON.stringify(wantOthers);
 }
 results.otherSide = others;
@@ -141,7 +143,10 @@ await sleep(900);
 const swiped = await active();
 const snapped = await evaluate(`(() => { const p = document.getElementById("pager"); return p.scrollLeft % p.clientWidth === 0; })()`);
 const swipeShift = (await evaluate("window.__shift")) - swipeBefore;
-check("swipe", swiped === "us-politics" && snapped && swipeShift === 0, { landedOn: swiped, snapped, shift: swipeShift });
+// S33: the tab right after Today is "live" when this pool has a live event, else
+// "us-politics" (the strip's next visible tab either way); one swipe lands on it.
+const wantSwipeTarget = await evaluate(`document.getElementById("tab-live").hidden ? "us-politics" : "live"`);
+check("swipe", swiped === wantSwipeTarget && snapped && swipeShift === 0, { landedOn: swiped, want: wantSwipeTarget, snapped, shift: swipeShift });
 
 // 4. Labels are text only.
 const labels = await json(`[...document.querySelectorAll(".tab, .nav-label")].map((n) => ({ text: n.textContent, textOnly: [...n.childNodes].every((c) => c.nodeType === 3) && n.childNodes.length === 1 }))`);
