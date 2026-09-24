@@ -79,6 +79,26 @@ body {
   outline-offset: -2px;
 }
 
+/* S18: the quiet offline line under the nameplate, js/offline-gate.js decides whether
+   it shows (before first paint, so it never shifts the hero below), js/offline.js
+   fills its text. Same quiet meta type as the colophon's freshness line, never a card. */
+.offline-line {
+  margin: 0;
+  padding: 10px var(--space-gutter) 12px;
+  font-family: var(--type-meta-family);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
+  font-weight: var(--type-meta-weight);
+  letter-spacing: var(--type-meta-tracking);
+  text-transform: var(--type-meta-transform);
+  color: var(--color-meta);
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.offline-line[hidden] {
+  display: none;
+}
+
 /* S28 silence alarm. A quiet notice under the nameplate, not a news card: all sans,
    no serif headline, no photo, no link, no box or tint; a meta kicker, one line in the
    headline colour saying what is missing, one in the dek colour saying why. It closes
