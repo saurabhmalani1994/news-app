@@ -64,32 +64,32 @@ jobs:
         if: steps.cf.outputs.ok == 'true'
         run: |
           python3 - "${{ steps.deploy.outputs.url }}" <<'PY'
-import re
-import sys
-import urllib.error
-import urllib.request
+          import re
+          import sys
+          import urllib.error
+          import urllib.request
 
-base = sys.argv[1]
-for sid in ("times_of_israel", "middle_east_eye", "import_ai", "indian_express"):
-    url = f"{base}/feed/{sid}"
-    print(f"=== {sid} ({url}) ===")
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "AlmanacFetcher/0.1 (personal news reader)"})
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            status = resp.status
-            data = resp.read()
-    except Exception as exc:
-        print(f"status=ERROR {exc}")
-        continue
-    items = re.findall(r"<item>", data.decode("utf-8", "replace"))
-    print(f"status={status} bytes={len(data)} items={len(items)}")
+          base = sys.argv[1]
+          for sid in ("times_of_israel", "middle_east_eye", "import_ai", "indian_express"):
+              url = f"{base}/feed/{sid}"
+              print(f"=== {sid} ({url}) ===")
+              try:
+                  req = urllib.request.Request(url, headers={"User-Agent": "AlmanacFetcher/0.1 (personal news reader)"})
+                  with urllib.request.urlopen(req, timeout=20) as resp:
+                      status = resp.status
+                      data = resp.read()
+              except Exception as exc:
+                  print(f"status=ERROR {exc}")
+                  continue
+              items = re.findall(r"<item>", data.decode("utf-8", "replace"))
+              print(f"status={status} bytes={len(data)} items={len(items)}")
 
-# 404 proof: anything off the allowlist must not resolve.
-url = f"{base}/feed/npr"
-req = urllib.request.Request(url, headers={"User-Agent": "AlmanacFetcher/0.1 (personal news reader)"})
-try:
-    urllib.request.urlopen(req, timeout=20)
-    print("allowlist check FAILED: /feed/npr did not 404")
-except urllib.error.HTTPError as exc:
-    print(f"allowlist check: /feed/npr -> {exc.code} (expected 404)")
-PY
+          # 404 proof: anything off the allowlist must not resolve.
+          url = f"{base}/feed/npr"
+          req = urllib.request.Request(url, headers={"User-Agent": "AlmanacFetcher/0.1 (personal news reader)"})
+          try:
+              urllib.request.urlopen(req, timeout=20)
+              print("allowlist check FAILED: /feed/npr did not 404")
+          except urllib.error.HTTPError as exc:
+              print(f"allowlist check: /feed/npr -> {exc.code} (expected 404)")
+          PY
