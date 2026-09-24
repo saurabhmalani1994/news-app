@@ -251,7 +251,10 @@
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: Israeli mainstream, centrist.",
       "syndication_group": "times_of_israel",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "via": "google_news",
+      "via_url": "https://news.google.com/rss/search?q=site:timesofisrael.com&hl=en-US&gl=US&ceid=US:en",
+      "via_basis": "F3 2026-09-24: feed_url confirmed blocked from GitHub Actions' network (F2), reachable from the owner's PC. Route B (relay Worker) deploy failed: Cloudflare token lacks Workers permission, owner to fix account settings. Route A (Google News) verified live from Actions: status 200, 100 items, recent, real outlet attribution via <source>. feed_url is kept as the original direct route; removing via/via_url reverts."
     },
     {
       "id": "haaretz",
@@ -281,7 +284,10 @@
       "lean": "left",
       "lean_basis": "research/feeds-interests.md: UK-based, pro-Palestinian editorial line; grouped with Haaretz's occupation-critical stance for lean-diversity purposes on Israel/Gaza coverage.",
       "syndication_group": "middle_east_eye",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "via": "google_news",
+      "via_url": "https://news.google.com/rss/search?q=site:middleeasteye.net&hl=en-US&gl=US&ceid=US:en",
+      "via_basis": "F3 2026-09-24: feed_url confirmed blocked from GitHub Actions' network (F2), reachable from the owner's PC. Route B (relay Worker) deploy failed: Cloudflare token lacks Workers permission, owner to fix account settings. Route A (Google News) verified live from Actions: status 200, 100 items, recent, real outlet attribution via <source>. feed_url is kept as the original direct route; removing via/via_url reverts."
     },
     {
       "id": "radio_dabanga",
@@ -361,7 +367,10 @@
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: independent practitioner newsletter, no political-lean rating documented.",
       "syndication_group": "import_ai",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "via": "google_news",
+      "via_url": "https://news.google.com/rss/search?q=site:importai.substack.com&hl=en-US&gl=US&ceid=US:en",
+      "via_basis": "F3 2026-09-24: feed_url confirmed blocked from GitHub Actions' network (F2), reachable from the owner's PC. Route B (relay Worker) deploy failed: Cloudflare token lacks Workers permission, owner to fix account settings. Route A (Google News) verified live from Actions: status 200, 38 items, recent, real outlet attribution via <source>. feed_url is kept as the original direct route; removing via/via_url reverts."
     },
     {
       "id": "labiotech",
@@ -546,7 +555,10 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private, independent, investigative reputation; no US-style lean documented.",
       "syndication_group": "indian_express",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "via": "google_news",
+      "via_url": "https://news.google.com/rss/search?q=site:indianexpress.com&hl=en-US&gl=US&ceid=US:en",
+      "via_basis": "F3 2026-09-24: feed_url confirmed blocked from GitHub Actions' network (F2), reachable from the owner's PC. Route B (relay Worker) deploy failed: Cloudflare token lacks Workers permission, owner to fix account settings. Route A (Google News) verified live from Actions: status 200, 100 items, recent, real outlet attribution via <source>. feed_url is kept as the original direct route; removing via/via_url reverts."
     },
     {
       "id": "livemint",

@@ -32,6 +32,7 @@ import concurrent.futures
 import hashlib
 import json
 import os
+import re
 import socket
 import sys
 import time
@@ -69,6 +70,37 @@ DEFAULT_RETRIES = 1
 PER_SOURCE_CAP = 5
 CLUSTER_EXTRA_CAP = 3
 MAX_WORKERS = 32
+
+# F3: a source may name an explicit fetch route in sources.json when its direct
+# feed_url is blocked from GitHub Actions' network but reachable another way. "via"
+# is one of ROUTES (absent means "direct", the plain feed_url fetch every source used
+# before F3); "via_url" is the URL actually fetched for that route. feed_url itself is
+# never changed, so dropping "via"/"via_url" reverts a source to direct with no other
+# edit (R: visible and reversible routing, not a silent swap).
+ROUTES = ("direct", "relay", "google_news")
+GOOGLE_NEWS_HOST = "news.google.com"
+_HREF_RE = re.compile(r'href="([^"]+)"')
+
+
+def _route_for(source):
+    return source.get("via") or "direct"
+
+
+def _fetch_url_for(source):
+    return source.get("via_url") or source["feed_url"]
+
+
+def _google_news_real_url(item):
+    """Return the outlet's own article URL if the feed item's own description
+    carries one outside Google's redirect host, else None. Google News RSS items
+    normally only link back through news.google.com (confirmed live for all four
+    F3 outlets), so this is usually None and the caller keeps Google's redirect
+    link rather than inventing a URL the feed never actually gave it."""
+    desc = _text(item, "description")
+    for href in _HREF_RE.findall(desc):
+        if GOOGLE_NEWS_HOST not in href:
+            return href
+    return None
 
 
 class SourcesError(Exception):
@@ -119,12 +151,17 @@ def fetch_all(sources, fetch_fn=None, timeout=DEFAULT_TIMEOUT, retries=DEFAULT_R
     fetch_fn defaults to the real fetch_feed, looked up at call time (not baked in as a
     default argument) so tests can monkeypatch this module's fetch_feed name and have it
     take effect even through main()'s indirect call.
+
+    F3: each source's own route decides which URL is actually fetched (_fetch_url_for:
+    via_url when the source names one, else its plain feed_url), so a relay or Google
+    News route is completely transparent from here down; the rest of the pipeline never
+    needs to know a source's items came from anywhere but feed_url.
     """
     if fetch_fn is None:
         fetch_fn = fetch_feed
 
     def _job(source):
-        return source["id"], _fetch_with_retry(source["feed_url"], fetch_fn, timeout, retries)
+        return source["id"], _fetch_with_retry(_fetch_url_for(source), fetch_fn, timeout, retries)
 
     results = {}
     workers = max(1, min(max_workers, len(sources)))
@@ -135,7 +172,7 @@ def fetch_all(sources, fetch_fn=None, timeout=DEFAULT_TIMEOUT, retries=DEFAULT_R
 
 
 def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=None, topics_doc=None,
-                      image_rejected=None):
+                      image_rejected=None, is_google_news=False):
     """Build one article dict from an <item>, or return None (the drop reason is
     already counted). Mirrors fetcher.fetch.build_pool's per-item rules exactly.
 
@@ -146,6 +183,13 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
     image from the feed's own fields (fetcher.images.extract_image), plus a scratch
     "_image_method" field that build_pool_fanout consumes and strips before publish;
     universal rejections land in image_rejected as they happen.
+
+    F3: when is_google_news is set, the source's configured route is Google News
+    per-outlet RSS (via_url), whose <link> is normally a news.google.com redirect
+    rather than the real article URL. _google_news_real_url is tried first; only when
+    the item's own content actually carries a direct outlet link does this swap it in,
+    otherwise Google's redirect link is published unchanged (still a valid, working
+    link for the reader).
     """
     raw_title = _clean(_text(item, "title"))
     title = _plain(raw_title)
@@ -155,6 +199,8 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
         drops["no_title"] += 1
         return None
     url = _text(item, "link").strip()
+    if is_google_news:
+        url = _google_news_real_url(item) or url
     if not url.startswith(("http://", "https://")):
         guid = item.find("guid")
         guid_url = _text(item, "guid").strip()
@@ -255,7 +301,8 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             # out of one feed can still publish from a later feed, as before S07.
             article = _extract_article(item, sid, frozenset(), leniency, drops,
                                         source_bucket=source.get("bucket"), topics_doc=topics_doc,
-                                        image_rejected=image_rejected)
+                                        image_rejected=image_rejected,
+                                        is_google_news=_route_for(source) == "google_news")
             if article is not None:
                 kept.append(article)
                 # S22: only ever look at the feed's own item, and only for a source
@@ -328,6 +375,10 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     events = build_events(articles, clusters, sources, now, hard_news_topics(topics_doc),
                           previous_events)
 
+    # F3: how many sources are configured on each fetch route, regardless of whether
+    # this run's fetch happened to succeed (feed_states already covers success/failure
+    # per source); this is purely "which route is wired", visible in every run.
+    route_counts = Counter(_route_for(s) for s in sources)
     counts = {
         "fetched": fetched_total,
         "published": len(articles),
@@ -340,6 +391,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             "rejected": dict(sorted(image_rejected.items())),
         },
         "bodies": body_counts,
+        "routes": {r: route_counts.get(r, 0) for r in ROUTES},
     }
     _assert_ledger_invariant(counts)
     return {
@@ -458,6 +510,8 @@ def main(argv=None):
         f"previous_pool_status={c['previous_pool_status']} "
         f"unhealthy_sources={len(unhealthy)}/{len(sources)} {json.dumps(unhealthy)}"
     )
+    routed = sorted(s["id"] for s in sources if _route_for(s) != "direct")
+    print(f"routes={json.dumps(c['routes'])} routed_sources={json.dumps(routed)}")
     with_image = sum(1 for a in pool["articles"] if "image" in a)
     hero_worthy = sum(1 for a in pool["articles"] if a.get("image", {}).get("width", 0) >= 600)
     bucket_by_source = {s["id"]: s.get("bucket") for s in sources}

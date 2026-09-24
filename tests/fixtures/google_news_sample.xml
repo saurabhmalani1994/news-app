@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>"site:example-outlet.test" - Google News</title>
+    <item>
+      <title>Headline one stays on the real outlet - Example Outlet</title>
+      <link>https://news.google.com/rss/articles/redirectone?oc=5</link>
+      <guid isPermaLink="false">redirectone</guid>
+      <pubDate>Wed, 23 Sep 2026 10:00:00 GMT</pubDate>
+      <description>&lt;a href="https://news.google.com/rss/articles/redirectone?oc=5"&gt;Headline one stays on the real outlet&lt;/a&gt;&amp;nbsp;&amp;nbsp;&lt;font color="#6f6f6f"&gt;Example Outlet&lt;/font&gt;</description>
+      <source url="https://www.example-outlet.test">Example Outlet</source>
+    </item>
+    <item>
+      <title>Headline two carries a direct outlet link - Example Outlet</title>
+      <link>https://news.google.com/rss/articles/redirecttwo?oc=5</link>
+      <guid isPermaLink="false">redirecttwo</guid>
+      <pubDate>Wed, 23 Sep 2026 11:00:00 GMT</pubDate>
+      <description>&lt;a href="https://news.google.com/rss/articles/redirecttwo?oc=5"&gt;Headline two carries a direct outlet link&lt;/a&gt; (&lt;a href="https://www.example-outlet.test/2026/09/23/headline-two"&gt;direct&lt;/a&gt;)&amp;nbsp;&lt;font color="#6f6f6f"&gt;Example Outlet&lt;/font&gt;</description>
+      <source url="https://www.example-outlet.test">Example Outlet</source>
+    </item>
+  </channel>
+</rss>

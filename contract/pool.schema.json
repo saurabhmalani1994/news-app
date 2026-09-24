@@ -254,7 +254,7 @@
       }
     },
     "counts": {
-      "description": "Run ledger. drops maps a fixed reason key to count (S02); leniency maps each parser tolerance applied (R9) to count, keys open. feed_states is optional, added by S05 fanout runs: it maps each closed feed-level outcome to a count, and the sum equals the number of configured sources. fetched == published + sum(drops) is asserted on every run. previous_pool_status is optional, added by S06: it records whether the previous published pool (read back from the live site to carry source_health counters forward) was read ok, was absent, was unreachable, or predated this slice's schema. images is optional, added by S38: found and rejected are closed-set maps of image outcomes for the run. bodies is optional, added by S22: written/skipped/bytes for this run's bodies/<id>.json output.",
+      "description": "Run ledger. drops maps a fixed reason key to count (S02); leniency maps each parser tolerance applied (R9) to count, keys open. feed_states is optional, added by S05 fanout runs: it maps each closed feed-level outcome to a count, and the sum equals the number of configured sources. fetched == published + sum(drops) is asserted on every run. previous_pool_status is optional, added by S06: it records whether the previous published pool (read back from the live site to carry source_health counters forward) was read ok, was absent, was unreachable, or predated this slice's schema. images is optional, added by S38: found and rejected are closed-set maps of image outcomes for the run. bodies is optional, added by S22: written/skipped/bytes for this run's bodies/<id>.json output. routes is optional, added by F3: how many configured sources are wired to each fetch route (direct, relay, google_news), regardless of whether the run's fetch succeeded.",
       "type": "object",
       "required": ["fetched", "published", "drops", "leniency"],
       "additionalProperties": false,
@@ -266,7 +266,8 @@
         "feed_states": {"$ref": "#/$defs/feed_states"},
         "previous_pool_status": {"type": "string", "enum": ["ok", "absent", "unreachable", "old_schema"]},
         "images": {"$ref": "#/$defs/image_counts"},
-        "bodies": {"$ref": "#/$defs/body_counts"}
+        "bodies": {"$ref": "#/$defs/body_counts"},
+        "routes": {"$ref": "#/$defs/count_map"}
       }
     },
     "body_counts": {
