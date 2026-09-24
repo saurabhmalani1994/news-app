@@ -1,0 +1,28 @@
+// S18: the service worker's routing decision, kept pure and separate from the cache
+// side effects in sw.js, so it is unit-testable under Node (tests/js/sw-routes.test.js)
+// and importable unchanged by the module service worker.
+//
+// `bodies/*` is S25's: the reader fetches article bodies lazily and caches them in
+// IndexedDB. This module always returns BYPASS for them, so the service worker never
+// intercepts or double-caches a body file.
+
+export const STRATEGY = Object.freeze({
+  SHELL: "shell", // precached app shell: HTML, CSS, JS, fonts, manifest, icons
+  POOL: "pool", // pool.json: network-first, cached copy as the offline fallback
+  IMAGE: "image", // article photos: cache-first, size-capped, expiring
+  BYPASS: "bypass", // not intercepted: bodies/*, and anything else off this app's CSP
+});
+
+/**
+ * `request` is `{url, destination}` (a real FetchEvent's `request` duck-types this).
+ * `origin` is the app's own origin (`self.location.origin` in the worker).
+ */
+export function strategyFor(request, origin) {
+  const url = new URL(request.url, origin);
+  const sameOrigin = url.origin === origin;
+  if (sameOrigin && /(?:^|\/)bodies\//.test(url.pathname)) return STRATEGY.BYPASS;
+  if (sameOrigin && /(?:^|\/)pool\.json$/.test(url.pathname)) return STRATEGY.POOL;
+  if (request.destination === "image") return STRATEGY.IMAGE;
+  if (sameOrigin) return STRATEGY.SHELL;
+  return STRATEGY.BYPASS; // no other cross-origin request is expected under this app's CSP
+}

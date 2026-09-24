@@ -25,6 +25,7 @@ from app.dek import fit_dek
 from app.frontpage import (CHARS_PER_LINE, DEK_LINES, clean_dek, front_page, pass_input, rank_input,
                            run_ranker)
 from app.images import THUMB_PX, credit_text, hero_box, hero_media, hero_worthy, image_url, media_for, thumb_ok
+from app.serviceworker import write_service_worker
 from app.typography import smart_quotes
 
 ROOT = Path(__file__).resolve().parent
@@ -36,20 +37,26 @@ STATIC = ROOT / "static"
 PRELOAD_FONTS = ("Newsreader-Bold-latin.woff2", "LibreFranklin-Medium-latin.woff2")
 
 PAGE = """<!doctype html>
-<html lang="en" data-rank-key="{rank_key}">
+<html lang="en" data-rank-key="{rank_key}" data-generated-at="{generated_at}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121212">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Almanac">
 <title>Almanac</title>
 {preloads}
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="style.css">
+<script src="js/offline-gate.js"></script>
 <script src="js/rank-gate.js"></script>
 <script type="module" src="js/tabs.js"></script>
 <script type="module" src="js/reader.js"></script>
+<script src="js/sw-register.js" defer></script>
 </head>
 <body class="app">
 <div class="screens">
@@ -64,6 +71,8 @@ PAGE = """<!doctype html>
 <header class="masthead masthead--nameplate">
 <h1 class="wordmark">Almanac</h1>
 </header>
+<p class="offline-line" id="offline-line" data-generated-at="{generated_at}" hidden></p>
+<script src="js/offline.js"></script>
 {notices}
 <ol class="river river--top" id="headlines">
 {top}
@@ -511,6 +520,9 @@ def main(argv=None):
     (out / "_headers").write_text(headers_file(pages), encoding="utf-8")
     if pool_path.resolve() != (out / "pool.json").resolve():
         shutil.copyfile(pool_path, out / "pool.json")
+    # S18: the service worker precaches the shell just written above (HTML, CSS, JS,
+    # fonts, manifest, icons), under a cache name hashed from those exact bytes.
+    write_service_worker(out)
     tiers = front_page(pool, ranking)
     counts = ", ".join(f"{name} {len(tiers[name])}" for name in tiers)
     print(f"built {out / 'index.html'}: {counts}")
