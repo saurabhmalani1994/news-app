@@ -104,6 +104,7 @@
   --color-tab-inactive: #BBBBBB;
   --color-nav-inactive: #A3A3A3;
   --color-pressed: #1E1E1E;
+  --color-image-placeholder: #222222;
   --color-theme: #121212;
 
   --type-hero-headline-family: var(--font-serif);
@@ -191,6 +192,7 @@
     --color-tab-inactive: #5A5A5A;
     --color-nav-inactive: #6B6B6B;
     --color-pressed: #F0F0F0;
+    --color-image-placeholder: #EEEEEE;
     --color-theme: #FFFFFF;
   }
 }

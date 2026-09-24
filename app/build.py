@@ -21,6 +21,7 @@ from urllib.parse import urlsplit
 
 from app.dek import fit_dek
 from app.frontpage import CHARS_PER_LINE, DEK_LINES, clean_dek, front_page, rank_input, run_ranker
+from app.images import HERO_PX, THUMB_PX, credit_text, hero_worthy, image_url, media_for, thumb_ok
 from app.typography import smart_quotes
 
 ROOT = Path(__file__).resolve().parent
@@ -85,14 +86,21 @@ REST = """<details class="more-rest">
 </details>
 """
 
-# One row shape for every tier; the tier only changes classes and whether a dek shows.
-# A later image slot goes first inside .story-body; its box is reserved in style.css
-# (aspect-ratio), so adding images will not shift text.
+# One row shape for every tier; the tier only changes classes, whether a dek shows and
+# whether a photo shows. The photo goes first inside .story-body; its box is sized by
+# width, height and aspect-ratio before a byte arrives (style.css), so text never moves.
 STORY = (
     '<li class="story story--{tier}" data-sid="{sid}">{open}'
-    '<span class="story-body"><span class="headline{headline_mod}">{title}</span>{dek}'
+    '<span class="story-body">{media}<span class="headline{headline_mod}">{title}</span>{dek}'
     '<span class="meta">{meta}</span></span>{close}</li>'
 )
+# S39 photos (app.images decides which). The url is an attribute value, escaped; alt is
+# empty because the headline beside it carries the meaning. Only the hero loads eagerly.
+IMG = ('<span class="story-media story-media--{kind}"><img class="story-img" src="{src}" '
+       'width="{px}" height="{px}" alt="" {load} decoding="async" referrerpolicy="no-referrer"></span>')
+LOAD = {"hero": 'fetchpriority="high"', "thumb": 'loading="lazy"'}
+CREDIT = '<span class="story-credit">{credit}</span>'
+
 DEK = '<span class="dek">{dek}</span>'
 HEADLINE_MOD = {"hero": " headline--hero", "secondary": " headline--river", "river": " headline--river",
                 "text_only": ""}
@@ -154,6 +162,21 @@ def _meta(story, source_names, now):
     return "".join(parts)
 
 
+def _media(tier, image):
+    """The photo markup for a row of this tier, or '' for the text-only variant."""
+    if tier == "hero" and hero_worthy(image):
+        kind, px = "hero", HERO_PX
+    elif tier == "river" and thumb_ok(image):
+        kind, px = "thumb", THUMB_PX
+    else:
+        return ""
+    html = IMG.format(kind=kind, src=escape(image_url(image), quote=True), px=px, load=LOAD[kind])
+    credit = credit_text(image) if kind == "hero" else ""
+    if credit:
+        html += CREDIT.format(credit=escape(credit, quote=False))
+    return html
+
+
 def _render_story(story, tier, source_names, now):
     article = story.lead
     title = escape(smart_quotes(article["title"]), quote=False)
@@ -171,7 +194,7 @@ def _render_story(story, tier, source_names, now):
         close = "</a>"
     return STORY.format(
         tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
-        title=title, dek=dek, meta=_meta(story, source_names, now),
+        title=title, dek=dek, meta=_meta(story, source_names, now), media=_media(tier, article.get("image")),
     )
 
 
@@ -187,10 +210,22 @@ def _dek_pairs(stories):
     return pairs
 
 
+def _image_records(stories):
+    """Each story's photo record (app.images.media_for), so a device re-rank can give a
+    promoted row its photo box and take it from a demoted one, by the build's own rule."""
+    records = {}
+    for story in stories:
+        record = media_for(story.lead.get("image"))
+        if record:
+            records[story.id] = record
+    return records
+
+
 def _rank_input_json(pool, stories):
     """The device's ranking input as template text. Only &, < and > are escaped, so no
     feed string can close the template or open a tag (R26); JSON quotes stay readable."""
-    data = {"now": pool.get("generated_at"), "pool": rank_input(pool), "deks": _dek_pairs(stories)}
+    data = {"now": pool.get("generated_at"), "pool": rank_input(pool), "deks": _dek_pairs(stories),
+            "images": _image_records(stories)}
     return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
 
 

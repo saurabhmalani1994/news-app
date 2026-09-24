@@ -141,21 +141,71 @@ body {
   border-top: var(--divider-weight) solid var(--color-divider);
 }
 
-/* Image slot, reserved for a later slice; nothing emits .story-media yet. Its box is
-   sized before any image loads (hero 1:1 full bleed, river 88dp square on the right,
-   both measured), so images will arrive without shifting the text. */
+/* Photos (S39). Every box is sized before a byte arrives: the frame has aspect-ratio
+   1 / 1 and the img carries width and height, so a slow, failed or re-ranked photo never
+   moves text. Until the photo paints, or if it never does, the frame is a quiet token
+   tint. A failed img is no longer a replaced element, so its ::after renders and covers
+   the browser's broken-image icon and border with the same tint; a loaded photo never
+   draws the ::after. No script is involved. */
 .story-media {
   display: block;
   aspect-ratio: 1 / 1;
-  background: var(--color-nav-surface);
+  overflow: hidden;
+  background: var(--color-image-placeholder);
+}
+
+.story-img {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  color: transparent;
+}
+
+.story-img::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--color-image-placeholder);
+}
+
+/* Hero photo: full bleed and square at the top of the page (nyt-measured, 1080x1080 px
+   at 3x), straight under the masthead rule. The headline's caps sit about 43dp below
+   the photo when a credit line is between them, as measured side by side. */
+.story--hero .story-body:has(.story-media) {
+  padding-top: 0;
 }
 
 .story--hero .story-media {
-  margin: 0 calc(-1 * var(--space-gutter)) 16px;
+  margin: 0 calc(-1 * var(--space-gutter)) 24px;
 }
 
+.story--hero .story-media:has(+ .story-credit) {
+  margin-bottom: 6px;
+}
+
+/* Credit: one quiet sans line, right aligned on the gutter, text only (R26). */
+.story-credit {
+  display: block;
+  overflow: hidden;
+  margin-bottom: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: right;
+  font-family: var(--type-meta-family);
+  font-size: var(--type-meta-size);
+  line-height: 14px;
+  font-weight: var(--type-meta-weight);
+  color: var(--color-meta-tertiary);
+}
+
+/* River thumbnail: 88dp square on the right, its top level with the headline's first
+   line, the headline and meta wrapping in the column beside it (nyt-measured, n=3). */
 .story--river .story-body:has(.story-media) {
   grid-template-columns: minmax(0, 1fr) 88px;
+  grid-template-rows: auto 1fr;
   column-gap: 16px;
 }
 
@@ -163,6 +213,8 @@ body {
   grid-column: 2;
   grid-row: 1 / span 2;
   width: 88px;
+  height: 88px;
+  margin-top: 1px;
 }
 
 /* Headlines wrap greedily, as NYT's do, with only the orphan guard of `pretty`:
