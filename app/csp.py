@@ -13,6 +13,10 @@ Images may come from any https host: the pool's photos are feed-chosen, from 42 
 when S39 measured. Network reads stay on the app's own origin; S20 adds the OpenRouter
 origin to connect-src when it lands.
 
+S18: manifest-src and worker-src are both 'self', so the web app manifest and the
+service worker script (both same-origin, both external files) are the only ones the
+browser will ever fetch for those roles.
+
 `headers_file` refuses (ValueError) a page that this policy would break, an inline
 script, an inline <style> or an on* handler attribute, so the build fails instead of
 deploying a page the browser would block.
@@ -82,6 +86,8 @@ def content_security_policy(style_values=()):
         f"style-src-attr {style_attr}",
         "img-src 'self' https:",
         "connect-src 'self'",
+        "manifest-src 'self'",
+        "worker-src 'self'",
         "object-src 'none'",
         "base-uri 'none'",
         "form-action 'self'",
