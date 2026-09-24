@@ -14,6 +14,9 @@
 //   - "Read here · <outlet>" names the outlet of the row's data-body, a stored trust that
 //     flips the pick renames it before first paint, the reader opens exactly that member,
 //     and a missing body file falls back to the next member with a "Full text from" line;
+//   - the You page: Display's two switches write display.lean_markers and lean_color,
+//     the source picker shows each outlet's marker after its name, and a tap on it
+//     opens the lean sheet there too;
 //   - CLS on Today with markers on and off, and zero CSP violations.
 // Exits 1 on any failure. Screenshots (optional) are named l1-*.png.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -70,10 +73,26 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
       drawn: [...document.querySelectorAll(".meta .lean")].filter((n) => n.getClientRects().length).length }; };
   requestAnimationFrame(probe);` });
 
-async function shot(name) {
+async function shot(name, clip) {
   if (!shotsArg) return;
-  const png = (await send("Page.captureScreenshot", { format: "png" })).result.data;
+  const png = (await send("Page.captureScreenshot", clip ? { format: "png", clip: { ...clip, scale: 1 } } : { format: "png" })).result.data;
   writeFileSync(join(shotsArg, name), Buffer.from(png, "base64"));
+}
+
+/** Scrolls Today so the river's first stretch of marked rows fills the screen. */
+async function toMarkers() {
+  await evaluate(`(() => { const rows = [...document.querySelectorAll("#headlines li.story--river")];
+    const li = rows.find((r) => r.querySelector(".meta .lean")) || rows[0];
+    if (li) document.getElementById("section-today").scrollTop = li.offsetTop - 40; })()`);
+  await sleep(500);
+}
+
+/** A 3x close-up of the first visible meta line with dots, for checking alignment. */
+async function zoomMeta(name) {
+  const r = await evaluate(`(() => { const m = [...document.querySelectorAll("#section-today .meta")].find((n) => { const b = n.getBoundingClientRect();
+    return n.querySelector(".lean i") && b.top > 120 && b.bottom < 700; }); if (!m) return null; const b = m.getBoundingClientRect();
+    return { x: b.left - 4, y: b.top - 8, width: Math.min(340 - b.left, b.width + 8), height: b.height + 16 }; })()`);
+  if (r) await shot(name, { ...r, scale: 1 });
 }
 
 function store(display, trust) {
@@ -86,7 +105,14 @@ function store(display, trust) {
     { version: 2, timestamp: "2026-09-24T01:00:00Z", profile: { ...next, profile_version: 2 } }] };
 }
 
+// CSP reports from every page load, gathered before each navigation.
+const cspAll = [];
+async function collect() {
+  cspAll.push(...((await evaluate("window.__csp || []").catch(() => [])) || []));
+}
+
 async function visit(stored, scheme = "dark") {
+  await collect();
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: scheme }] });
   await send("Page.navigate", { url: `${site.origin}/` });
   await sleep(600);
@@ -122,6 +148,7 @@ const ROWS = `(() => {
       metaH: meta.getBoundingClientRect().height, metaLines: meta.getClientRects().length,
       metaOver: meta.scrollWidth > meta.clientWidth + 1,
       restCut: rest ? rest.scrollWidth > rest.clientWidth + 1 : false,
+      nameCut: (() => { const n = meta.querySelector(".meta-source"); return n ? n.scrollWidth > n.clientWidth + 1 : false; })(),
       leanBox: shown(lean) ? box(lean) : null, hitBox: shown(hit) ? box(hit) : null, metaBox: box(meta),
       body: link?.dataset.body || null, readName: read?.textContent ?? null, readCut: read ? read.scrollWidth > read.clientWidth + 1 : false,
       expectRead: memberSource && memberSource !== source ? data.names[memberSource] : null, hitLabel: hit?.getAttribute("aria-label") || null };
@@ -152,11 +179,14 @@ const others = reads.filter((r) => r.expectRead);
 check(reads.length > 0 && reads.every((r) => r.readName === r.expectRead),
   `${reads.length} "Read here" rows name the outlet whose text opens (${others.length} another outlet's, after the mark)`);
 console.log(`  another outlet's name cut to fit: ${others.filter((r) => r.readCut).length} of ${others.length}: ${others.map((r) => r.readName).join(", ")}`);
+const cutOn = rows.filter((r) => r.nameCut).length;
 const firstOn = await evaluate("window.__first");
 check(!firstOn.off && firstOn.drawn > 0, `first paint has markers (${firstOn.drawn} drawn)`);
 const clsOn = await evaluate("window.__cls");
 check(clsOn === 0, `CLS markers on: ${clsOn}`);
+await toMarkers();
 await shot("l1-today-on-dark.png");
+await zoomMeta("l1-zoom-meta-dark.png");
 
 // 2. What a tap at the dots hits, and at the headline, on the first row with dots.
 const target = rows.find((r) => r.leanBox && r.dots === 5);
@@ -193,7 +223,9 @@ await sleep(400);
 
 // 4. Light, then markers off, then color on.
 await visit(null, "light");
+await toMarkers();
 await shot("l1-today-on-light.png");
+await zoomMeta("l1-zoom-meta-light.png");
 check((await evaluate("window.__cls")) === 0, "CLS markers on, light: 0");
 await evaluate(`document.querySelector('#section-today li.story[data-sid="${target.sid}"] .lean-hit').click()`);
 await sleep(700);
@@ -204,8 +236,13 @@ for (const scheme of ["dark", "light"]) {
   const first = await evaluate("window.__first");
   const drawn = await evaluate(`[...document.querySelectorAll(".lean, .lean-hit")].filter((n) => n.getClientRects().length).length`);
   const clsOff = await evaluate("window.__cls");
+  if (scheme === "dark") {
+    const cutOff = (await evaluate(ROWS)).filter((r) => r.nameCut).length;
+    console.log(`  source names cut to fit: ${cutOn} of ${rows.length} rows with markers on, ${cutOff} with them off`);
+  }
   check(first.off && first.drawn === 0 && drawn === 0, `markers off (${scheme}): none drawn, first paint included`);
   check(clsOff === 0, `CLS markers off (${scheme}): ${clsOff}`);
+  await toMarkers();
   await shot(`l1-today-off-${scheme}.png`);
 }
 for (const scheme of ["dark", "light"]) {
@@ -222,7 +259,9 @@ for (const scheme of ["dark", "light"]) {
   check((await evaluate("window.__first")).color && left && right && left !== right && colors.center && colors.center !== left,
     `color on (${scheme}): left, center and right fills differ`);
   check((await evaluate("window.__cls")) === 0, `CLS color on (${scheme}): 0`);
+  await toMarkers();
   await shot(`l1-today-color-${scheme}.png`);
+  await zoomMeta(`l1-zoom-color-${scheme}.png`);
 }
 
 // 5. R43: trust flips the pick; the row renames before first paint; the reader agrees.
@@ -255,8 +294,74 @@ if (flip) {
   console.log("  (no story with a body-less lead and two outlets with bodies: R43 flip checks skipped)");
 }
 
-const csp = await evaluate("window.__csp");
-check(csp.length === 0, `CSP violations ${csp.length} ${csp.slice(0, 3).join(" | ")}`);
+// 6. The You page: Display switches, and the source picker's markers and sheet.
+const catalog = JSON.parse(readFileSync(join(dist, "source-catalog.json"), "utf-8"));
+for (const scheme of ["dark", "light"]) {
+  await collect();
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: scheme }] });
+  await send("Page.navigate", { url: `${site.origin}/profile` });
+  await sleep(600);
+  await evaluate("localStorage.clear()");
+  await send("Page.navigate", { url: `${site.origin}/profile` });
+  for (let i = 0; i < 40; i++) {
+    if (await evaluate(`!!document.querySelector('[data-focus-key="lean-markers"]')`).catch(() => false)) break;
+    await sleep(100);
+  }
+  await sleep(300);
+  if (scheme === "dark") {
+    const switches = await evaluate(`(() => { const on = document.querySelector('[data-focus-key="lean-markers"]'), color = document.querySelector('[data-focus-key="lean-color"]');
+      return { on: on?.checked, color: color?.checked }; })()`);
+    check(switches.on === true && switches.color === false, "Display: Lean markers on and Color off by default");
+    await evaluate(`document.querySelector('[data-focus-key="lean-color"]').closest("label").scrollIntoView({ block: "center" })`);
+    await sleep(200);
+    await shot("l1-you-display-dark.png");
+    await evaluate(`document.querySelector('[data-focus-key="lean-color"]').click()`);
+    await sleep(300);
+    await evaluate(`document.querySelector('[data-focus-key="lean-markers"]').click()`);
+    await sleep(300);
+    const saved = JSON.parse(await evaluate(`JSON.stringify(JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).history.at(-1).profile.display)`));
+    check(saved.lean_color === true && saved.lean_markers === false, `the switches save display ${JSON.stringify(saved)}`);
+    await evaluate("localStorage.clear()");
+  }
+  await collect();
+  await send("Page.navigate", { url: `${site.origin}/profile#sources` });
+  for (let i = 0; i < 40; i++) {
+    if (await evaluate(`!!document.querySelector(".source-group")`).catch(() => false)) break;
+    await sleep(100);
+  }
+  await sleep(400);
+  const picker = await evaluate(`(() => {
+    const rows = [...document.querySelectorAll("label[data-source]")];
+    const off = [];
+    for (const row of rows) {
+      const lean = row.querySelector(".lean");
+      const hit = document.querySelector('.lean-hit[data-lean-source="' + row.dataset.source + '"]');
+      if (!lean) continue;
+      const a = lean.getBoundingClientRect(), b = hit.getBoundingClientRect();
+      if (Math.abs(a.left + a.width / 2 - (b.left + b.width / 2)) > 1 || Math.abs(a.top + a.height / 2 - (b.top + b.height / 2)) > 1) off.push(row.dataset.source);
+    }
+    return { rows: rows.length, markers: rows.filter((r) => r.querySelector(".lean")).map((r) => r.dataset.source), off };
+  })()`);
+  const expected = catalog.sources.filter((s) => SCALE.includes(s.lean) || s.lean === "state").map((s) => s.id).sort();
+  check(JSON.stringify(picker.markers.slice().sort()) === JSON.stringify(expected), `picker (${scheme}): ${picker.markers.length} of ${picker.rows} sources carry a marker, the scale and state ones`);
+  check(picker.off.length === 0, `picker (${scheme}): every tap target sits on its own dots (${picker.off.length} off)`);
+  await evaluate(`document.querySelector('.source-group[data-bucket="us_politics"]')?.scrollIntoView({ block: "start" })`);
+  await sleep(300);
+  await shot(`l1-sources-${scheme}.png`);
+  if (scheme === "dark") {
+    const opened = await evaluate(`(() => { const hit = document.querySelector('.source-group[data-bucket="us_politics"] .lean-hit');
+      const before = document.querySelector('label[data-source="' + hit.dataset.leanSource + '"] input').checked;
+      hit.click();
+      return new Promise((r) => setTimeout(() => r({ before, after: document.querySelector('label[data-source="' + hit.dataset.leanSource + '"] input').checked,
+        open: !document.getElementById("sheet-root").hidden, title: document.getElementById("sheet-label").textContent,
+        basis: document.querySelector(".lean-sheet-basis")?.textContent || "" }), 700)); })()`);
+    check(opened.open && opened.basis.length > 10 && opened.before === opened.after, `a picker marker opens the lean sheet for ${opened.title} without flipping its switch`);
+    await shot("l1-sources-sheet-dark.png");
+  }
+}
+
+await collect();
+check(cspAll.length === 0, `CSP violations across every page ${cspAll.length} ${cspAll.slice(0, 3).join(" | ")}`);
 check(errors.length === 0, `page errors ${errors.length} ${errors.slice(0, 2).join(" | ")}`);
 chrome.close();
 site.close();

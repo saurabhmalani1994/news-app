@@ -114,7 +114,11 @@ def test_reader_credit_line_and_member_title():
     reader = open(f"{ROOT_JS}/reader.js", encoding="utf-8").read()
     assert 'el("p", "reader-via", facts.credit)' in reader
     assert "smartQuotes(record.title" in reader  # another outlet's own headline
-    assert "memberFor(" in reader and "storedTrust()" in reader
+    # R43 replaced U1's tap-time re-pick (memberFor): the reader opens the row's own
+    # data-body, the choice its "Read here" names, and uses the stored trust only to
+    # fall back past a missing body file (reader/core.js readChoice).
+    assert "open(id, link, true)" in reader and "memberFor(" not in reader
+    assert "readChoice(" in reader and "storedTrust()" in reader
     assert re.search(r"\.reader-via \{[^}]*color: var\(--color-meta-tertiary\)", STYLE_CSS)
 
 

@@ -223,11 +223,12 @@ def test_hostile_image_url_is_an_escaped_attribute_value():
         '<script type="module" src="js/tabs.js">', '<script type="module" src="js/reader.js">',
         '<script type="module" src="js/story-actions.js">',
         '<script type="module" src="js/coverage-view.js">',
+        '<script type="module" src="js/lean-view.js">',
         '<script type="module" src="js/history/observe.js">',
         '<script type="module" src="js/live-actions.js">',
         '<script type="module" src="js/saved-screen.js">',
         '<script src="js/sw-register.js" defer>', '<script src="js/offline.js">',
-    ]  # S11/S18 gates, S27 tabs, S25 reader, S24 story-actions, S14 coverage-view, S15 history, S33 live-actions, S26 saved-screen, S18 offline+sw
+    ]  # S11/S18 gates, S27 tabs, S25 reader, S24 story-actions, S14 coverage-view, S15 history, S33 live-actions, S26 saved-screen, S18 offline+sw, L1 lean-view
 
 
 def test_credit_is_text_under_the_hero_only():

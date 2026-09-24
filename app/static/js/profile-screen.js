@@ -15,6 +15,11 @@
 // reverts to the version before it. Nothing here is sent anywhere; the only fetches are
 // this app's own schema and source catalog, both precached.
 //
+// L1: Display carries the lean marker's two switches (on, colored), and the source
+// picker shows each outlet's marker after its name, a tap on it opening the lean sheet
+// (js/lean.js) with the catalog's cited basis. The sheet module loads on that first tap,
+// so a page without its markup can never be taken down by it.
+//
 // H2: a profile saved by an older build is migrated forward on load (migrate.js, one
 // new version, history kept). No lookup can take the page down: the page's own chrome
 // is found or made (pageChrome), and every section is built on its own, so a missing
@@ -27,9 +32,10 @@ import { showToast, hideToast } from "./toast.js";
 import {
   LEVELS, levelOf, levelWord, withTopicLevel, withTopicField, withTopicMuted, boostsForTopic,
   withBoostAmount, withBoostRemoved, withStandingField, summariesMode, withSummaries,
-  SOURCE_STATES, sourceState, withSourceState, withSourceStates, sourceCounts, groupByRegion,
+  leanMarkersOn, leanColorOn, withLeanMarkers, withLeanColor, SOURCE_STATES, sourceState, withSourceState, withSourceStates, sourceCounts, groupByRegion,
   matchesQuery, sourceDetail, HEALTH_WORDS, commitEdit,
 } from "./profile/you-edits.js";
+import { leanHit, leanMarker, leanSheetContent, setBasis } from "./lean.js";
 
 const dateFormat = new Intl.DateTimeFormat(undefined, {
   month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
@@ -128,6 +134,7 @@ async function loadJson(path) {
 function main(schema, catalog) {
   const store = new ProfileStore({ storage: window.localStorage, schema, seedDefault: buildDefaultProfile, migrate: migrateProfile });
   const sources = Array.isArray(catalog?.sources) ? catalog.sources : [];
+  const bases = catalog && typeof catalog.lean_basis === "object" && catalog.lean_basis ? catalog.lean_basis : {};
   const { root, title, back } = pageChrome();
 
   // --- Scroll memory: per view, kept for the tab's session so Back from Health (a
@@ -210,7 +217,13 @@ function main(schema, catalog) {
       }),
       section("Display", () => [switchRow("summaries", "Summaries on every story", "Off shows them on the lead stories only",
         summariesMode(profile) === "all",
-        (on) => commit((p) => withSummaries(p, on ? "all" : "top"), on ? "Summaries on every story" : "Summaries on lead stories only"))]),
+        (on) => commit((p) => withSummaries(p, on ? "all" : "top"), on ? "Summaries on every story" : "Summaries on lead stories only")),
+      switchRow("lean-markers", "Lean markers", "Five dots after a source name, left to right, for where the outlet leans",
+        leanMarkersOn(profile),
+        (on) => commit((p) => withLeanMarkers(p, on), on ? "Lean markers on" : "Lean markers off")),
+      switchRow("lean-color", "Color the markers", "Blue for left, red for right, grey for center",
+        leanColorOn(profile),
+        (on) => commit((p) => withLeanColor(p, on), on ? "Markers in color" : "Markers in grey"))]),
       section("Health", [linkRow("/health", "Feed health", "Pool age, the last run, every source's status")]),
       section("Advanced", () => [linkRow("#advanced", "Profile data and versions", `Raw JSON, history and revert. Now v${store.history()[0].version}`)]),
       el("footer", { class: "colophon colophon--settings" }, [
@@ -375,6 +388,7 @@ function main(schema, catalog) {
           onclick: () => commit((p) => withSourceStates(p, ids, next), `${group.label}: all ${next}`),
         }),
       ]);
+      const hits = [];
       const rows = group.sources.map((s) => {
         const detail = [sourceDetail(s), HEALTH_WORDS[s.health] || ""].filter(Boolean).join(" · ");
         const row = switchRow(`source-${s.id}`, s.name, detail, sourceState(profile, s.id) === SOURCE_STATES.ON,
@@ -382,18 +396,24 @@ function main(schema, catalog) {
         row.dataset.source = s.id;
         row.dataset.name = s.name;
         if (s.health === "down" || s.health === "failing") row.classList.add("source-row--unwell");
+        placeLean(row, s, hits);
         return row;
       });
-      return el("section", { class: "settings-section source-group", "data-bucket": group.bucket }, [head, ...rows]);
+      // The markers' tap targets sit after the rows (a button inside the switch's own
+      // label would be invalid, and between rows it would break their hairlines), each
+      // laid over its own row's dots by a per-source anchor name.
+      return el("section", { class: "settings-section source-group", "data-bucket": group.bucket }, [head, ...rows, ...hits]);
     });
 
     function filter() {
       let any = false;
       for (const groupEl of groups) {
         let visible = 0;
-        for (const row of groupEl.querySelectorAll("[data-source]")) {
+        for (const row of groupEl.querySelectorAll("label[data-source]")) {
           const match = matchesQuery(row.dataset.name, sourceQuery);
           row.hidden = !match;
+          const hit = groupEl.querySelector(`.lean-hit[data-lean-source="${CSS.escape(row.dataset.source)}"]`);
+          if (hit) hit.hidden = !match;
           row.classList.toggle("is-first", match && visible === 0); // no rule under the group head
           if (match) visible++;
         }
@@ -413,6 +433,35 @@ function main(schema, catalog) {
       empty,
       ...groups,
     ];
+  }
+
+  /** L1: the source's lean marker after its name in the picker, and its tap target
+   * (collected into `hits`), tied by an anchor name of its own. Nothing for an outlet
+   * outside the US scale. The names are set through the CSSOM, never a style
+   * attribute, so the page's CSP is unchanged. */
+  function placeLean(row, source, hits) {
+    const marker = leanMarker(source.lean);
+    const hit = marker && leanHit(source.id, source.lean);
+    if (!hit) return;
+    const anchor = `--lean-${source.id.replace(/[^a-z0-9_-]/gi, "-")}`;
+    marker.style.setProperty("anchor-name", anchor);
+    hit.style.setProperty("position-anchor", anchor);
+    row.querySelector(".setting-label")?.append(marker);
+    hits.push(hit);
+  }
+
+  /** The lean sheet for a picker source, sheet.js loaded on this first use. */
+  async function openLean(id, opener) {
+    const source = sources.find((s) => s.id === id);
+    const content = source && leanSheetContent({ lean: source.lean, ownership: source.ownership });
+    if (!content) return;
+    try {
+      const { openSheet } = await import("./sheet.js");
+      setBasis(content, Object.hasOwn(bases, id) ? bases[id] : "");
+      openSheet({ title: source.name, content, opener });
+    } catch (err) {
+      console.warn("You page: the lean sheet could not open", err);
+    }
   }
 
   // --- Advanced: raw JSON, add an interest, version history ---
@@ -545,6 +594,9 @@ function main(schema, catalog) {
       console.warn(`You page: the ${current.view} view could not be drawn`, err);
       nodes = [sectionNotice(null)];
     }
+    // L1: the owner's lean marker switches, as rank-gate.js applies them on the front page.
+    document.documentElement.classList.toggle("lean-off", !leanMarkersOn(profile));
+    document.documentElement.classList.toggle("lean-color", leanColorOn(profile));
     root.replaceChildren(...nodes);
     rendering = false;
     root.removeAttribute("aria-busy");
@@ -586,6 +638,11 @@ function main(schema, catalog) {
   // A tap on an in-page row is a forward step: the view it opens starts at its top.
   root.addEventListener("click", (e) => {
     if (e.target.closest?.('a[href^="#"]')) forward = true;
+    const lean = e.target.closest?.(".lean-hit[data-lean-source]");
+    if (lean) {
+      e.preventDefault();
+      openLean(lean.getAttribute("data-lean-source"), lean);
+    }
   });
 
   // Back from a sub-view: when the You view is the entry behind this one, step the real
