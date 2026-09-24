@@ -1,9 +1,11 @@
-"""Build the Almanac static page: the pool as a text-only list styled with the design
-tokens (S03). One tier for now; S04 builds the hero and river tiers on these tokens.
+"""Build the Almanac static page: the front page in four tiers (S04), hero, secondary
+lead blocks, river and text-only rows, styled with the design tokens (S03). Stories and
+tiers come from app.frontpage; this module only turns them into markup.
 
-Feed content is hostile input (R26): every field is HTML-escaped, so a title, source
-name or timestamp can only ever render as text, never a tag. A story link is emitted
-only for an http or https url, so a javascript: or data: url never becomes an href.
+Feed content is hostile input (R26): every field is HTML-escaped, so a title, dek,
+source name or timestamp can only ever render as text, never a tag. A story link is
+emitted only for an http or https url, so a javascript: or data: url never becomes an
+href. Typographic quotes are applied here, at render time, never to the pool.
 The stylesheet and fonts are app-owned static assets and carry no feed data.
 
 Usage: python -m app.build --pool dist/pool.json --out dist
@@ -17,10 +19,15 @@ from html import escape
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from app.frontpage import clean_dek, front_page
+from app.typography import smart_quotes
+
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 
 # Preloaded because they paint above the fold: the headline serif and the meta sans.
+# The dek's regular serif is not preloaded (40KB preload budget); its metric-matched
+# fallback keeps the swap shift-free.
 PRELOAD_FONTS = ("Newsreader-Bold-latin.woff2", "LibreFranklin-Medium-latin.woff2")
 
 PAGE = """<!doctype html>
@@ -39,25 +46,35 @@ PAGE = """<!doctype html>
 <body>
 <header class="masthead"><h1 class="wordmark">Almanac</h1></header>
 <main>
-<ol class="river" id="headlines">
-{items}
+<ol class="river river--top" id="headlines">
+{top}
 </ol>
+{more}
 </main>
-<footer class="colophon"><p class="colophon-text">{count} stories. Updated <time datetime="{generated_at}">{updated}</time></p></footer>
+<footer class="colophon"><p class="colophon-text">{count} stories from {articles} articles. Updated <time datetime="{generated_at}">{updated}</time></p></footer>
 </body>
 </html>
 """
 
-STORY_LINK = (
-    '<li class="story"><a class="story-link" href="{url}" target="_blank" rel="noopener noreferrer">'
-    '<span class="story-body"><span class="headline">{title}</span>'
-    '<span class="meta">{meta}</span></span></a></li>'
+MORE = """<section class="module" aria-labelledby="more-label">
+<h2 class="module-label" id="more-label">More headlines</h2>
+<ol class="river river--text-only">
+{items}
+</ol>
+</section>"""
+
+# One row shape for every tier; the tier only changes classes and whether a dek shows.
+# A later image slot goes first inside .story-body; its box is reserved in style.css
+# (aspect-ratio), so adding images will not shift text.
+STORY = (
+    '<li class="story story--{tier}">{open}'
+    '<span class="story-body"><span class="headline{headline_mod}">{title}</span>{dek}'
+    '<span class="meta">{meta}</span></span>{close}</li>'
 )
-STORY_PLAIN = (
-    '<li class="story"><span class="story-link">'
-    '<span class="story-body"><span class="headline">{title}</span>'
-    '<span class="meta">{meta}</span></span></span></li>'
-)
+DEK = '<span class="dek">{dek}</span>'
+HEADLINE_MOD = {"hero": " headline--hero", "secondary": " headline--river", "river": " headline--river",
+                "text_only": ""}
+DEK_TIERS = ("hero", "secondary")
 
 
 def _parse_time(value):
@@ -93,21 +110,59 @@ def _safe_url(url):
     return None
 
 
-def _render_item(article, source_names, now):
+def _meta(story, source_names, now):
+    """Source, then the quiet 'N sources' for a multi-outlet cluster, then age. The
+    source name alone may truncate; the rest never does."""
+    article = story.lead
     source = source_names.get(article.get("source_id"), "")
+    rest = []
+    if story.independent_sources > 1:
+        rest.append(f"{story.independent_sources} sources")
     age = relative_age(article.get("published_at"), now)
-    meta = escape(f" {MIDDOT} ".join(p for p in (source, age) if p))
-    title = escape(article["title"])
+    if age:
+        rest.append(age)
+    parts = []
+    if source:
+        parts.append(f'<span class="meta-source">{escape(source)}</span>')
+    tail = f" {MIDDOT} ".join(rest)
+    if tail:
+        lead_sep = f" {MIDDOT} " if source else ""
+        parts.append(f'<span class="meta-rest">{escape(lead_sep + tail)}</span>')
+    return "".join(parts)
+
+
+def _render_story(story, tier, source_names, now):
+    article = story.lead
+    title = escape(smart_quotes(article["title"]), quote=False)
+    dek = ""
+    if tier in DEK_TIERS:
+        text = clean_dek(article)
+        if text:
+            dek = DEK.format(dek=escape(smart_quotes(text), quote=False))
     url = _safe_url(article.get("url"))
     if url is None:
-        return STORY_PLAIN.format(title=title, meta=meta)
-    return STORY_LINK.format(url=escape(url, quote=True), title=title, meta=meta)
+        open_, close = '<span class="story-link">', "</span>"
+    else:
+        open_ = (f'<a class="story-link" href="{escape(url, quote=True)}" '
+                 'target="_blank" rel="noopener noreferrer">')
+        close = "</a>"
+    return STORY.format(
+        tier=tier.replace("_", "-"), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
+        title=title, dek=dek, meta=_meta(story, source_names, now),
+    )
 
 
 def render(pool):
     now = _parse_time(pool.get("generated_at"))
     source_names = {s["id"]: s.get("name", "") for s in pool.get("sources", [])}
-    items = "\n".join(_render_item(a, source_names, now) for a in pool["articles"])
+    tiers = front_page(pool)
+
+    def rows(names):
+        return "\n".join(
+            _render_story(story, tier, source_names, now) for tier in names for story in tiers[tier]
+        )
+
+    rest = rows(("text_only",))
     preloads = "\n".join(
         f'<link rel="preload" href="fonts/{f}" as="font" type="font/woff2" crossorigin>'
         for f in PRELOAD_FONTS
@@ -115,8 +170,10 @@ def render(pool):
     updated = now.strftime("%d %b %H:%M UTC") if now else ""
     return PAGE.format(
         preloads=preloads,
-        items=items,
-        count=len(pool["articles"]),
+        top=rows(("hero", "secondary", "river")),
+        more=MORE.format(items=rest) if rest else "",
+        count=sum(len(v) for v in tiers.values()),
+        articles=len(pool["articles"]),
         generated_at=escape(pool["generated_at"]),
         updated=escape(updated),
     )
@@ -145,7 +202,9 @@ def main(argv=None):
     _copy_static(out)
     if pool_path.resolve() != (out / "pool.json").resolve():
         shutil.copyfile(pool_path, out / "pool.json")
-    print(f"built {out / 'index.html'} with {len(pool['articles'])} headlines")
+    tiers = front_page(pool)
+    counts = ", ".join(f"{name} {len(tiers[name])}" for name in tiers)
+    print(f"built {out / 'index.html'}: {counts}")
     return 0
 
 

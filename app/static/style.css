@@ -77,23 +77,61 @@ body {
   outline-offset: -2px;
 }
 
-/* Row rhythm: 15px above the headline box and below the meta box puts about 37dp of
-   ink-to-ink space between one story's meta and the next headline, the measured river
-   block gap, with the hairline centered in it. */
+/* Row rhythm, from the NYT section front (nyt-measured, river): the inset hairline
+   sits nearer the next headline than the last meta, about 12dp above a headline's box
+   and 24dp below a meta's, so a rule reads as the top of the story it opens. Text-only
+   rows keep the same shape, a step tighter. */
 .story-body {
-  display: block;
-  padding: 15px 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 12px 0 24px;
+}
+
+.story--text-only .story-body {
+  padding: 12px 0 20px;
+}
+
+/* The hero opens the page under the masthead's full-bleed rule, so it has no rule of
+   its own and a little more air above. */
+.story--hero .story-body {
+  padding: 20px 0 26px;
 }
 
 /* One hairline weight, inset by the 20dp gutter between stories (the link's padding
-   supplies the inset), never full bleed inside the list. */
+   supplies the inset), never full bleed inside a list. */
 .story + .story .story-body {
   border-top: var(--divider-weight) solid var(--color-divider);
 }
 
+/* Image slot, reserved for a later slice; nothing emits .story-media yet. Its box is
+   sized before any image loads (hero 1:1 full bleed, river 88dp square on the right,
+   both measured), so images will arrive without shifting the text. */
+.story-media {
+  display: block;
+  aspect-ratio: 1 / 1;
+  background: var(--color-nav-surface);
+}
+
+.story--hero .story-media {
+  margin: 0 calc(-1 * var(--space-gutter)) 16px;
+}
+
+.story--river .story-body:has(.story-media) {
+  grid-template-columns: minmax(0, 1fr) 88px;
+  column-gap: 16px;
+}
+
+.story--river .story-media {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  width: 88px;
+}
+
+/* Headlines wrap greedily, as NYT's do, with only the orphan guard of `pretty`:
+   `balance` left two-line heads visibly short of the measure. */
 .headline {
   display: block;
-  text-wrap: balance;
+  text-wrap: pretty;
   overflow-wrap: break-word;
   font-family: var(--type-text-only-headline-family);
   font-size: var(--type-text-only-headline-size);
@@ -103,8 +141,7 @@ body {
   color: var(--color-headline);
 }
 
-/* Hero headline style, its own token, not a scaled copy of the list headline. S04
-   decides which story gets it; nothing on this page applies it yet. */
+/* Hero headline, its own token, not a scaled copy of the list headline. */
 .headline--hero {
   font-family: var(--type-hero-headline-family);
   font-size: var(--type-hero-headline-size);
@@ -113,12 +150,44 @@ body {
   letter-spacing: var(--type-hero-headline-tracking);
 }
 
-.meta {
-  display: block;
-  margin-top: 8px;
-  white-space: nowrap;
+/* Secondary lead blocks and river rows share the river headline token. */
+.headline--river {
+  font-family: var(--type-river-headline-family);
+  font-size: var(--type-river-headline-size);
+  line-height: var(--type-river-headline-line-height);
+  font-weight: var(--type-river-headline-weight);
+  letter-spacing: var(--type-river-headline-tracking);
+}
+
+/* Dek: hero and lead blocks only. Feed descriptions run long, so the hero shows at
+   most four lines and a lead block three. */
+.dek {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   overflow: hidden;
-  text-overflow: ellipsis;
+  margin-top: 8px;
+  font-family: var(--type-dek-family);
+  font-size: var(--type-dek-size);
+  line-height: var(--type-dek-line-height);
+  font-weight: var(--type-dek-weight);
+  letter-spacing: var(--type-dek-tracking);
+  color: var(--color-dek);
+}
+
+.story--hero .dek {
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  margin-top: 6px;
+}
+
+/* Meta: source, the quiet source count, age. Only the source name may truncate. */
+.meta {
+  display: flex;
+  min-width: 0;
+  margin-top: 11px;
+  white-space: nowrap;
   font-family: var(--type-meta-family);
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line-height);
@@ -126,6 +195,43 @@ body {
   letter-spacing: var(--type-meta-tracking);
   text-transform: var(--type-meta-transform);
   color: var(--color-meta);
+}
+
+/* After a dek the meta sits about 15dp below the dek's ink (measured, hero). */
+.dek + .meta {
+  margin-top: 10px;
+}
+
+.story--text-only .meta {
+  margin-top: 9px;
+}
+
+.meta-source {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta-rest {
+  flex: none;
+  white-space: pre;
+}
+
+/* A module edge: full-bleed hairline, then a quiet sans label over the text-only tier. */
+.module {
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.module-label {
+  margin: 0;
+  padding: 28px var(--space-gutter) 4px;
+  font-family: var(--type-meta-family);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
+  font-weight: var(--type-meta-weight);
+  letter-spacing: var(--type-meta-tracking);
+  text-transform: var(--type-meta-transform);
+  color: var(--color-headline);
 }
 
 /* Colophon: freshness line after the last story, full-bleed hairline above it. */
