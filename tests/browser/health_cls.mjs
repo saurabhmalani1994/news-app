@@ -79,7 +79,7 @@ check("rows are text only", markupClean === true, { markupClean });
 // 4. The pool-age line: built with a frozen age, then rewritten by js/health-age.js
 // before paint, so it never shifts anything and always reflects a real relative age.
 const ageText = await evaluate(`document.getElementById("pool-age").textContent`);
-const ageLooksLive = /^(Updated|Stale\. Last updated) \d+[mhd] ago\.$/.test(ageText);
+const ageLooksLive = /^(Updated|Stale\. Last updated) \d+(?: min|[hd]) ago\.$/.test(ageText);
 await shot("final-dark.png");
 const shift = await evaluate("window.__shift");
 check("pool age line is live and zero shift", ageLooksLive && shift === 0, { ageText, shift });

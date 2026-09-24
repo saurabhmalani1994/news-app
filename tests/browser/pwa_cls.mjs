@@ -91,7 +91,7 @@ async function sessionA() {
     const png = (await send("Page.captureScreenshot", { format: "png" })).result.data;
     writeFileSync(join(shotsArg, "offline-dark.png"), Buffer.from(png, "base64"));
   }
-  const linePattern = /^Offline\. Showing news from \d+[mhd] ago$/;
+  const linePattern = /^Offline\. Showing news from \d+(?: min|[hd]) ago$/;
   check("offline_load_shows_the_line_at_cls_zero", offlineState.ready === "complete" && offlineState.isOffline
     && offlineState.lineHidden === false && linePattern.test(offlineState.lineText) && offlineState.cls === 0,
     offlineState);

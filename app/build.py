@@ -403,13 +403,13 @@ def _parse_time(value):
 
 
 def relative_age(published_at, now):
-    """'12m ago', '3h ago', '2d ago' relative to the pool's generated_at."""
+    """'12 min ago', '3h ago', '2d ago' relative to the pool's generated_at."""
     then = _parse_time(published_at)
     if then is None or now is None:
         return ""
     minutes = max(0, int((now - then).total_seconds() // 60))
     if minutes < 60:
-        return f"{max(minutes, 1)}m ago"
+        return f"{max(minutes, 1)} min ago"
     if minutes < 48 * 60:
         return f"{minutes // 60}h ago"
     return f"{minutes // (24 * 60)}d ago"

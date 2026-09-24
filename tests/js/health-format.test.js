@@ -22,7 +22,7 @@ test("isStale: an unparseable or missing generated_at is never stale", () => {
 });
 
 test("poolAgeText: fresh pool reads 'Updated ... ago.'", () => {
-  assert.equal(poolAgeText("2026-09-24T07:48:00Z", T0), "Updated 12m ago.");
+  assert.equal(poolAgeText("2026-09-24T07:48:00Z", T0), "Updated 12 min ago.");
 });
 
 test("poolAgeText: a pool older than the threshold leads with 'Stale.'", () => {

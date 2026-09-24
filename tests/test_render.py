@@ -159,7 +159,7 @@ def test_each_row_carries_source_and_age_meta():
     assert len(parsed.metas) == len(pool["articles"])
     dot = " " + chr(0x00B7) + " "
     metas = [parsed.metas[_row_of(parsed, a["title"])] for a in pool["articles"][:4]]
-    assert metas == ["NPR" + dot + "12m ago", "NPR" + dot + "3h ago", "NPR" + dot + "3d ago", "NPR"]
+    assert metas == ["NPR" + dot + "12 min ago", "NPR" + dot + "3h ago", "NPR" + dot + "3d ago", "NPR"]
 
 
 def test_story_link_is_emitted_only_for_http_urls():
@@ -190,3 +190,21 @@ def test_page_head_meets_the_system_bar():
     assert "viewport-fit=cover" in page
     assert '<meta name="theme-color" content="#121212">' in page
     assert re.search(r'<link rel="preload" href="fonts/[^"]+\.woff2" as="font" type="font/woff2" crossorigin>', page)
+
+
+def test_relative_age_spells_minutes_as_min():
+    """D3: the build and the Health page share the captures' convention, "12 min ago",
+    "3h ago", "2d ago", so the uppercase meta never shows a bare "M" that reads as months."""
+    from datetime import datetime, timezone
+
+    from app import health
+    from app.build import relative_age
+
+    now = datetime(2026, 9, 24, 12, 0, tzinfo=timezone.utc)
+    assert relative_age("2026-09-24T11:59:40Z", now) == "1 min ago"
+    assert relative_age("2026-09-24T11:01:00Z", now) == "59 min ago"
+    assert relative_age("2026-09-24T09:00:00Z", now) == "3h ago"
+    assert relative_age("2026-09-22T12:00:00Z", now) == "2d ago"
+    assert health._relative_age(30) == "1 min ago"
+    assert health._relative_age(12 * 60) == "12 min ago"
+    assert health._relative_age(3 * 3600) == "3h ago"

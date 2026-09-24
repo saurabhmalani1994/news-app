@@ -17,7 +17,7 @@
     var then = Date.parse(publishedAt);
     if (Number.isNaN(then) || !now) return "";
     var minutes = Math.max(0, Math.floor((now - then) / 60000));
-    if (minutes < 60) return Math.max(minutes, 1) + "m ago";
+    if (minutes < 60) return Math.max(minutes, 1) + " min ago";
     if (minutes < 48 * 60) return Math.floor(minutes / 60) + "h ago";
     return Math.floor(minutes / (24 * 60)) + "d ago";
   }

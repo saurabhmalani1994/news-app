@@ -291,7 +291,7 @@ def _relative_age(seconds):
         return "recently"
     minutes = max(0, int(seconds // 60))
     if minutes < 60:
-        return f"{max(minutes, 1)}m ago"
+        return f"{max(minutes, 1)} min ago"
     if minutes < 48 * 60:
         return f"{minutes // 60}h ago"
     return f"{minutes // (24 * 60)}d ago"

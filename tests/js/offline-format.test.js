@@ -12,8 +12,8 @@ import { offlineLineText, refreshedMetaText, relativeAge } from "../../app/stati
 const T0 = Date.parse("2026-09-24T12:00:00Z");
 
 test("relativeAge: minutes, hours and days, with a 1m floor for anything under a minute", () => {
-  assert.equal(relativeAge("2026-09-24T11:59:30Z", T0), "1m ago");
-  assert.equal(relativeAge("2026-09-24T11:48:00Z", T0), "12m ago");
+  assert.equal(relativeAge("2026-09-24T11:59:30Z", T0), "1 min ago");
+  assert.equal(relativeAge("2026-09-24T11:48:00Z", T0), "12 min ago");
   assert.equal(relativeAge("2026-09-24T09:00:00Z", T0), "3h ago");
   assert.equal(relativeAge("2026-09-21T12:00:00Z", T0), "3d ago");
 });
@@ -26,7 +26,7 @@ test("relativeAge: an unparseable or missing time is the empty string, never NaN
 
 test("offlineLineText: the quiet nameplate line, from the pool's own generated_at", () => {
   assert.equal(offlineLineText("2026-09-24T10:00:00Z", T0), "Offline. Showing news from 2h ago");
-  assert.equal(offlineLineText("2026-09-24T11:59:00Z", T0), "Offline. Showing news from 1m ago");
+  assert.equal(offlineLineText("2026-09-24T11:59:00Z", T0), "Offline. Showing news from 1 min ago");
 });
 
 test("offlineLineText: a pool with no readable generated_at still says something quiet, not a NaN string", () => {
@@ -34,14 +34,14 @@ test("offlineLineText: a pool with no readable generated_at still says something
 });
 
 test("refreshedMetaText: only the trailing age token is swapped, whatever led it is kept", () => {
-  assert.equal(refreshedMetaText(" · 12m ago", "3h ago"), " · 3h ago");
-  assert.equal(refreshedMetaText(" · 4 sources · 5m ago", "2d ago"), " · 4 sources · 2d ago");
-  assert.equal(refreshedMetaText("12m ago", "1h ago"), "1h ago");
+  assert.equal(refreshedMetaText(" · 12 min ago", "3h ago"), " · 3h ago");
+  assert.equal(refreshedMetaText(" · 4 sources · 5 min ago", "2d ago"), " · 4 sources · 2d ago");
+  assert.equal(refreshedMetaText("12 min ago", "1h ago"), "1h ago");
 });
 
 test("refreshedMetaText: text with no trailing age, or no fresh age to give it, is left alone", () => {
   assert.equal(refreshedMetaText(" · 4 sources", "3h ago"), " · 4 sources");
-  assert.equal(refreshedMetaText(" · 12m ago", ""), " · 12m ago");
+  assert.equal(refreshedMetaText(" · 12 min ago", ""), " · 12 min ago");
 });
 
 test("js/offline.js keeps its own relativeAge identical to js/offline-format.js's, since it cannot import it", () => {
@@ -58,4 +58,25 @@ test("js/offline.js keeps its own relativeAge identical to js/offline-format.js'
   ]) {
     assert.equal(inlineRelativeAge(publishedAt, now), relativeAge(publishedAt, now));
   }
+});
+
+// D3: one relative-time convention everywhere, the captures' own: minutes spelled "min"
+// (as in "5 MIN READ"), so the uppercase meta never reads "1M AGO", which looks like
+// months; hours and days stay "3h ago", "2d ago" ("16H AGO" in the captures).
+test("D3 relative time: never a bare 'm', every formatter agrees", () => {
+  const cases = [["2026-09-24T11:59:59Z", "1 min ago"], ["2026-09-24T11:01:00Z", "59 min ago"],
+    ["2026-09-24T11:00:00Z", "1h ago"], ["2026-09-22T12:01:00Z", "47h ago"], ["2026-09-22T12:00:00Z", "2d ago"]];
+  for (const [at, want] of cases) {
+    assert.equal(relativeAge(at, T0), want);
+    assert.doesNotMatch(relativeAge(at, T0).toUpperCase(), /\dM AGO/);
+  }
+  // The two classic-script copies (offline.js, health-age.js) spell minutes the same way.
+  for (const file of ["offline.js", "health-age.js"]) {
+    const src = readFileSync(new URL(`../../app/static/js/${file}`, import.meta.url), "utf-8");
+    assert.match(src, /\+ " min ago"/, file);
+    assert.doesNotMatch(src, /"m ago"/, file);
+  }
+  // The offline refresh recognises the new token and swaps only it.
+  assert.equal(refreshedMetaText("NPR · 59 min ago", "1h ago"), "NPR · 1h ago");
+  assert.equal(refreshedMetaText("NPR · 3h ago", "2d ago"), "NPR · 2d ago");
 });

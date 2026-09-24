@@ -12,7 +12,7 @@ export function relativeAge(publishedAt, now) {
   const then = Date.parse(publishedAt);
   if (Number.isNaN(then) || !now) return "";
   const minutes = Math.max(0, Math.floor((now - then) / 60000));
-  if (minutes < 60) return `${Math.max(minutes, 1)}m ago`;
+  if (minutes < 60) return `${Math.max(minutes, 1)} min ago`;
   if (minutes < 48 * 60) return `${Math.floor(minutes / 60)}h ago`;
   return `${Math.floor(minutes / (24 * 60))}d ago`;
 }
@@ -23,7 +23,7 @@ export function offlineLineText(generatedAt, now) {
   return age ? `Offline. Showing news from ${age}` : "Offline. Showing cached news.";
 }
 
-const AGE_RE = /\d+[mhd] ago$/;
+const AGE_RE = /\d+(?: min|[hd]) ago$/;
 
 /** A row's existing `.meta-rest` text with only its trailing age token swapped for
  * `freshAge`, whatever led it (a source name, "N sources", the middot) kept as is. */
