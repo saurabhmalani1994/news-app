@@ -12,6 +12,19 @@ export const CHROME = process.env.CHROME || ["C:/Program Files/Google/Chrome/App
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const TYPES = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".woff2": "font/woff2" };
 
+// T1: every wait below is bounded so a wedged Chrome fails fast with a clear message
+// instead of hanging node --test (and the CI job) until the outer timeout kills it.
+const LAUNCH_TIMEOUT_MS = Number(process.env.CDP_LAUNCH_TIMEOUT_MS) || 15000; // chrome.exe -> a debuggable page target
+const CONNECT_TIMEOUT_MS = Number(process.env.CDP_CONNECT_TIMEOUT_MS) || 10000; // WebSocket handshake to that target
+const COMMAND_TIMEOUT_MS = Number(process.env.CDP_COMMAND_TIMEOUT_MS) || 20000; // one CDP command's round trip
+
+/** Reject `promise` with `message` if it has not settled within `ms`. */
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_resolve, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 /** One rule of a Cloudflare Pages _headers file as {name: value}: the `/*` catch-all
  * by default, or the rule for one exact path (H1: `/sw.js`). */
 export function parseHeaders(text, rule = "/*") {
@@ -76,15 +89,37 @@ export async function launch(name, { userDataDir } = {}) {
   // navigation generally, and no other browser test here relies on bfcache being on.
   const dir = userDataDir || mkdtempSync(join(tmpdir(), `${name}-`));
   const args = ["--headless=new", `--remote-debugging-port=${port}`, `--user-data-dir=${dir}`, "--no-first-run", "--no-default-browser-check", "--disable-features=BackForwardCache"];
-  if (process.env.CI) args.push("--no-sandbox"); // the CI runner's kernel may refuse the sandbox
+  // T1: --disable-dev-shm-usage avoids the classic CI crash-on-launch when the runner's
+  // /dev/shm is small; --no-sandbox because the CI runner's kernel may refuse the sandbox.
+  if (process.env.CI) args.push("--no-sandbox", "--disable-dev-shm-usage");
   const chrome = spawn(CHROME, [...args, "about:blank"], { stdio: "ignore" });
-  let target;
-  for (let i = 0; i < 75 && !target; i++) {
-    try { target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((t) => t.type === "page"); } catch { await sleep(200); }
+  let killed = false;
+  const killChrome = () => { if (killed) return; killed = true; try { chrome.kill(); } catch {} };
+  // T1: everything from here on is inside a try/catch so any failure -- the launch
+  // wait, the WebSocket handshake, or an unexpected throw -- kills the process this
+  // function spawned before rethrowing. Without this, a rejection here would leak the
+  // Chrome process forever: the caller never received a `chrome` handle to close.
+  let ws;
+  try {
+    let target;
+    const deadline = Date.now() + LAUNCH_TIMEOUT_MS;
+    while (!target && Date.now() < deadline) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(1000) });
+        target = (await res.json()).find((t) => t.type === "page");
+      } catch { /* not listening yet, or not ready */ }
+      if (!target) await sleep(200);
+    }
+    if (!target) throw new Error(`Chrome did not start (no debuggable page target within ${LAUNCH_TIMEOUT_MS}ms)`);
+    ws = new WebSocket(target.webSocketDebuggerUrl);
+    await withTimeout(
+      new Promise((r, j) => { ws.onopen = r; ws.onerror = () => j(new Error("Chrome DevTools socket errored while connecting")); }),
+      CONNECT_TIMEOUT_MS, `Chrome DevTools socket did not open within ${CONNECT_TIMEOUT_MS}ms`);
+  } catch (err) {
+    try { ws?.close(); } catch {}
+    killChrome();
+    throw err;
   }
-  if (!target) { chrome.kill(); throw new Error("Chrome did not start"); }
-  const ws = new WebSocket(target.webSocketDebuggerUrl);
-  await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
   let seq = 0;
   const pending = new Map();
   const listeners = [];
@@ -93,12 +128,18 @@ export async function launch(name, { userDataDir } = {}) {
     if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
     else if (m.method) for (const fn of listeners) fn(m);
   };
-  const send = (method, params = {}) => new Promise((r) => { const id = ++seq; pending.set(id, r); ws.send(JSON.stringify({ id, method, params })); });
+  const send = (method, params = {}) => {
+    const id = ++seq;
+    const reply = new Promise((r) => pending.set(id, r));
+    ws.send(JSON.stringify({ id, method, params }));
+    return withTimeout(reply, COMMAND_TIMEOUT_MS, `Chrome did not respond to ${method} within ${COMMAND_TIMEOUT_MS}ms`)
+      .finally(() => pending.delete(id));
+  };
   const evaluate = async (expression) => {
     const m = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
     if (m.result?.exceptionDetails) throw new Error(m.result.exceptionDetails.exception?.description || m.result.exceptionDetails.text);
     return m.result?.result?.value;
   };
-  const close = () => { try { ws.close(); } catch {} chrome.kill(); };
+  const close = () => { try { ws.close(); } catch {} killChrome(); };
   return { send, evaluate, on: (fn) => listeners.push(fn), close, userDataDir: dir };
 }
