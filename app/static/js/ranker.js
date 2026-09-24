@@ -163,7 +163,11 @@ const sum = (terms) => terms.reduce((s, t) => s + t.value, 0);
  * exactly), `must_know` (R16 eligibility) and `passes` (entries of the post-passes
  * that touched it; see passes.js). `now` is an ISO timestamp or epoch milliseconds.
  *
- * opts.terms: extra per-story terms [{name, fn(story, ctx) -> points}] (S15 seen penalty).
+ * opts.terms: extra per-story terms [{name, fn(story, ctx) -> points}] (S15 seen
+ * penalty). `fn` may return a plain number (points; `extra.detail`, a static string, is
+ * used for every story alike) or, for a term whose detail is itself per-story (S15's
+ * seen penalty says "opened 2 hours ago", which differs story to story), an object
+ * {value, detail}.
  * opts.passes: post-passes [{name, fn(ranked, ctx) -> ranked}] run in order (S13).
  */
 export function rank(pool, profile, now, opts = {}) {
@@ -172,7 +176,11 @@ export function rank(pool, profile, now, opts = {}) {
   const ranked = storiesFromPool(pool).map((story) => {
     const { terms, matched, eligible } = scoreStory(story, profile, nowMs);
     for (const extra of opts.terms || []) {
-      terms.push({ term: extra.name, value: micro(extra.fn(story, ctx)), detail: extra.detail || "" });
+      const result = extra.fn(story, ctx);
+      const perStory = result !== null && typeof result === "object";
+      const raw = perStory ? result.value : result;
+      const detail = perStory && result.detail !== undefined ? result.detail : (extra.detail || "");
+      terms.push({ term: extra.name, value: micro(raw), detail });
     }
     return { ...story, topics_matched: matched, must_know: eligible, score: sum(terms), explanation: terms, passes: [] };
   });
