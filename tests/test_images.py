@@ -61,6 +61,40 @@ def test_enclosure_non_image_type_ignored():
     assert (image, method) == (None, None)
 
 
+def test_atom_link_rel_enclosure_used_as_enclosure_image():
+    # F7: Atom has no <enclosure> tag; the equivalent is <link rel="enclosure">.
+    item = ET.fromstring(
+        '<entry xmlns="http://www.w3.org/2005/Atom">'
+        '<link rel="alternate" href="https://example.org/story"/>'
+        '<link rel="enclosure" type="image/jpeg" href="https://img.example/atom-enc.jpg"/>'
+        "</entry>"
+    )
+    image, method = extract_image(item, Counter())
+    assert method == "enclosure"
+    assert image == {"url": "https://img.example/atom-enc.jpg"}
+
+
+def test_atom_link_rel_enclosure_non_image_type_ignored():
+    item = ET.fromstring(
+        '<entry xmlns="http://www.w3.org/2005/Atom">'
+        '<link rel="enclosure" type="audio/mpeg" href="https://example.org/clip.mp3"/>'
+        "</entry>"
+    )
+    image, method = extract_image(item, Counter())
+    assert (image, method) == (None, None)
+
+
+def test_atom_content_img_last_resort_from_content_element():
+    item = ET.fromstring(
+        '<entry xmlns="http://www.w3.org/2005/Atom"><content type="html">'
+        "&lt;p&gt;Look &lt;img src=\"https://img.example/atom-inline.jpg\" width=\"640\" "
+        "height=\"360\"&gt; at this&lt;/p&gt;</content></entry>"
+    )
+    image, method = extract_image(item, Counter())
+    assert method == "content_img"
+    assert image == {"url": "https://img.example/atom-inline.jpg", "width": 640, "height": 360}
+
+
 def test_content_img_last_resort_from_description_counted_separately():
     item = _item(
         "<description><![CDATA[<p>Look "

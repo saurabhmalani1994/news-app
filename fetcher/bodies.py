@@ -25,7 +25,7 @@ published articles list already carry).
 import json
 from pathlib import Path
 
-from fetcher.fetch import _plain, _text
+from fetcher.fetch import _plain, _text, _text_local
 
 # RSS content module namespace (used by Politico, Fox, Ars Technica and others for
 # the full-prose field alongside a teaser <description>).
@@ -51,15 +51,30 @@ def _content_encoded(item):
     return "".join(child.itertext()) if child is not None else ""
 
 
-def extract_body_html(item):
-    """Return raw body HTML straight from one <item>, or None when nothing on it
-    clears FULL_TEXT_MIN_CHARS of stripped text. content:encoded is preferred over
-    description since every configured full_text_ok source that carries both puts
-    the teaser in description and the real prose in content:encoded."""
+def extract_body_html(item, kind="rss"):
+    """Return raw body HTML straight from one item/entry, or None when nothing on it
+    clears FULL_TEXT_MIN_CHARS of stripped text.
+
+    RSS 2.0 and RDF: content:encoded is preferred over description since every
+    configured full_text_ok source that carries both puts the teaser in description
+    and the real prose in content:encoded.
+
+    F7 (kind="atom"): an Atom entry has no content:encoded; <content> is the field
+    a full_text_ok Atom source (The Conversation, Creative Commons licensed) puts its
+    full prose in, <summary> the fallback for one that does not.
+    """
+    if kind == "atom":
+        content = _text_local(item, "content")
+        if content and len(_plain(content)) >= FULL_TEXT_MIN_CHARS:
+            return content
+        summary = _text_local(item, "summary")
+        if summary and len(_plain(summary)) >= FULL_TEXT_MIN_CHARS:
+            return summary
+        return None
     content = _content_encoded(item)
     if content and len(_plain(content)) >= FULL_TEXT_MIN_CHARS:
         return content
-    desc = _text(item, "description")
+    desc = _text(item, "description") if kind == "rss" else _text_local(item, "description")
     if desc and len(_plain(desc)) >= FULL_TEXT_MIN_CHARS:
         return desc
     return None

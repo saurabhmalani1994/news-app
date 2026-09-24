@@ -4,6 +4,20 @@ Reads the NPR feed, normalizes items, writes a schema-valid pool.json. Parsing i
 lenient (R9): a strict parse is tried first, and only if it fails are repairs applied,
 each one counted in counts.leniency. Bodies are never carried into the pool (R12).
 
+F7: a feed is one of three formats, detected from the parsed root, not from the url
+or content-type (hosts lie about both): RSS 2.0 (`<item>`, unnamespaced), Atom
+(`<entry>`, `xmlns="http://www.w3.org/2005/Atom"`), or RSS 1.0 / RDF (`<item>`
+namespaced under `http://purl.org/rss/1.0/`, listed as siblings of `<channel>` inside
+an `<rdf:RDF>` root). iter_feed_items finds the right item elements for whichever
+format the feed actually is; the four per-field getters below (_item_title_raw,
+_item_link_raw, _item_date_raw, _item_dek_raw) read the right child elements for that
+format, matched by local name so the feed's own namespace prefix (or lack of one)
+never matters. RSS 2.0 extraction is byte-for-byte the same call shape as before this
+change, so existing behavior for the other 92 sources is untouched. Every format
+still runs through the same _clean/_plain/_published_at pipeline below, so R9
+leniency (a non-RFC822 date, markup in a title...) is counted exactly as it always
+was, whichever format produced the raw string.
+
 Usage: python -m fetcher.fetch --out dist/pool.json [--limit 5]
 """
 import argparse
@@ -41,6 +55,9 @@ class FeedError(Exception):
 
 
 FEED_ACCEPT = "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5"
+
+ATOM_NS = "http://www.w3.org/2005/Atom"
+RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 
 
 def fetch_feed(url, timeout=20):
@@ -103,6 +120,104 @@ def _text(el, tag):
     return "".join(child.itertext()) if child is not None else ""
 
 
+def _local(tag):
+    """The tag's own name, its namespace (if any) stripped: '{ns}item' -> 'item'."""
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def _find_local(el, name):
+    """The first direct child whose tag, namespace ignored, is `name`."""
+    for child in el:
+        if _local(child.tag) == name:
+            return child
+    return None
+
+
+def _text_local(el, name):
+    child = _find_local(el, name)
+    return "".join(child.itertext()) if child is not None else ""
+
+
+def feed_kind(root):
+    """Which of the three supported formats a parsed feed root is: 'atom' (a <feed>
+    root in the Atom namespace), 'rdf' (an <rdf:RDF> root, RSS 1.0), or 'rss'
+    (everything else, RSS 2.0 and its many near-variants)."""
+    local = _local(root.tag)
+    if local == "feed":
+        return "atom"
+    if local == "RDF":
+        return "rdf"
+    return "rss"
+
+
+def iter_feed_items(root):
+    """Return (items, kind): the entry/item elements to walk, and which format they
+    came from. RSS 2.0's `root.iter("item")` call is unchanged from before this
+    format ever mattered; Atom entries and RDF items are namespaced, so they are
+    found by local name instead, wherever in the tree they sit."""
+    kind = feed_kind(root)
+    if kind == "atom":
+        return [el for el in root.iter() if _local(el.tag) == "entry"], kind
+    if kind == "rdf":
+        return [el for el in root.iter() if _local(el.tag) == "item"], kind
+    return list(root.iter("item")), kind
+
+
+def _item_title_raw(item, kind):
+    if kind == "rss":
+        return _text(item, "title")
+    return _text_local(item, "title")
+
+
+def _atom_link_href(item):
+    """The Atom entry's own article link: <link rel="alternate" href="...">, or,
+    lacking an explicit rel (default is "alternate" per the Atom spec), the first
+    <link> that carries an href at all. Falls back to the entry's <id> when it is
+    itself an http(s) URL, the Atom analogue of the RSS guid fallback below."""
+    alternate, first_href = None, None
+    for child in item:
+        if _local(child.tag) != "link":
+            continue
+        href = (child.get("href") or "").strip()
+        if not href:
+            continue
+        rel = (child.get("rel") or "alternate").strip().lower()
+        if rel == "alternate" and alternate is None:
+            alternate = href
+        if first_href is None:
+            first_href = href
+    if alternate or first_href:
+        return alternate or first_href
+    return _text_local(item, "id").strip()
+
+
+def _item_link_raw(item, kind):
+    if kind == "atom":
+        return _atom_link_href(item)
+    if kind == "rdf":
+        link = _text_local(item, "link").strip()
+        if link:
+            return link
+        return (item.get(f"{{{RDF_NS}}}about") or "").strip()
+    return _text(item, "link")
+
+
+def _item_date_raw(item, kind):
+    if kind == "atom":
+        return _text_local(item, "published") or _text_local(item, "updated")
+    if kind == "rdf":
+        return _text_local(item, "date")  # dc:date, matched by local name
+    return _text(item, "pubDate")
+
+
+def _item_dek_raw(item, kind):
+    if kind == "atom":
+        return _text_local(item, "summary") or _text_local(item, "content")
+    if kind == "rdf":
+        return _text_local(item, "description")
+    return _text(item, "description")
+
+
 def _clean(text):
     return " ".join(text.split())
 
@@ -145,28 +260,39 @@ def _assert_ledger_invariant(counts):
 
 
 def build_pool(data, now, source=SOURCE, limit=5):
-    """Turn raw feed bytes into a pool dict. Pure: no network, no clock."""
+    """Turn raw feed bytes into a pool dict. Pure: no network, no clock.
+
+    F7: items is whichever of RSS 2.0 <item>, Atom <entry> or RDF <item> the feed
+    actually carries (iter_feed_items); every per-item field below is read through
+    the format-aware getters in this module, so this loop's own rules (title
+    cleaning, url validation, duplicate and date drops, the cap) apply identically
+    regardless of format.
+    """
     leniency = Counter()
     drops = Counter()
     root = parse_xml(data, leniency)
-    items = list(root.iter("item"))
+    items, kind = iter_feed_items(root)
     articles, seen = [], set()
     for item in items:
-        raw_title = _clean(_text(item, "title"))
+        raw_title = _clean(_item_title_raw(item, kind))
         title = _plain(raw_title)
         if title != raw_title:
             leniency["title_markup"] += 1
         if not title:
             drops["no_title"] += 1
             continue
-        url = _text(item, "link").strip()
+        url = _item_link_raw(item, kind).strip()
         if not url.startswith(("http://", "https://")):
-            guid = item.find("guid")
-            guid_url = _text(item, "guid").strip()
-            permalink = guid is None or guid.get("isPermaLink", "true") != "false"
-            if permalink and guid_url.startswith(("http://", "https://")):
-                url = guid_url
-                leniency["link_from_guid"] += 1
+            if kind == "rss":
+                guid = item.find("guid")
+                guid_url = _text(item, "guid").strip()
+                permalink = guid is None or guid.get("isPermaLink", "true") != "false"
+                if permalink and guid_url.startswith(("http://", "https://")):
+                    url = guid_url
+                    leniency["link_from_guid"] += 1
+                else:
+                    drops["bad_url"] += 1
+                    continue
             else:
                 drops["bad_url"] += 1
                 continue
@@ -176,7 +302,7 @@ def build_pool(data, now, source=SOURCE, limit=5):
         if url in seen:
             drops["duplicate_url"] += 1
             continue
-        published = _published_at(_text(item, "pubDate"), leniency)
+        published = _published_at(_item_date_raw(item, kind), leniency)
         if published is None:
             drops["no_date"] += 1
             continue
@@ -191,7 +317,7 @@ def build_pool(data, now, source=SOURCE, limit=5):
             "title": title[:TITLE_MAX],
             "published_at": published,
         }
-        dek = _plain(_text(item, "description"))[:DEK_MAX]
+        dek = _plain(_item_dek_raw(item, kind))[:DEK_MAX]
         if dek:
             article["dek"] = dek
         articles.append(article)

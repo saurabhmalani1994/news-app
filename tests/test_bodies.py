@@ -95,6 +95,40 @@ def test_teaser_only_description_does_not_qualify():
     assert extract_body_html(item) is None
 
 
+def _atom_entry(content_xml):
+    import xml.etree.ElementTree as ET
+    return ET.fromstring(
+        '<entry xmlns="http://www.w3.org/2005/Atom">'
+        '<link rel="alternate" href="https://atom.example/a"/>' + content_xml + "</entry>"
+    )
+
+
+def test_atom_full_text_via_content_element():
+    item = _atom_entry(f'<content type="html">{LONG_PROSE}</content>')
+    html = extract_body_html(item, kind="atom")
+    assert html is not None
+    assert "Full article prose" in html
+
+
+def test_atom_falls_back_to_summary_when_content_is_short():
+    item = _atom_entry(f"<summary>{LONG_PROSE}</summary>")
+    html = extract_body_html(item, kind="atom")
+    assert html is not None
+    assert "Full article prose" in html
+
+
+def test_atom_teaser_only_summary_does_not_qualify():
+    item = _atom_entry("<summary>Just a one line teaser, not the real article.</summary>")
+    assert extract_body_html(item, kind="atom") is None
+
+
+def test_atom_default_kind_argument_does_not_read_atom_fields():
+    # kind defaults to "rss": an Atom-shaped <content>/<summary> must not leak into
+    # an RSS-flavored body lookup that never asked for it.
+    item = _atom_entry(f"<content>{LONG_PROSE}</content>")
+    assert extract_body_html(item) is None
+
+
 def test_no_description_at_all_does_not_qualify():
     item = _first_item(NO_DESCRIPTION)
     assert extract_body_html(item) is None
