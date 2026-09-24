@@ -11,6 +11,7 @@ from app import frontpage
 from app.build import render
 from app.frontpage import (HERO_COUNT, RIVER_COUNT, SECONDARY_COUNT, _lead, build_stories,
                            clean_dek, front_page, independent_source_count, run_ranker)
+from app.dek import ELLIPSIS
 from app.typography import fold_quotes, smart_quotes
 from tests.test_render import _parse
 from tests.test_tokens import DARK_TOKENS, STYLE_CSS, _block_after, _declarations, _resolve
@@ -198,7 +199,10 @@ def test_every_rendered_string_is_text_only():
     for text in parsed.items:
         assert fold_quotes(text).startswith(evil)
     for dek in (d for d in parsed.deks if d is not None):
-        assert fold_quotes(dek) == evil + " dek"
+        # U1: a row's two-line dek may be cut to fit (a prefix and an ellipsis), but it
+        # is still the feed's own text, never markup.
+        folded = fold_quotes(dek)
+        assert folded == evil + " dek" or (folded.endswith(ELLIPSIS) and (evil + " dek").startswith(folded[:-1]))
     for meta in parsed.metas:
         assert meta.startswith("<b onclick=alert(3)>")
 
