@@ -284,17 +284,6 @@
       "full_text_ok": true
     },
     {
-      "id": "arab_news",
-      "name": "Arab News",
-      "feed_url": "https://www.arabnews.com/rss.xml",
-      "bucket": "israel_gaza",
-      "lean": "state",
-      "lean_basis": "research/feeds-interests.md: Saudi state-owned, Gulf/pan-Arab perspective.",
-      "ownership": "state-owned",
-      "syndication_group": "arab_news",
-      "full_text_ok": false
-    },
-    {
       "id": "radio_dabanga",
       "name": "Radio Dabanga",
       "feed_url": "https://www.dabangasudan.org/en/feed",
@@ -305,13 +294,13 @@
       "full_text_ok": true
     },
     {
-      "id": "reliefweb_sudan",
-      "name": "ReliefWeb Sudan",
-      "feed_url": "https://reliefweb.int/country/sdn/rss.xml",
+      "id": "radio_tamazuj",
+      "name": "Radio Tamazuj",
+      "feed_url": "https://radiotamazuj.org/en/feed",
       "bucket": "sudan",
       "lean": "non-us",
-      "lean_basis": "research/feeds-interests.md: UN OCHA aggregator of NGO/UN reports, not an editorially aligned news outlet.",
-      "syndication_group": "reliefweb",
+      "lean_basis": "F2 feed repair 2026-09-24: reliefweb_sudan (reliefweb.int) returns an AWS WAF challenge (202, empty body) to an honest client, confirmed dead. Radio Tamazuj is an independent Sudan and South Sudan focused news and radio service, verified live with 12 same-day items on peace-deal, opposition and government coverage; does not map to a US left-right axis.",
+      "syndication_group": "radio_tamazuj",
       "full_text_ok": true
     },
     {
