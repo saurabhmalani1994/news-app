@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://almanac.local/app/proposal.schema.json",
+  "title": "Almanac profile edit proposal",
+  "description": "S19: the one shape an AI-proposed edit to profile.json may take (DESIGN-v1.1 section 5). The AI never edits the profile; it emits one of these, the deterministic gate in js/ai/gate.js accepts it for the owner's review or rejects it with a named reason, and only the owner's approval saves it through ProfileStore. Closed at every level. Paths use the same dotted form as js/profile/diff.js ($.topics.ai.affinity, $.boosts[<id>].amount). Values are scalars only; the gate rejects any string value as summary text (R13), so the value types here are wider than the gate allows on purpose, to give that rejection its own name instead of folding it into malformed_proposal. Evidence cites ids, never quoted article text: feed text is untrusted input (R26), and the gate, not the prompt, is what makes a hostile headline harmless.",
+  "type": "object",
+  "required": ["schema_version", "id", "changes", "rationale", "evidence"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "id": {
+      "description": "The proposal's own id, so a rejection or an approval can be traced back to it.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{5,63}$"
+    },
+    "changes": {
+      "description": "One entry per target path. The structural bound is 20; the gate's own per-proposal cap (MAX_PATHS in gate.js) is lower and rejects with too_many_paths.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {"$ref": "#/$defs/change"}
+    },
+    "rationale": {
+      "description": "Plain text for the owner's review screen only, never the reading path (R13). No markup characters and no control characters other than tab and newline; rendered as text, never HTML (R26).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 600,
+      "pattern": "^[^<>\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]*$"
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {"$ref": "#/$defs/evidence"}
+    }
+  },
+  "$defs": {
+    "change": {
+      "type": "object",
+      "required": ["path", "old_value", "new_value"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "^\\$(\\.[A-Za-z0-9_-]{1,64}|\\[[A-Za-z0-9_-]{1,64}\\])+$"
+        },
+        "old_value": {
+          "description": "The value the proposer saw. The gate rejects the proposal as stale_old_value unless it equals the current profile's value.",
+          "type": ["number", "boolean", "string"]
+        },
+        "new_value": {"type": ["number", "boolean", "string"]}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["kind", "ref"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"enum": ["article", "cluster", "signal", "owner_request"]},
+        "ref": {
+          "description": "An id: an article or cluster id from the pool, a signal key such as topic:ai:opened, or the id of the owner's request in the AI panel. Never free text.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9:_.-]{0,119}$"
+        },
+        "count": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

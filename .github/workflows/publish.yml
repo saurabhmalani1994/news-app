@@ -35,7 +35,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run browser profile-logic tests (S10)
+      - name: Run browser-side JS tests (S10 profile, ranker, S19 AI gate)
         run: node --test tests/js/*.test.js
 
   publish:
