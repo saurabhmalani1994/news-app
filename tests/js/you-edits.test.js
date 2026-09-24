@@ -5,15 +5,19 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import { ProfileStore, MemoryStorage } from "../../app/static/js/profile/store.js";
-import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
+import { buildDefaultProfile, STARTER_TOPICS } from "../../app/static/js/profile/default-profile.js";
 import {
   LEVELS, levelForAffinity, affinityForLevel, levelOf, withTopicLevel, withTopicField,
   withTopicMuted, withBoostAmount, withStandingField, parseKeywords, withSummaries, summariesMode,
   sourceState, withSourceState, withSourceStates, sourceCounts, groupByRegion, matchesQuery,
   sourceDetail, commitEdit, SOURCE_STATES,
+  INTEREST_CATALOG, availableInterests, withTopicAdded, withTopicRemoved,
 } from "../../app/static/js/profile/you-edits.js";
+import { TAG_TO_TOPIC } from "../../app/static/js/ranker.js";
+import { validateProfile } from "../../app/static/js/profile/validate.js";
 
 const SCHEMA = JSON.parse(readFileSync(new URL("../../app/static/profile.schema.json", import.meta.url), "utf-8"));
+const TOPICS_DOC = JSON.parse(readFileSync(new URL("../../topics.json", import.meta.url), "utf-8"));
 
 function makeStore() {
   let tick = 0;
@@ -151,4 +155,102 @@ test("grouping, search and row words", () => {
   assert.equal(sourceDetail(catalog[2]), "State-owned");
   assert.equal(sourceDetail(catalog[3]), "Center-left");
   assert.deepEqual(parseKeywords(" a, b;a\n\n c "), ["a", "b", "c"]);
+});
+
+// U4: the catalog offered to Add interest is exactly the ids the pipeline can actually
+// match a story to (the closed tag set fetcher/topics.py tags articles with, TAG_TO_TOPIC's
+// own remap folded in) plus must_know, the ranker's own guaranteed-floor bucket which is
+// not a tag at all. Every entry is one distinct, non-empty, lowercase-and-underscore id.
+test("the interest catalog is exactly the pipeline's own matchable ids, once each", () => {
+  const catalogIds = new Set(INTEREST_CATALOG.map((e) => e.id));
+  assert.equal(catalogIds.size, INTEREST_CATALOG.length, "no id listed twice");
+  for (const entry of INTEREST_CATALOG) {
+    assert.match(entry.id, /^[a-z][a-z0-9_]*$/, entry.id);
+    assert.ok(entry.label && entry.group, JSON.stringify(entry));
+  }
+  // Every raw pipeline tag (topics.json) is covered by a catalog entry, either its own
+  // id or the id TAG_TO_TOPIC (ranker.js) folds it into: "biotech" -> "industrial_biotech"
+  // is a pure rename ("a tag whose profile bucket has another name"), so only the
+  // renamed id is offered, not both. "politics" is the one exception: TAG_TO_TOPIC also
+  // names it a fallback into "us_politics" for a topic that does not exist yet, but
+  // fetcher/topics.py documents them as deliberately different scopes (us_politics
+  // narrower, politics also firing on non-US politics), so both get their own entry.
+  for (const tag of TOPICS_DOC.topics) {
+    const landsOn = tag === "politics" ? "politics" : (TAG_TO_TOPIC[tag] || tag);
+    assert.ok(catalogIds.has(landsOn), `tag ${tag} has no catalog entry (expected ${landsOn})`);
+  }
+  assert.ok(catalogIds.has("must_know"), "must_know is not a tag: the ranker's own guaranteed floor, offered on its own");
+  assert.equal(catalogIds.size, TOPICS_DOC.topics.length + 1, "one entry per pipeline tag (biotech folded in), plus must_know");
+  // Every starter bucket already on the default profile is a catalog entry too, so
+  // removing one always leaves it re-addable.
+  for (const id of Object.keys(STARTER_TOPICS)) assert.ok(catalogIds.has(id), `${id} missing from the catalog`);
+});
+
+test("availableInterests hides catalog entries already on the profile", () => {
+  const p = buildDefaultProfile("2026-09-24T00:00:00Z"); // starter: us_politics, singapore, ai, industrial_biotech, world, must_know
+  const ids = availableInterests(p).map((e) => e.id);
+  assert.equal(ids.length, INTEREST_CATALOG.length - 6);
+  for (const id of ["us_politics", "singapore", "ai", "industrial_biotech", "world", "must_know"]) assert.ok(!ids.includes(id));
+  assert.ok(ids.includes("climate_tech") && ids.includes("politics"));
+});
+
+test("adding an interest: a known one works, a duplicate is refused, an unknown id is refused", () => {
+  const p = buildDefaultProfile("2026-09-24T00:00:00Z");
+  const added = withTopicAdded(p, "climate_tech");
+  assert.deepEqual(added.topics.climate_tech, { label: "Climate Tech", affinity: 0.6, half_life_hours: 24, enabled: true });
+  assert.equal(Object.keys(p.topics).length, 6, "the input draft is untouched");
+  assert.equal(withTopicAdded(p, "singapore"), null); // duplicate: already an interest
+  assert.equal(withTopicAdded(p, "not-a-real-interest"), null); // unknown id: not in the catalog
+  // A starter bucket restores its own shipped weight, not the flattened generic default.
+  const withoutSg = withTopicRemoved(p, "singapore");
+  const readded = withTopicAdded(withoutSg, "singapore");
+  assert.deepEqual(readded.topics.singapore, STARTER_TOPICS.singapore);
+  // must_know keeps its zeroed affinity and floor_slots, the whole point of the bucket.
+  const withoutMK = withTopicRemoved(p, "must_know");
+  const readdedMK = withTopicAdded(withoutMK, "must_know");
+  assert.equal(readdedMK.topics.must_know.affinity, 0);
+  assert.equal(readdedMK.topics.must_know.floor_slots, 2);
+});
+
+test("removing an interest: known works and cleans up its mute and boosts, unknown is refused, the last one is refused", () => {
+  const base = buildDefaultProfile("2026-09-24T00:00:00Z");
+  let p = { ...base, mutes: { ...base.mutes, topics: ["ai"] }, boosts: [{ id: "b1", label: "AI", match_type: "topic", match_value: "ai", amount: 0.3 }] };
+  const removed = withTopicRemoved(p, "ai");
+  assert.ok(!Object.hasOwn(removed.topics, "ai"));
+  assert.deepEqual(removed.mutes.topics, []);
+  assert.deepEqual(removed.boosts, []);
+  assert.equal(withTopicRemoved(p, "not-an-interest"), null); // unknown id
+  // Removing every topic but one, then trying to take the last one, is refused (the
+  // schema requires at least one topic).
+  let onlyOne = p;
+  for (const id of Object.keys(p.topics)) { if (id === "world") continue; onlyOne = withTopicRemoved(onlyOne, id) || onlyOne; }
+  assert.deepEqual(Object.keys(onlyOne.topics), ["world"]);
+  assert.equal(withTopicRemoved(onlyOne, "world"), null);
+});
+
+test("add, remove and undo through the store: one version each, exact restore, the schema stays valid", () => {
+  const store = makeStore();
+  const v0 = store.history().length;
+
+  const addResult = commitEdit(store, (p) => withTopicAdded(p, "climate_tech"));
+  assert.equal(addResult.ok, true, JSON.stringify(addResult.errors));
+  assert.equal(store.history().length, v0 + 1);
+  assert.ok(Object.hasOwn(store.current().topics, "climate_tech"));
+  assert.equal(commitEdit(store, (p) => withTopicAdded(p, "climate_tech")), null, "adding it again writes nothing");
+  assert.equal(store.history().length, v0 + 1);
+
+  const beforeRemove = store.current();
+  const removeResult = commitEdit(store, (p) => withTopicRemoved(p, "ai"));
+  assert.equal(removeResult.ok, true, JSON.stringify(removeResult.errors));
+  assert.equal(store.history().length, v0 + 2);
+  assert.ok(!Object.hasOwn(store.current().topics, "ai"));
+
+  store.revert(removeResult.before); // Undo: back to the version just before the remove
+  assert.deepEqual(store.current().topics, beforeRemove.topics);
+  assert.equal(store.history().length, v0 + 3);
+
+  // Every version this test wrote validates: the store itself already refuses an
+  // invalid save (each commitEdit above asserted result.ok), and the final snapshot
+  // checks clean against the schema too.
+  assert.deepEqual(validateProfile(store.current(), SCHEMA), []);
 });

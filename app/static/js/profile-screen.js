@@ -22,8 +22,16 @@
 //
 // H2: a profile saved by an older build is migrated forward on load (migrate.js, one
 // new version, history kept). No lookup can take the page down: the page's own chrome
-// is found or made (pageChrome), and every section is built on its own, so a missing
+// is found or made (pageChrome), and every section is found or made too, so a missing
 // field shows a calm line in that section only while the rest of the page works.
+//
+// U4: the You list's own way to add or remove an interest, since U2 left the list
+// display-only. "Add interest" is the list's last row, opening the same reusable sheet
+// (sheet.js) as the lean picker, its search field and grouped catalog built from
+// you-edits.js's INTEREST_CATALOG (the ids the pipeline can actually match). "Remove
+// interest" sits at the bottom of the per-interest page, no confirmation: it commits,
+// steps back to the list (a stale hash into a deleted interest is never left behind),
+// and a quiet Undo restores the exact version before it, same as every other edit here.
 import { ProfileStore } from "./profile/store.js";
 import { buildDefaultProfile } from "./profile/default-profile.js";
 import { migrateProfile } from "./profile/migrate.js";
@@ -34,6 +42,7 @@ import {
   withBoostAmount, withBoostRemoved, withStandingField, summariesMode, withSummaries,
   leanMarkersOn, leanColorOn, withLeanMarkers, withLeanColor, SOURCE_STATES, sourceState, withSourceState, withSourceStates, sourceCounts, groupByRegion,
   matchesQuery, sourceDetail, HEALTH_WORDS, commitEdit,
+  availableInterests, withTopicAdded, withTopicRemoved,
 } from "./profile/you-edits.js";
 import { leanHit, leanMarker, leanSheetContent, setBasis } from "./lean.js";
 
@@ -197,14 +206,111 @@ function main(schema, catalog) {
     });
   }
 
+  // --- U4: add an interest, from a bottom sheet opened off the list's own last row.
+  // sheet.js loads on that first tap only (the same lazy import openLean already uses),
+  // so a page without the sheet's markup can never be taken down by it. ---
+  function addInterestRow() {
+    return el("button", {
+      class: "setting-row", type: "button", id: "add-interest-row", "data-focus-key": "add-interest",
+      onclick: (e) => openAddInterest(e.currentTarget),
+    }, [rowText("Add interest"), chevron()]);
+  }
+
+  /** The sheet body: a search field over the catalog entries not already an interest,
+   * grouped the same way the source picker groups by region. Empty (every interest
+   * already added, or a search with no match) gets a quiet line, never a blank sheet. */
+  function addInterestContent(profile) {
+    const available = availableInterests(profile);
+    if (!available.length) {
+      return el("div", { class: "search-block" }, [
+        el("p", { class: "settings-hint", text: "Every interest this app can match is already on your list." }),
+      ]);
+    }
+    const search = el("input", {
+      class: "text-field search-field", type: "search", placeholder: "Search interests",
+      "aria-label": "Search interests", autocomplete: "off", spellcheck: "false", enterkeyhint: "search",
+    });
+    const empty = el("p", { class: "settings-hint settings-hint--top", text: "No interest matches.", hidden: true });
+    const byGroup = new Map();
+    for (const entry of available) {
+      if (!byGroup.has(entry.group)) byGroup.set(entry.group, []);
+      byGroup.get(entry.group).push(entry);
+    }
+    const groups = [...byGroup.entries()].map(([label, entries]) => {
+      const rows = entries.map((entry) => {
+        const row = el("button", { class: "setting-row", type: "button", "data-focus-key": `add-${entry.id}` }, [rowText(entry.label)]);
+        row.dataset.id = entry.id;
+        row.dataset.name = entry.label;
+        return row;
+      });
+      return { section: el("div", { class: "settings-section" }, [el("h2", { class: "settings-label", text: label }), ...rows]), rows };
+    });
+    function filter() {
+      const query = search.value;
+      let any = false;
+      for (const g of groups) {
+        let visible = 0;
+        for (const row of g.rows) {
+          const match = matchesQuery(row.dataset.name, query);
+          row.hidden = !match;
+          if (match) visible++;
+        }
+        g.section.hidden = visible === 0;
+        any ||= visible > 0;
+      }
+      empty.hidden = any;
+    }
+    search.addEventListener("input", filter);
+    filter();
+    const wrap = el("div", {}, [el("div", { class: "search-block" }, [search]), empty, ...groups.map((g) => g.section)]);
+    wrap.addEventListener("click", (e) => {
+      const row = e.target.closest("button[data-id]");
+      if (row) addInterestChosen(row.dataset.id, row.dataset.name);
+    });
+    return wrap;
+  }
+
+  async function addInterestChosen(id, label) {
+    const result = commitEdit(store, (p) => withTopicAdded(p, id));
+    // Already loaded by openAddInterest to get here; a dynamic re-import just reads the
+    // module cache, no second fetch.
+    const { closeSheet } = await import("./sheet.js");
+    closeSheet();
+    if (!result) return;
+    if (!result.ok) {
+      showToast(`Not saved: ${result.errors[0]}`);
+      render({ keepScroll: true });
+      return;
+    }
+    render({ keepScroll: true });
+    showToast(`${label} added`, {
+      onAction: () => {
+        store.revert(result.before);
+        render({ keepScroll: true });
+      },
+    });
+  }
+
+  async function openAddInterest(opener) {
+    try {
+      const { openSheet } = await import("./sheet.js");
+      openSheet({ title: "Add interest", content: addInterestContent(store.current()), opener });
+    } catch (err) {
+      console.warn("You page: the add-interest sheet could not open", err);
+    }
+  }
+
   // --- You ---
   function viewYou(profile) {
     return [
-      section("Your interests", () => [el("div", { id: "topics-list" }, Object.entries(profile.topics).map(([id, t]) => {
-        const floor = t.enabled !== false && t.floor_slots > 0;
-        const value = floor ? `Top ${t.floor_slots}` : levelWord(levelOf(t));
-        return linkRow(`#interest/${encodeURIComponent(id)}`, t.label || id, null, value, { "data-topic": id });
-      }))]),
+      section("Your interests", () => [el("div", { id: "topics-list" }, [
+        ...Object.entries(profile.topics).map(([id, t]) => {
+          const floor = t.enabled !== false && t.floor_slots > 0;
+          const value = floor ? `Top ${t.floor_slots}` : levelWord(levelOf(t));
+          return linkRow(`#interest/${encodeURIComponent(id)}`, t.label || id, null, value, { "data-topic": id });
+        }),
+        addInterestRow(),
+      ])]),
       section("Standing stories", () => {
         const stories = (profile.standing_stories || []).map((s) => linkRow(`#story/${encodeURIComponent(s.id)}`, s.label || s.id, null,
           s.enabled ? "On" : "Off"));
@@ -322,7 +428,39 @@ function main(schema, catalog) {
       ]),
       section("Fine tuning", tuning),
       section("Boosts", boostRows),
+      el("button", { class: "btn-row", type: "button", text: "Remove interest", "data-focus-key": "remove-interest",
+        onclick: () => removeInterest(id, topic.label || id) }),
     ];
+  }
+
+  // U4: no confirmation dialog (the ask is explicit about that): commit the removal,
+  // then step back to the list the same way the masthead arrow would, so a stale hash
+  // into an interest that no longer exists is never left in the address bar or the
+  // history stack. A plain replaceState, not history.back(): popstate for a real Back
+  // fires asynchronously, which would race the toast this shows right after (route()'s
+  // own hideToast() could hide it before the owner ever sees it); replaceState never
+  // fires popstate at all, so there is nothing to race.
+  function removeInterest(id, label) {
+    const result = commitEdit(store, (p) => withTopicRemoved(p, id));
+    if (!result) return;
+    if (!result.ok) {
+      showToast(`Not saved: ${result.errors[0]}`);
+      render({ keepScroll: true });
+      return;
+    }
+    hideToast();
+    previousKey = current.key;
+    current = { view: "you", key: "you" };
+    history.replaceState(null, "", location.pathname);
+    render();
+    place();
+    persist();
+    showToast(`Removed ${label}.`, {
+      onAction: () => {
+        store.revert(result.before);
+        render({ keepScroll: true });
+      },
+    });
   }
 
   // --- One standing story ---
