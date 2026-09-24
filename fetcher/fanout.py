@@ -344,6 +344,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
         "clusters": clusters,
         "counts": counts,
         "source_health": source_health,
+        "events": [],  # S31: filled by S32
     }
 
 
