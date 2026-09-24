@@ -19,6 +19,10 @@
 import { nowIso } from "./time.js";
 // S13 post-pass settings: passes.js PASS_DEFAULTS is the one source of the numbers.
 import { PASS_DEFAULTS } from "../passes.js";
+// S28 standing stories (R2): Israel and Gaza, and Sudan, named in the owner's own words
+// ("news sources don't tell me about the things happening in Israel or Gaza, or in
+// Sudan"). standing.js STANDING_DEFAULTS is the one source of their definitions.
+import { STANDING_DEFAULTS } from "../standing.js";
 
 export const STARTER_TOPICS = Object.freeze({
   us_politics: { label: "US Politics", affinity: 0.8, half_life_hours: 8, enabled: true },
@@ -45,5 +49,6 @@ export function buildDefaultProfile(timestamp = nowIso()) {
     mutes: { sources: [], topics: [] },
     seen_penalty: structuredClone(STARTER_SEEN_PENALTY),
     passes: structuredClone(PASS_DEFAULTS),
+    standing_stories: structuredClone(STANDING_DEFAULTS),
   };
 }

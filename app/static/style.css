@@ -79,6 +79,51 @@ body {
   outline-offset: -2px;
 }
 
+/* S28 silence alarm. A quiet notice under the nameplate, not a news card: all sans,
+   no serif headline, no photo, no link, no box or tint; a meta kicker, one line in the
+   headline colour saying what is missing, one in the dek colour saying why. It closes
+   with the same full-bleed hairline the masthead uses, so the hero below still opens
+   under a module edge. Empty when every standing story has recent coverage. */
+.notices:empty {
+  display: none;
+}
+
+.notice {
+  padding: 16px var(--space-gutter) 18px;
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.notice-kicker {
+  margin: 0;
+  font-family: var(--type-meta-family);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
+  font-weight: var(--type-meta-weight);
+  letter-spacing: var(--type-meta-tracking);
+  text-transform: var(--type-meta-transform);
+  color: var(--color-meta);
+}
+
+.notice-head {
+  margin: 9px 0 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--color-headline);
+  text-wrap: balance;
+}
+
+.notice-text {
+  margin: 4px 0 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--color-dek);
+  text-wrap: pretty;
+}
+
 .river {
   list-style: none;
   margin: 0;

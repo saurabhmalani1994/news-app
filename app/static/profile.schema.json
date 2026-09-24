@@ -63,6 +63,12 @@
         }
       }
     },
+    "standing_stories": {
+      "description": "S28 standing stories (R2), optional: an absent field takes the defaults in app/static/js/standing.js (Israel and Gaza, and Sudan, from OWNER-BRIEF); an empty list turns them all off. Owner only: the S19 AI gate reserves every standing_stories path. The list order is the owner's priority when two floors compete for one place. A story qualifies when a headline holds one of `keywords` as a whole word or phrase and, if `tags` is set, carries one of those pool topic tags (with no keywords, a tag alone qualifies). `buckets` name the story's own sources (sources.json buckets), the ones the silence alarm checks for health. The floor keeps at least floor_slots qualifying cards in Today's first floor_within places; the silence alarm shows a notice on Today when the newest qualifying story is older than silence_hours (0 turns the alarm off).",
+      "type": "array",
+      "maxItems": 12,
+      "items": {"$ref": "#/$defs/standing_story"}
+    },
     "seen_penalty": {
       "description": "R17: two weighted signals. opened takes the full penalty, shown (on screen 2s+, scrolled past) a smaller incremental one.",
       "type": "object",
@@ -95,6 +101,22 @@
           "minimum": 0,
           "maximum": 10
         }
+      }
+    },
+    "standing_story": {
+      "type": "object",
+      "required": ["id", "label", "enabled", "keywords", "tags", "buckets", "floor_slots", "floor_within", "silence_hours"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$"},
+        "label": {"type": "string", "minLength": 1, "maxLength": 40},
+        "enabled": {"type": "boolean"},
+        "keywords": {"type": "array", "maxItems": 40, "items": {"type": "string", "minLength": 2, "maxLength": 60}},
+        "tags": {"type": "array", "maxItems": 10, "items": {"type": "string", "minLength": 1, "maxLength": 32}},
+        "buckets": {"type": "array", "maxItems": 10, "items": {"type": "string", "minLength": 1, "maxLength": 32}},
+        "floor_slots": {"type": "integer", "minimum": 0, "maximum": 3},
+        "floor_within": {"type": "integer", "minimum": 1, "maximum": 50},
+        "silence_hours": {"type": "number", "minimum": 0, "maximum": 168}
       }
     },
     "boost": {

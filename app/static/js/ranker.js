@@ -187,7 +187,7 @@ export function rank(pool, profile, now, opts = {}) {
  * rank-gate.js carries a byte-identical copy of `canonical` (a node test checks). */
 export function profileKey(profile) {
   const p = profile || {};
-  return canonical([p.topics, p.trust, p.boosts, p.mutes, p.seen_penalty, p.passes]);
+  return canonical([p.topics, p.trust, p.boosts, p.mutes, p.seen_penalty, p.passes, p.standing_stories]);
 }
 
 export function canonical(v) {

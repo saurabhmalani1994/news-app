@@ -14,7 +14,7 @@
     if (!raw) return;
     var history = JSON.parse(raw).history;
     var p = history[history.length - 1].profile;
-    if (canonical([p.topics, p.trust, p.boosts, p.mutes, p.seen_penalty, p.passes]) === root.getAttribute("data-rank-key")) return;
+    if (canonical([p.topics, p.trust, p.boosts, p.mutes, p.seen_penalty, p.passes, p.standing_stories]) === root.getAttribute("data-rank-key")) return;
     window.almanacProfile = p;
     root.classList.add("rerank");
     var reveal = function () { root.classList.remove("rerank"); };

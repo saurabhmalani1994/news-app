@@ -181,9 +181,26 @@ def source_names(pool):
             if s.get("id")}
 
 
+def failing_sources(pool):
+    """{source_id: {state, runs}} for each source the pool's S06 source_health marks
+    unhealthy, sorted by id: what S28's silence alarm reads to tell "no coverage" apart
+    from "its sources are failing". runs is the current unbroken run of errors (or of
+    empties). An older pool without source_health has none."""
+    health = pool.get("source_health") or {}
+    out = {}
+    for sid in sorted(health):
+        entry = health[sid]
+        if isinstance(entry, dict) and entry.get("unhealthy"):
+            runs = max(int(entry.get("consecutive_error") or 0), int(entry.get("consecutive_empty") or 0))
+            out[sid] = {"state": str(entry.get("state", "")), "runs": runs}
+    return out
+
+
 def pass_input(pool):
-    """What the S13 passes read beside the compact pool: buckets, leans and names."""
-    return {"buckets": source_buckets(pool), "leans": source_leans(pool), "names": source_names(pool)}
+    """What the S13 passes read beside the compact pool: buckets, leans and names, and
+    S28's failing sources for the silence alarm."""
+    return {"buckets": source_buckets(pool), "leans": source_leans(pool), "names": source_names(pool),
+            "health": failing_sources(pool)}
 
 
 def run_ranker(pool):

@@ -29,7 +29,7 @@ const passNames = (list) => [...new Set(list.flatMap((s) => s.passes.map((e) => 
 const QUIET = [art("q1", "s1", 1, ["ai"]), art("q2", "s2", 2, ["ai"]), art("q3", "s3", 3, ["ai"])];
 
 test("the stated order, and which pages run which passes", () => {
-  assert.deepEqual(PASS_ORDER, ["mute", "dedup", "lean-quota", "exploration", "other-side", "must-know"]);
+  assert.deepEqual(PASS_ORDER, ["mute", "dedup", "lean-quota", "exploration", "other-side", "must-know", "standing-story"]);
   assert.deepEqual(TODAY_PASSES, PASS_ORDER.slice(2));
   assert.deepEqual(SECTION_PASSES, ["lean-quota", "other-side"]);
   assert.deepEqual(PASS_DEFAULTS.lean_quota, { window: 10, max_share: 0.6 });
@@ -176,6 +176,9 @@ function busyPool() {
     articles.push(art(`a${String(i).padStart(3, "0")}`, src, (i * 13) % 40, TAGS[i % TAGS.length], i === 69 ? "Headline for story a068" : undefined));
   }
   articles.push(art("dup", "s3", 1, ["ai"], "A duplicated wire headline, word for word"), art("dup2", "s5", 2, ["ai"], "A duplicated wire headline, word for word"));
+  // S28: one old, single-outlet Sudan story from a source of no listed lean, scored far
+  // below the top 15, so the standing-story floor has something to place.
+  articles.push(art("sd1", "sdn", 39.5, ["world", "conflict"], "Sudan: aid convoy reaches El Fasher after months of siege"));
   for (let c = 0; c < 6; c++) {
     const members = [0, 1, 2, 3].map((k) => `a${String(c * 4 + k).padStart(3, "0")}`);
     const bucketSet = [...new Set(members.map((id) => leans[`s${Number(id.slice(1)) % 14}`]))].sort();

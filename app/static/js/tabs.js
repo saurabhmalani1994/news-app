@@ -71,7 +71,7 @@ function buildSections() {
   built = true;
   const input = JSON.parse(document.getElementById("rank-input").content.textContent);
   const profile = window.almanacProfile || buildDefaultProfile(input.now);
-  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names });
+  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health });
   const todayRows = [...document.querySelectorAll("#section-today li.story[data-sid]")];
   const byId = new Map(todayRows.map((li) => [li.dataset.sid, li]));
   for (const section of SECTIONS) {

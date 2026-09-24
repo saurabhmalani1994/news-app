@@ -12,20 +12,29 @@
 //   5 other-side   each tab    one attached link on a 3+ source, 2+ lean cluster, from
 //                              the lean least represented in the page's first screen
 //   6 must-know    Today       floor_slots R16-eligible stories at the top
+//   7 standing-    Today       S28: each standing story (standing.js) holds at least its
+//     story                    floor_slots cards in the first floor_within places
 // Mute and dedup are facts about the pool for this owner, so they run once and every
 // tab is filtered from their result. A section tab is the same list filtered (S27),
 // then its own lean quota and other-side slot, since each tab is its own screen
 // ("no single side dominates a screen", OWNER-BRIEF). Exploration and the must-know
 // floor belong to the front page: a section tab is already a chosen topic, and the
-// floor is "at the top of the front page" (OWNER-BRIEF, derived).
+// floor is "at the top of the front page" (OWNER-BRIEF, derived). The standing-story
+// floor runs last so no later pass can push its card back out of the zone, and its one
+// move (a card swapped into the zone's lowest free place) never disturbs the must-know
+// slots or an exploration slot above it. Mute runs before it and wins: a mute is the
+// owner's explicit word that a source or topic never appears (S13), and R19 exempts the
+// floor only from thumbs. The silence alarm still reads the whole pool, so a mute never
+// turns into a claim that nobody covered the story.
 //
 // Pure and deterministic like the ranker: the same pool, profile and time give the
 // same pages byte for byte, at build under Node and on the device.
 import { rank, HARD_NEWS, TAG_TO_TOPIC } from "./ranker.js";
 import { SECTIONS, inSection } from "./sections.js";
+import { standingStories, qualifies, silenceNotices } from "./standing.js";
 
-export const PASS_ORDER = Object.freeze(["mute", "dedup", "lean-quota", "exploration", "other-side", "must-know"]);
-export const TODAY_PASSES = Object.freeze(["lean-quota", "exploration", "other-side", "must-know"]);
+export const PASS_ORDER = Object.freeze(["mute", "dedup", "lean-quota", "exploration", "other-side", "must-know", "standing-story"]);
+export const TODAY_PASSES = Object.freeze(["lean-quota", "exploration", "other-side", "must-know", "standing-story"]);
 export const SECTION_PASSES = Object.freeze(["lean-quota", "other-side"]);
 
 // Defaults for profile.passes. Design-set: window 10 and 60% (DESIGN-v1 section 6, R29),
@@ -284,6 +293,68 @@ function mustKnow(list, ctx) {
   return out;
 }
 
+// 7. Standing-story floor (R2, S28). For each standing story in the profile's order:
+// when fewer than floor_slots of the first floor_within cards qualify and the list
+// holds a qualifying story below them, the best of those by recency and importance
+// alone (affinity zeroed, as must-know and exploration do, so a story the owner never
+// scores highly still qualifies) is swapped into the zone's lowest place that no floor
+// holds; the card it displaces goes to the first place below the zone. Held places are
+// must-know and exploration placements and every card counted toward an earlier
+// standing story, so one floor never undoes another. When that move would break the
+// lean quota, the next arrangement that keeps it (a higher place, the displaced card a
+// little lower, or the next candidate); the floor itself is never given up for the
+// quota. A floor already met moves nothing.
+const swapIn = (list, from, slot, dest) => {
+  const out = [...list];
+  const [pick] = out.splice(from, 1);
+  const [gone] = out.splice(slot, 1, pick);
+  out.splice(dest, 0, gone);
+  return out;
+};
+
+function standingFloor(list, ctx) {
+  let out = [...list];
+  const placedBy = (s, pass) => s.passes.some((e) => e.pass === pass && e.text.startsWith("Placed"));
+  const held = new Set(out.filter((s) => placedBy(s, "must-know") || placedBy(s, "exploration")).map((s) => s.id));
+  for (const def of ctx.standing) {
+    const within = Math.min(def.floor_within, out.length);
+    if (def.floor_slots < 1 || within < 1) continue;
+    const inZone = out.slice(0, within).filter((s) => qualifies(s, def));
+    inZone.slice(0, def.floor_slots).forEach((s) => held.add(s.id));
+    const candidates = out.slice(within).filter((s) => qualifies(s, def)).sort(byNeutral);
+    for (let need = def.floor_slots - inZone.length; need > 0 && candidates.length; need--) {
+      const slots = [];
+      for (let i = within - 1; i >= 0; i--) if (!held.has(out[i].id)) slots.push(i);
+      if (!slots.length) break;
+      const base = quotaBreaks(out, ctx);
+      // The best candidate at the lowest free place, the card it displaces just below
+      // the zone, unless that breaks the lean quota: then the first (candidate, place,
+      // displaced card's place) that keeps it, best candidate, lowest place and nearest
+      // place below the zone first (at most the candidate's old place, a plain swap);
+      // the plain move when none does.
+      let choice = null;
+      for (let k = 0; k < candidates.length && !choice; k++) {
+        const from = out.indexOf(candidates[k]);
+        for (const slot of slots) {
+          for (let dest = within; dest <= from && !choice; dest++) {
+            if (quotaBreaks(swapIn(out, from, slot, dest), ctx) <= base) choice = [k, slot, dest];
+          }
+          if (choice) break;
+        }
+      }
+      const [k, slot, dest] = choice || [0, slots[0], within];
+      const pick = candidates.splice(k, 1)[0];
+      const from = out.indexOf(pick) + 1;
+      out = swapIn(out, from - 1, slot, dest);
+      held.add(pick.id);
+      const kept = k || slot !== slots[0] || dest !== within ? ", arranged to keep the lean quota" : "";
+      note(pick, "standing-story", `Placed by standing story: ${def.label}, floor ${def.floor_slots} in the top ${def.floor_within}; moved from ${from} to ${slot + 1}, the best ${def.label} story below the floor on recency and importance alone${kept}`, { from, to: slot + 1, standing: def.id });
+    }
+  }
+  markShifts(list, out, "standing-story", shiftText("standing story", "a standing-story floor placed a card above it"));
+  return out;
+}
+
 // Each pass is {name, fn(list, ctx) -> list}, the shape of ranker.js's opts.passes seam.
 export const PASSES = Object.freeze({
   mute: { name: "mute", fn: mute },
@@ -292,6 +363,7 @@ export const PASSES = Object.freeze({
   exploration: { name: "exploration", fn: exploration },
   "other-side": { name: "other-side", fn: otherSide },
   "must-know": { name: "must-know", fn: mustKnow },
+  "standing-story": { name: "standing-story", fn: standingFloor },
 });
 
 /** The context every pass reads, from the ranker's own compact pool. */
@@ -303,6 +375,7 @@ function passContext(pool, profile, opts) {
     leans: opts.leans || {},
     names: opts.names || {},
     hardNews: HARD_NEWS,
+    standing: standingStories(profile),
     articles: new Map((pool.articles || []).map((a) => [a.id, { ...a, ms: epoch(a.published_at) }])),
     leads: new Map((pool.clusters || []).filter((c) => c.lead).map((c) => [c.id, c.lead])),
     removed: [],
@@ -322,10 +395,12 @@ export function applyPasses(names, pool, profile, now, opts = {}) {
 
 /**
  * The pages for a profile: Today and every section tab, each after its passes.
- * Returns {today, removed, sections: [{id, label, slot, stories}]}; `today` and each
- * `stories` are ranker records plus their pass entries (and `other_side` where one is
- * attached); `removed` holds what mute and dedup took, each saying why.
- * opts: {buckets, leans, names, terms} (buckets and leans from sources.json, R10).
+ * Returns {today, removed, sections: [{id, label, slot, stories}], notices}; `today` and
+ * each `stories` are ranker records plus their pass entries (and `other_side` where one
+ * is attached); `removed` holds what mute and dedup took, each saying why; `notices` is
+ * S28's silence alarm for Today (standing.js silenceNotices).
+ * opts: {buckets, leans, names, health, terms} (buckets and leans from sources.json,
+ * R10; health is the unhealthy sources from the pool's S06 source_health).
  */
 export function rankPages(pool, profile, now, opts = {}) {
   const ctx = passContext(pool, profile, opts);
@@ -348,5 +423,7 @@ export function rankPages(pool, profile, now, opts = {}) {
     });
     return { id: section.id, label: section.label, slot: section.slot || null, stories: run(SECTION_PASSES, list, ctx) };
   });
-  return { today, removed: ctx.removed, sections };
+  const nowMs = typeof now === "number" ? now : Date.parse(now) || 0;
+  const notices = silenceNotices(scored, profile, nowMs, { buckets: opts.buckets, names: opts.names, health: opts.health });
+  return { today, removed: ctx.removed, sections, notices };
 }

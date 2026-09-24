@@ -62,6 +62,7 @@ PAGE = """<!doctype html>
 <header class="masthead masthead--nameplate">
 <h1 class="wordmark">Almanac</h1>
 </header>
+{notices}
 <ol class="river river--top" id="headlines">
 {top}
 </ol>
@@ -146,6 +147,28 @@ def _chrome(sections):
             panels.append(PANEL.format(id=escape(section["id"], quote=True), hidden=hidden))
     views = "\n".join(VIEW.format(id=v, title=t, head=h, text=x) for v, t, h, x in VIEWS)
     return "\n".join(tabs), "\n".join(panels), views
+
+
+# S28 silence alarm (R2): one quiet notice per standing story with no recent coverage,
+# under the nameplate and above the hero, set in the sans so it never reads as a news
+# card: a kicker naming the standing story, one line saying what is missing, one line
+# saying whether that is a gap in coverage or failing sources. Every word comes from
+# app/static/js/standing.js (the same function the device runs); source names are the
+# only feed strings, escaped here and set as text on the device (R26). rerank.js draws
+# the same markup. The container is always present, empty when all is well, so the
+# device can fill or clear it before the page is shown.
+NOTICES = '<section class="notices" id="standing-notices" aria-label="Standing stories">{items}</section>'
+NOTICE = ('<div class="notice" data-standing="{id}" data-kind="{kind}">'
+          '<p class="notice-kicker">{kicker}</p><p class="notice-head">{head}</p>'
+          '<p class="notice-text">{text}</p></div>')
+
+
+def render_notices(notices):
+    return NOTICES.format(items="".join(
+        NOTICE.format(id=escape(n["id"], quote=True), kind=escape(n["kind"], quote=True),
+                      kicker=escape(n["kicker"], quote=False), head=escape(n["head"], quote=False),
+                      text=escape(n["text"], quote=False))
+        for n in notices))
 
 
 # Front page length (D1). The design doc sets no length, so the page ends the way NYT's
@@ -402,6 +425,7 @@ def render(pool, ranking=None):
         views=views,
         nav=bottom_nav("home"),
         rank_key=escape(ranking["key"], quote=True),
+        notices=render_notices(ranking.get("notices", [])),
         rank_input=_rank_input_json(pool, shown_stories, by_id, source_names, links),
         preloads=preloads,
         top=rows(("hero", "secondary", "river")),
