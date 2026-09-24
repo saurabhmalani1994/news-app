@@ -57,12 +57,26 @@ PAGE = """<!doctype html>
 </html>
 """
 
+# Front page length (D1). The design doc sets no length, so the page ends the way NYT's
+# Today does: a clear module break, a quiet label, a short run of text-only headlines,
+# then an end. The rest of the pool stays one tap away in a native <details> (no
+# script), laid out only when opened. Section tabs (S27) will split it further.
+MORE_COUNT = 20
+
 MORE = """<section class="module" aria-labelledby="more-label">
 <h2 class="module-label" id="more-label">More headlines</h2>
 <ol class="river river--text-only">
 {items}
 </ol>
-</section>"""
+{rest}</section>"""
+
+REST = """<details class="more-rest">
+<summary class="more-toggle">Show {count} more headlines</summary>
+<ol class="river river--text-only">
+{items}
+</ol>
+</details>
+"""
 
 # One row shape for every tier; the tier only changes classes and whether a dek shows.
 # A later image slot goes first inside .story-body; its box is reserved in style.css
@@ -168,7 +182,15 @@ def render(pool):
             _render_story(story, tier, source_names, now) for tier in names for story in tiers[tier]
         )
 
-    rest = rows(("text_only",))
+    tail = tiers["text_only"]
+    shown = "\n".join(_render_story(s, "text_only", source_names, now) for s in tail[:MORE_COUNT])
+    rest = "\n".join(_render_story(s, "text_only", source_names, now) for s in tail[MORE_COUNT:])
+    more = ""
+    if shown:
+        more = MORE.format(
+            items=shown,
+            rest=REST.format(count=len(tail) - MORE_COUNT, items=rest) if rest else "",
+        )
     preloads = "\n".join(
         f'<link rel="preload" href="fonts/{f}" as="font" type="font/woff2" crossorigin>'
         for f in PRELOAD_FONTS
@@ -177,7 +199,7 @@ def render(pool):
     return PAGE.format(
         preloads=preloads,
         top=rows(("hero", "secondary", "river")),
-        more=MORE.format(items=rest) if rest else "",
+        more=more,
         count=sum(len(v) for v in tiers.values()),
         articles=len(pool["articles"]),
         generated_at=escape(pool["generated_at"]),

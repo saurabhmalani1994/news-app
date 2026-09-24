@@ -77,24 +77,25 @@ body {
   outline-offset: -2px;
 }
 
-/* Row rhythm, from the NYT section front (nyt-measured, river): the inset hairline
-   sits nearer the next headline than the last meta, about 12dp above a headline's box
-   and 24dp below a meta's, so a rule reads as the top of the story it opens. Text-only
+/* Row rhythm, from the NYT section front (nyt-measured, river): 37dp of dark from a
+   meta's ink to the next headline's ink, with the inset hairline nearer the headline,
+   about 24dp below the meta's ink and 12dp above the headline's, so a rule reads as
+   the top of the story it opens (checked by row scan at true 360dp, D1). Text-only
    rows keep the same shape, a step tighter. */
 .story-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  padding: 12px 0 24px;
+  padding: 10px 0 22px;
 }
 
 .story--text-only .story-body {
-  padding: 12px 0 20px;
+  padding: 10px 0 19px;
 }
 
 /* The hero opens the page under the masthead's full-bleed rule, so it has no rule of
    its own and a little more air above. */
 .story--hero .story-body {
-  padding: 20px 0 26px;
+  padding: 20px 0 22px;
 }
 
 /* One hairline weight, inset by the 20dp gutter between stories (the link's padding
@@ -176,10 +177,11 @@ body {
   color: var(--color-dek);
 }
 
+/* Hero: 14dp from the headline's baseline ink to the dek's caps (measured). */
 .story--hero .dek {
   -webkit-line-clamp: 4;
   line-clamp: 4;
-  margin-top: 6px;
+  margin-top: 1px;
 }
 
 /* Meta: source, the quiet source count, age. Only the source name may truncate. */
@@ -217,14 +219,35 @@ body {
   white-space: pre;
 }
 
-/* A module edge: full-bleed hairline, then a quiet sans label over the text-only tier. */
+/* A module edge: full-bleed hairline, then a quiet sans label over the text-only tier,
+   set like a section tab label (sentence case, not the shouting meta caps). */
 .module {
+  margin-top: 8px;
   border-top: var(--divider-weight) solid var(--color-divider);
 }
 
 .module-label {
   margin: 0;
-  padding: 28px var(--space-gutter) 4px;
+  padding: 28px var(--space-gutter) 6px;
+  font-family: var(--type-tab-label-family);
+  font-size: var(--type-tab-label-size);
+  line-height: var(--type-tab-label-line-height);
+  font-weight: var(--type-tab-label-weight);
+  letter-spacing: var(--type-tab-label-tracking);
+  color: var(--color-headline);
+}
+
+/* The rest of the pool: one quiet full-width row under an inset hairline, the whole
+   row the target. Opening it lays out the rows below and the row goes away. */
+.more-toggle {
+  display: flex;
+  align-items: center;
+  min-height: var(--touch-min);
+  margin: 0 var(--space-gutter);
+  padding: 14px 0 16px;
+  border-top: var(--divider-weight) solid var(--color-divider);
+  list-style: none;
+  cursor: pointer;
   font-family: var(--type-meta-family);
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line-height);
@@ -232,6 +255,29 @@ body {
   letter-spacing: var(--type-meta-tracking);
   text-transform: var(--type-meta-transform);
   color: var(--color-headline);
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.more-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.more-toggle:active {
+  background: var(--color-pressed);
+}
+
+.more-toggle:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: 2px;
+}
+
+.more-rest[open] > .more-toggle {
+  display: none;
+}
+
+/* The first opened row continues the list above, so it takes the list's hairline. */
+.more-rest .story:first-child .story-body {
+  border-top: var(--divider-weight) solid var(--color-divider);
 }
 
 /* Colophon: freshness line after the last story, full-bleed hairline above it. */
@@ -240,11 +286,12 @@ body {
   padding: 24px var(--space-gutter) 32px;
 }
 
+/* The colophon may wrap, so it gets open leading, not the one-line meta box. */
 .colophon-text {
   margin: 0;
   font-family: var(--type-meta-family);
   font-size: var(--type-meta-size);
-  line-height: var(--type-meta-line-height);
+  line-height: 1.6;
   font-weight: var(--type-meta-weight);
   letter-spacing: var(--type-meta-tracking);
   text-transform: var(--type-meta-transform);
@@ -252,7 +299,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .story-link {
+  .story-link,
+  .more-toggle {
     transition: none;
   }
 }

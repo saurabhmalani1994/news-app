@@ -227,3 +227,28 @@ def test_smart_quotes_changes_only_quote_characters():
     assert len(out) == len(text)
     for a, b in zip(text, out):
         assert a == b or (a in "'\"" and b in "‘’“”")
+
+
+def test_front_page_ends_after_a_capped_tail_with_the_rest_one_tap_away():
+    """D1 length rule: hero, lead blocks and river, then a labelled module of at most
+    MORE_COUNT text-only rows; every other story sits in a closed native <details>,
+    in order, still text only."""
+    from app.build import MORE_COUNT
+    arts = [_article(i, SOURCES[i % 12], hour=i % 24, minute=i % 60, dek=f"Dek {i}.") for i in range(80)]
+    pool = {"generated_at": "2026-09-24T23:59:00Z", "articles": arts, "clusters": [],
+            "sources": [{"id": s, "name": s.upper()} for s in SOURCES]}
+    page = render(pool)
+    top = HERO_COUNT + SECONDARY_COUNT + RIVER_COUNT
+    shown, _, hidden = page.partition('<details class="more-rest">')
+    assert shown.count('<li class="story') == top + MORE_COUNT
+    assert hidden.count('<li class="story story--text-only') == 80 - top - MORE_COUNT
+    assert f"Show {80 - top - MORE_COUNT} more headlines</summary>" in hidden
+    assert "<details open" not in page  # closed until the reader asks
+    parsed = _parse(page)
+    assert len(parsed.items) == 80  # nothing dropped, order kept
+    assert set(parsed.tags) <= APP_TAGS | {"details", "summary"}
+
+
+def test_short_pool_has_no_rest_toggle():
+    page = render(fixture_pool())
+    assert "more-rest" not in page and "More headlines" in page
