@@ -1,0 +1,94 @@
+name: publish
+
+# Fetch the NPR feed, validate the pool, build the page, deploy to Cloudflare Pages
+# by direct upload (R1, R30). The publish job runs standard library Python only; the
+# pip install lives in the test job, which a future schedule trigger skips, so the
+# cron path never installs Python packages. No schedule yet: cadence is set from the
+# measured run time.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  test:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install test dependencies
+        run: python -m pip install -q -r requirements-dev.txt
+      - name: Run tests
+        run: python -m pytest -q
+
+  publish:
+    needs: test
+    if: ${{ !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch
+        run: python3 -m fetcher.fetch --out dist/pool.json
+
+      - name: Validate pool (stdlib)
+        run: python3 -m contract.validate dist/pool.json
+
+      - name: Build page
+        run: python3 -m app.build --pool dist/pool.json --out dist
+
+      - name: Check Cloudflare secrets are present
+        id: cf
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare secrets not set, skipping deploy"
+          fi
+
+      - name: Ensure Pages project exists
+        if: steps.cf.outputs.ok == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
+        run: |
+          api() { curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" "$@"; }
+          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects"
+          got=$(api "$base/almanac")
+          if [ "$(echo "$got" | jq -r .success)" = "true" ]; then
+            echo "project exists, subdomain $(echo "$got" | jq -r .result.subdomain)"
+          else
+            echo "lookup: $(echo "$got" | jq -c '[.errors[]? | {code, message}]')"
+            made=$(api -X POST "$base" -d '{"name":"almanac","production_branch":"main"}')
+            echo "project created: $(echo "$made" | jq -c '{success, subdomain: .result.subdomain, errors: [.errors[]? | {code, message}]}')"
+            [ "$(echo "$made" | jq -r .success)" = "true" ]
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.cf.outputs.ok == 'true'
+        with:
+          node-version: '22'
+
+      - name: Deploy to Cloudflare Pages
+        if: steps.cf.outputs.ok == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: npx --yes wrangler@4.137.0 pages deploy dist --project-name almanac --branch main
