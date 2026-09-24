@@ -80,7 +80,9 @@ custom.topics.world.affinity = 0.2;
 const stored = { history: [{ version: 1, timestamp: base.updated_at, profile: base }, { version: 2, timestamp: "2026-09-24T01:00:00Z", profile: { ...custom, profile_version: 2 } }] };
 await load("index.html", "dark", stored);
 const rr = JSON.parse(await evaluate(`JSON.stringify({ hidden: document.documentElement.classList.contains("rerank"),
-  rerankLoaded: performance.getEntriesByType("resource").some((e) => e.name.endsWith("/js/rerank.js")),
+  // T1: H2 build-stamps same-origin asset URLs with a ?v=<build> query string, so
+  // rerank.js now loads as ".../js/rerank.js?v=<build>", not the bare path.
+  rerankLoaded: performance.getEntriesByType("resource").some((e) => e.name.includes("/js/rerank.js")),
   order: [...document.querySelectorAll("#section-today li.story[data-sid]")].map((li) => li.dataset.sid),
   input: JSON.parse(document.getElementById("rank-input").content.textContent) })`));
 const opts = { buckets: rr.input.buckets, leans: rr.input.leans, names: rr.input.names };

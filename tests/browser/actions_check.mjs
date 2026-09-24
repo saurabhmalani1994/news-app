@@ -64,14 +64,16 @@ const opened = JSON.parse(await evaluate(`JSON.stringify({
   hidden: document.getElementById("sheet-root").hidden,
   isOpen: document.getElementById("sheet-root").classList.contains("is-open"),
   items: [...document.querySelectorAll(".sheet-item")].map((b) => b.dataset.action),
-  whyHidden: document.querySelector('.sheet-item[data-action="why"]').hidden,
+  whyVisible: document.querySelector('.sheet-item[data-action="why"]').hidden === false,
   activeInSheet: document.getElementById("sheet").contains(document.activeElement),
   historyPushed: history.state && history.state.almanacSheet === 1,
 })`));
 await shot("sheet-dark.png");
-check("sheet opens with every menu item, focus inside it, why-this hidden, history pushed",
+// T1: S12 landed after this proof was authored and flipped WHY_THIS_ENABLED on, so
+// "why" is a visible menu item now, not a hidden one held back for a later slice.
+check("sheet opens with every menu item, focus inside it, why-this visible (S12), history pushed",
   opened.hidden === false && opened.isOpen && opened.items.includes("save") && opened.items.includes("mute-source")
-    && opened.items.includes("mute-topic") && opened.items.includes("boost-topic") && opened.whyHidden
+    && opened.items.includes("mute-topic") && opened.items.includes("boost-topic") && opened.whyVisible
     && opened.activeInSheet && opened.historyPushed,
   opened);
 
