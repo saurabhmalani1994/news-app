@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://almanac.local/contract/pool.schema.json",
+  "title": "Almanac pool",
+  "description": "The published pool. Opinion free: no score, rank or affinity. Bodies live in bodies/<article_id>.json, never here (R12). Every object is closed, so an unknown field is a contract change, not a silent addition.",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "sources", "articles", "clusters", "counts"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "generated_at": {"$ref": "#/$defs/utc_timestamp"},
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/source"}
+    },
+    "articles": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/article"}
+    },
+    "clusters": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/cluster"}
+    },
+    "counts": {"$ref": "#/$defs/counts"}
+  },
+  "$defs": {
+    "utc_timestamp": {
+      "description": "RFC 3339 in UTC, second precision, Z suffix.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "id": {
+      "description": "Filename safe, so bodies/<id>.json is always a valid path.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "http_url": {
+      "type": "string",
+      "pattern": "^https?://[^\\s]+$",
+      "maxLength": 2048
+    },
+    "source": {
+      "type": "object",
+      "required": ["id", "name", "feed_url"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 200},
+        "feed_url": {"$ref": "#/$defs/http_url"}
+      }
+    },
+    "article": {
+      "type": "object",
+      "required": ["id", "source_id", "url", "title", "published_at"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "source_id": {"$ref": "#/$defs/id"},
+        "url": {"$ref": "#/$defs/http_url"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 500},
+        "dek": {"type": "string", "maxLength": 2000},
+        "published_at": {"$ref": "#/$defs/utc_timestamp"}
+      }
+    },
+    "cluster": {
+      "type": "object",
+      "required": ["id", "article_ids"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "article_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/id"}
+        }
+      }
+    },
+    "count_map": {
+      "type": "object",
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    },
+    "counts": {
+      "description": "Run ledger. drops maps reason to count; leniency maps each parser tolerance applied (R9) to count. S02 fixes the reason keys and asserts fetched == published + sum(drops).",
+      "type": "object",
+      "required": ["fetched", "published", "drops", "leniency"],
+      "additionalProperties": false,
+      "properties": {
+        "fetched": {"type": "integer", "minimum": 0},
+        "published": {"type": "integer", "minimum": 0},
+        "drops": {"$ref": "#/$defs/count_map"},
+        "leniency": {"$ref": "#/$defs/count_map"}
+      }
+    }
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-24T04:00:00Z",
+  "sources": [
+    {
+      "id": "npr",
+      "name": "NPR",
+      "feed_url": "https://feeds.npr.org/1001/rss.xml"
+    }
+  ],
+  "articles": [
+    {
+      "id": "b827ba1a90cf4138",
+      "source_id": "npr",
+      "url": "https://example.org/2026/09/23/transit-budget",
+      "title": "City council approves new transit budget",
+      "published_at": "2026-09-24T03:19:45Z",
+      "dek": "The vote was 7 to 2 after a long public hearing."
+    },
+    {
+      "id": "63b28dfde3ce6133",
+      "source_id": "npr",
+      "url": "https://example.org/2026/09/23/court-access",
+      "title": "Court weighs reporters' access to briefing room",
+      "published_at": "2026-09-23T22:40:39Z",
+      "dek": "Lawyers for both sides argued on Wednesday."
+    },
+    {
+      "id": "480347e34fb4e1bb",
+      "source_id": "npr",
+      "url": "https://example.org/2026/09/23/storm-forecast",
+      "title": "Storm season forecast revised upward",
+      "published_at": "2026-09-23T21:05:00Z",
+      "dek": "Forecasters now expect more named storms."
+    },
+    {
+      "id": "c985655948adb744",
+      "source_id": "npr",
+      "url": "https://example.org/2026/09/23/enzyme-pathway",
+      "title": "Researchers map a new enzyme pathway",
+      "published_at": "2026-09-23T19:30:12Z"
+    },
+    {
+      "id": "8c1142f27cc8f296",
+      "source_id": "npr",
+      "url": "https://example.org/2026/09/23/markets-mixed",
+      "title": "Markets close mixed ahead of rate decision",
+      "published_at": "2026-09-23T20:10:00Z",
+      "dek": "Stocks ended the day little changed."
+    }
+  ],
+  "clusters": [],
+  "counts": {
+    "fetched": 6,
+    "published": 5,
+    "drops": {
+      "over_cap": 1
+    },
+    "leniency": {}
+  }
+}

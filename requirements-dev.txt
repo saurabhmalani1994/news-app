@@ -1,0 +1,3 @@
+# Test only. Nothing in the publish path installs these (R30).
+jsonschema==4.25.1
+pytest==8.4.2
