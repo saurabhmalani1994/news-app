@@ -183,6 +183,13 @@ def _entities(item, proper):
     return ents
 
 
+def item_entities(items):
+    """S32: each item's key entities, {id: set}, by the same rule clustering uses, so
+    event grouping (fetcher.events) and clustering agree on what an entity is."""
+    proper = _proper_ratios(items)
+    return {it["id"]: _entities(it, proper) for it in items}
+
+
 def _unit_vector(tf, idf):
     vec = {t: c * idf[t] for t, c in tf.items() if idf.get(t, 0) > 0}
     norm = math.sqrt(sum(v * v for v in vec.values()))
