@@ -80,6 +80,55 @@ def test_tagging_combines_bucket_and_keyword_matches():
     assert "economy" in tags    # keyword match
 
 
+def test_climate_food_bucket_tags_foodtech_and_climate_tech_by_default():
+    # F7: the bucket had no bucket_topics entry, so its own outlets (Green Queen,
+    # Food Dive, Canary Media...) tagged neither topic unless a keyword happened to
+    # match, which is why both tags measured thin even with live sources.
+    tags = tag_article("climate_food", "A headline with no matched keywords at all", "", TOPICS)
+    assert "foodtech" in tags
+    assert "climate_tech" in tags
+
+
+@pytest.mark.parametrize("title", [
+    "Startup unveils cell-based meat pilot plant",
+    "Mycoprotein maker raises Series B",
+    "Vertical farming startup expands indoor farming operations",
+])
+def test_foodtech_keywords_catch_general_outlet_stories(title):
+    tags = tag_article("general", title, "", TOPICS)
+    assert "foodtech" in tags
+
+
+@pytest.mark.parametrize("title", [
+    "City council approves new transit budget",
+    "Meatpacking union votes to ratify new contract",
+    "Farmers protest new tariffs on soybeans",
+])
+def test_foodtech_keywords_do_not_false_positive_on_ordinary_food_and_farm_news(title):
+    tags = tag_article("general", title, "", TOPICS)
+    assert "foodtech" not in tags
+
+
+@pytest.mark.parametrize("title", [
+    "Startup raises funding for direct air capture plant",
+    "Utility adds grid storage to handle peak demand",
+    "Heat pump sales rise as gas prices climb",
+])
+def test_climate_tech_keywords_catch_general_outlet_stories(title):
+    tags = tag_article("general", title, "", TOPICS)
+    assert "climate_tech" in tags
+
+
+@pytest.mark.parametrize("title", [
+    "Hurricane season forecast revised upward",
+    "Senate debates climate change bill",
+    "Heat wave grips the Pacific Northwest",
+])
+def test_climate_tech_keywords_do_not_false_positive_on_ordinary_weather_and_policy_news(title):
+    tags = tag_article("general", title, "", TOPICS)
+    assert "climate_tech" not in tags
+
+
 def test_singapore_bucket_alone_no_longer_tags_singapore():
     # G1 changed the S08 rule this test used to pin: the outlet is never a geography
     # signal on its own, so a Singapore outlet's text with no Singapore signal is not
