@@ -8,7 +8,7 @@ import pytest
 
 from contract.validate import load_schema, validate
 from fetcher import fetch
-from fetcher.fetch import FeedError, build_pool, dumps
+from fetcher.fetch import USER_AGENT, FeedError, build_pool, dumps, fetch_feed
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = (ROOT / "tests/fixtures/sample_feed.xml").read_bytes()
@@ -110,6 +110,34 @@ def test_ledger_invariant_asserted_at_runtime():
 def test_unparseable_feed_raises():
     with pytest.raises(FeedError):
         build_pool(b"<rss><channel><item></channel>", NOW)
+
+
+def test_fetch_feed_sends_honest_user_agent_and_feed_accept_header(monkeypatch):
+    # F2: some feed hosts bot-score requests that never state what they accept.
+    # The user agent stays a polite, honest self-identification (never a browser
+    # impersonation), and an Accept header naming feed content types is added
+    # alongside it.
+    seen = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, n=-1):
+            return SAMPLE
+
+    def fake_urlopen(req, timeout=None):
+        seen["headers"] = dict(req.header_items())
+        return FakeResponse()
+
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", fake_urlopen)
+    fetch_feed("https://example.org/feed")
+    assert seen["headers"]["User-agent"] == USER_AGENT
+    assert "browser" not in USER_AGENT.lower() and "mozilla" not in USER_AGENT.lower()
+    assert "xml" in seen["headers"]["Accept"].lower()
 
 
 def test_main_writes_valid_pool_offline(tmp_path, monkeypatch):

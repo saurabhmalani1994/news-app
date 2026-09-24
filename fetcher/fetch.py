@@ -40,8 +40,13 @@ class FeedError(Exception):
     pass
 
 
+FEED_ACCEPT = "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5"
+
+
 def fetch_feed(url, timeout=20):
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    req = urllib.request.Request(
+        url, headers={"User-Agent": USER_AGENT, "Accept": FEED_ACCEPT}
+    )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         data = resp.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
