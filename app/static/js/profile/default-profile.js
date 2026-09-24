@@ -23,6 +23,9 @@ import { PASS_DEFAULTS } from "../passes.js";
 // ("news sources don't tell me about the things happening in Israel or Gaza, or in
 // Sudan"). standing.js STANDING_DEFAULTS is the one source of their definitions.
 import { STANDING_DEFAULTS } from "../standing.js";
+// S33 Live tab overrides (R22): nothing pinned or blocked by default. live.js
+// LIVE_OVERRIDES_DEFAULTS is the one source of the shape.
+import { LIVE_OVERRIDES_DEFAULTS } from "../live.js";
 
 export const STARTER_TOPICS = Object.freeze({
   us_politics: { label: "US Politics", affinity: 0.8, half_life_hours: 8, enabled: true },
@@ -50,5 +53,6 @@ export function buildDefaultProfile(timestamp = nowIso()) {
     seen_penalty: structuredClone(STARTER_SEEN_PENALTY),
     passes: structuredClone(PASS_DEFAULTS),
     standing_stories: structuredClone(STANDING_DEFAULTS),
+    live_overrides: structuredClone(LIVE_OVERRIDES_DEFAULTS),
   };
 }

@@ -60,6 +60,7 @@ PAGE = """<!doctype html>
 <script type="module" src="js/story-actions.js"></script>
 <script type="module" src="js/coverage-view.js"></script>
 <script type="module" src="js/history/observe.js"></script>
+<script type="module" src="js/live-actions.js"></script>
 <script src="js/sw-register.js" defer></script>
 </head>
 <body class="app">
@@ -260,9 +261,13 @@ VIEWS = (
 
 
 def _chrome(sections):
+    # S33: a slot section (only "live" today) starts hidden like any other until its
+    # own slice fills it; once it can (an event is live or pinned, so rankPages gave it
+    # ids) it renders shown from the first paint, deterministic at build, no client-side
+    # toggle-after-paint and so no layout shift in the strip.
     tabs, panels = [], []
     for index, section in enumerate(sections):
-        hidden = " hidden" if section.get("slot") else ""
+        hidden = " hidden" if section.get("slot") and not section.get("ids") else ""
         tabs.append(TAB.format(id=escape(section["id"], quote=True), label=escape(section["label"], quote=False),
                                selected="true" if index == 0 else "false", tabindex="0" if index == 0 else "-1",
                                hidden=hidden))

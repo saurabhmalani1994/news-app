@@ -205,10 +205,12 @@ def failing_sources(pool):
 
 
 def pass_input(pool):
-    """What the S13 passes read beside the compact pool: buckets, leans and names, and
-    S28's failing sources for the silence alarm."""
+    """What the S13 passes read beside the compact pool: buckets, leans and names,
+    S28's failing sources for the silence alarm, and S33's events array for the Live
+    tab (the pool's own field, carried through unchanged; empty when the pool predates
+    S32 or the fetcher found no event this run)."""
     return {"buckets": source_buckets(pool), "leans": source_leans(pool), "names": source_names(pool),
-            "health": failing_sources(pool)}
+            "health": failing_sources(pool), "events": pool.get("events", [])}
 
 
 def run_ranker(pool):

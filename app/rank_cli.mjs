@@ -13,9 +13,9 @@ import { buildDefaultProfile } from "./static/js/profile/default-profile.js";
 
 const chunks = [];
 for await (const chunk of process.stdin) chunks.push(chunk);
-const { pool, now, buckets, leans, names, health } = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+const { pool, now, buckets, leans, names, health, events } = JSON.parse(Buffer.concat(chunks).toString("utf8"));
 const profile = buildDefaultProfile(now);
-const pages = rankPages(pool, profile, now, { buckets: buckets || {}, leans: leans || {}, names: names || {}, health: health || {} });
+const pages = rankPages(pool, profile, now, { buckets: buckets || {}, leans: leans || {}, names: names || {}, health: health || {}, events: events || [] });
 const record = ({ id, score, explanation, must_know, passes, other_side }) => ({ id, score, explanation, must_know, passes, ...(other_side ? { other_side } : {}) });
 const touched = (stories) => Object.fromEntries(stories.filter((s) => s.passes.length).map((s) => [s.id, s.passes]));
 const links = (stories) => Object.fromEntries(stories.filter((s) => s.other_side).map((s) => [s.id, s.other_side]));
@@ -23,9 +23,11 @@ process.stdout.write(JSON.stringify({
   key: profileKey(profile),
   ranked: pages.today.map(record),
   removed: pages.removed.map(({ id, passes }) => ({ id, passes })),
+  // S33: a "live" entry's ids are the current live event's own clusters (empty, and
+  // the tab hidden, when none is live); event is {id, label} or null.
   sections: [
     { id: "today", label: "Today", slot: null, ids: pages.today.map((s) => s.id) },
-    ...pages.sections.map((s) => ({ id: s.id, label: s.label, slot: s.slot, ids: s.stories.map((x) => x.id), passes: touched(s.stories), other_side: links(s.stories) })),
+    ...pages.sections.map((s) => ({ id: s.id, label: s.label, slot: s.slot, ids: s.stories.map((x) => x.id), passes: touched(s.stories), other_side: links(s.stories), event: s.event || null })),
   ],
   notices: pages.notices,
 }));

@@ -32,6 +32,7 @@
 import { rank, HARD_NEWS, TAG_TO_TOPIC } from "./ranker.js";
 import { SECTIONS, inSection } from "./sections.js";
 import { standingStories, qualifies, silenceNotices } from "./standing.js";
+import { currentLiveEvent } from "./live.js";
 
 export const PASS_ORDER = Object.freeze(["mute", "dedup", "lean-quota", "exploration", "other-side", "must-know", "standing-story"]);
 export const TODAY_PASSES = Object.freeze(["lean-quota", "exploration", "other-side", "must-know", "standing-story"]);
@@ -399,8 +400,19 @@ export function applyPasses(names, pool, profile, now, opts = {}) {
  * each `stories` are ranker records plus their pass entries (and `other_side` where one
  * is attached); `removed` holds what mute and dedup took, each saying why; `notices` is
  * S28's silence alarm for Today (standing.js silenceNotices).
- * opts: {buckets, leans, names, health, terms} (buckets and leans from sources.json,
- * R10; health is the unhealthy sources from the pool's S06 source_health).
+ * opts: {buckets, leans, names, health, terms, events} (buckets and leans from
+ * sources.json, R10; health is the unhealthy sources from the pool's S06
+ * source_health; events is the pool's S31/S32 events array for the S33 Live tab).
+ *
+ * S33: the "live" slot section is not a topic filter like the others (sections.js's
+ * inSection always refuses a slot section, on purpose: it holds nothing until its own
+ * slice fills it). Its stories are instead every one of the current live event's own
+ * clusters (live.js currentLiveEvent, the pool's own pick plus the owner's pin and
+ * block overrides), taken straight from `scored` so the list is exactly that event's
+ * clusters, ranked, with none of the other passes (mute, dedup, lean-quota) touching
+ * them: an event's own clusters are shown whole. `label` becomes the event's own label
+ * while one is live, the static "Live" from the section table otherwise (the tab is
+ * hidden then, so it is never read); `event` is {id, label} or null.
  */
 export function rankPages(pool, profile, now, opts = {}) {
   const ctx = passContext(pool, profile, opts);
@@ -408,7 +420,19 @@ export function rankPages(pool, profile, now, opts = {}) {
   const kept = run(["mute", "dedup"], scored, ctx);
   const today = run(TODAY_PASSES, fresh(kept), ctx);
   const at = new Map(scored.map((s, i) => [s.id, i]));
+  const liveEvent = currentLiveEvent(opts.events || [], profile);
+  const liveIds = liveEvent ? new Set(liveEvent.cluster_ids) : null;
   const sections = SECTIONS.filter((s) => !s.all).map((section) => {
+    if (section.slot === "live") {
+      const stories = liveIds ? fresh(scored.filter((s) => liveIds.has(s.id))) : [];
+      return {
+        id: section.id,
+        label: liveEvent ? liveEvent.label : section.label,
+        slot: section.slot,
+        stories,
+        event: liveEvent ? { id: liveEvent.id, label: liveEvent.label } : null,
+      };
+    }
     const here = (s) => inSection(s, section, opts.buckets || {});
     const gone = ctx.removed.filter(here);
     const list = fresh(kept.filter(here)).map((s) => {
@@ -421,7 +445,7 @@ export function rankPages(pool, profile, now, opts = {}) {
       }
       return s;
     });
-    return { id: section.id, label: section.label, slot: section.slot || null, stories: run(SECTION_PASSES, list, ctx) };
+    return { id: section.id, label: section.label, slot: section.slot || null, stories: run(SECTION_PASSES, list, ctx), event: null };
   });
   const nowMs = typeof now === "number" ? now : Date.parse(now) || 0;
   const notices = silenceNotices(scored, profile, nowMs, { buckets: opts.buckets, names: opts.names, health: opts.health });
