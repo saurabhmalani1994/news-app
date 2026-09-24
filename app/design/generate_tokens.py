@@ -46,10 +46,13 @@ LIGHT_COLOR = {
     "tabInactive": "#5A5A5A",
     "navInactive": "#6B6B6B",
     "pressed": "#F0F0F0",
+    "imagePlaceholder": "#EEEEEE",
     "themeColor": "#FFFFFF",
 }
-# Pressed row tint in dark: one step above the page, below the nav surface.
-DARK_EXTRA = {"pressed": "#1E1E1E", "themeColor": VALUES["color"]["bg"]}
+# Pressed row tint in dark: one step above the page, below the nav surface. An image box
+# before (or instead of) its photo (S39): a quiet step above the pressed tint, still
+# below the nav surface, so a slow or failed photo reads as an empty frame, not a panel.
+DARK_EXTRA = {"pressed": "#1E1E1E", "imagePlaceholder": "#222222", "themeColor": VALUES["color"]["bg"]}
 
 COLOR_ROLES = [
     # (token slug, JSON key)
@@ -64,6 +67,7 @@ COLOR_ROLES = [
     ("tab-inactive", "tabInactive"),
     ("nav-inactive", "navInactive"),
     ("pressed", "pressed"),
+    ("image-placeholder", "imagePlaceholder"),
     ("theme", "themeColor"),
 ]
 
