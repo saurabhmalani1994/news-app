@@ -12,6 +12,15 @@ to one hardcoded feed. Articles are capped per source so the published pool hold
 near the 400KB size target in DESIGN-v1.1 R12; anything past the cap is counted
 over_cap, the reason key S01/S02 already reserved for it.
 
+S07: clustering (fetcher.cluster) runs over every item that survives the item-level
+checks, before the cap, so a story's coverage is measured across all fetched items
+rather than the first few per feed. The cap is applied after clustering: each source
+keeps its first per_source_cap items in feed order, plus up to cluster_extra_cap more
+that belong to a multi-source cluster, so a big story is not cut off at item six.
+Worst case is (cap + extra) x sources articles, 8 x 61 = 488, which at the measured
+~620 bytes per article stays under the 400KB target. Published clusters list only
+published articles; a cluster left with fewer than two is not published.
+
 Usage: python -m fetcher.fanout --out dist/pool.json --sources sources.json
 """
 import argparse
@@ -27,6 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from contract.validate import validate
+from fetcher.cluster import cluster_items, method_for
 from fetcher.fetch import (
     DEK_MAX,
     TITLE_MAX,
@@ -46,6 +56,7 @@ FEED_STATES = ("ok", "empty", "http_error", "timeout", "parse_error")
 DEFAULT_TIMEOUT = 12
 DEFAULT_RETRIES = 1
 PER_SOURCE_CAP = 5
+CLUSTER_EXTRA_CAP = 3
 MAX_WORKERS = 32
 
 
@@ -152,12 +163,16 @@ def _extract_article(item, source_id, seen_urls, leniency, drops):
     return article
 
 
-def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP):
-    """Turn fetch results for every source into one pool dict. Pure: no network, no clock."""
+def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP,
+                      cluster_extra_cap=CLUSTER_EXTRA_CAP, timings=None):
+    """Turn fetch results for every source into one pool dict. Pure: no network, no clock.
+
+    timings, if a dict is passed, receives the clustering wall time in seconds.
+    """
     leniency = Counter()
     drops = Counter()
     feed_states = Counter()
-    articles = []
+    per_source = {}
     seen_urls = set()
     fetched_total = 0
 
@@ -178,17 +193,40 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             continue
         feed_states["ok"] += 1
         fetched_total += len(items)
-        published_this_source = 0
+        kept = per_source.setdefault(sid, [])
         for item in items:
             article = _extract_article(item, sid, seen_urls, leniency, drops)
             if article is None:
                 continue
-            if published_this_source >= per_source_cap:
-                drops["over_cap"] += 1
-                continue
             seen_urls.add(article["url"])
-            articles.append(article)
-            published_this_source += 1
+            kept.append(article)
+
+    candidates = [a for s in sources for a in per_source.get(s["id"], [])]
+    t0 = time.perf_counter()
+    all_clusters = cluster_items(candidates)
+    if timings is not None:
+        timings["cluster_seconds"] = time.perf_counter() - t0
+        timings["cluster_input"] = len(candidates)
+
+    by_id = {a["id"]: a for a in candidates}
+    multi_source = set()
+    for cl in all_clusters:
+        if len({by_id[i]["source_id"] for i in cl["article_ids"]}) > 1:
+            multi_source.update(cl["article_ids"])
+
+    articles = []
+    for source in sources:
+        extra = 0
+        for pos, article in enumerate(per_source.get(source["id"], [])):
+            if pos < per_source_cap:
+                articles.append(article)
+            elif article["id"] in multi_source and extra < cluster_extra_cap:
+                articles.append(article)
+                extra += 1
+            else:
+                drops["over_cap"] += 1
+
+    clusters = _published_clusters(all_clusters, {a["id"] for a in articles}, by_id)
 
     counts = {
         "fetched": fetched_total,
@@ -205,9 +243,31 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             {"id": s["id"], "name": s["name"], "feed_url": s["feed_url"]} for s in sources
         ],
         "articles": articles,
-        "clusters": [],
+        "clusters": clusters,
         "counts": counts,
     }
+
+
+def _published_clusters(all_clusters, published, by_id):
+    """Restrict clusters to published articles. The id is the earliest published member's,
+    so it holds steady as later coverage joins."""
+    out = []
+    for cl in all_clusters:
+        ids = [i for i in cl["article_ids"] if i in published]
+        if len(ids) < 2:
+            continue
+        dups = [[i for i in g if i in published] for g in cl["near_duplicates"]]
+        dups = [g for g in dups if len(g) > 1]
+        in_dups = {i for g in dups for i in g}
+        units = len(dups) + sum(1 for i in ids if i not in in_dups)
+        seed = min(ids, key=lambda i: (by_id[i]["published_at"], i))
+        out.append({
+            "id": f"c_{seed}",
+            "method": method_for(units, bool(dups)),
+            "article_ids": ids,
+            "near_duplicates": dups,
+        })
+    return out
 
 
 def main(argv=None):
@@ -227,8 +287,10 @@ def main(argv=None):
 
     t0 = time.monotonic()
     fetch_results = fetch_all(sources, timeout=args.timeout, retries=args.retries)
+    timings = {}
     pool = build_pool_fanout(
-        sources, fetch_results, datetime.now(timezone.utc), per_source_cap=args.per_source_cap
+        sources, fetch_results, datetime.now(timezone.utc), per_source_cap=args.per_source_cap,
+        timings=timings,
     )
     errors = validate(pool)
     if errors:
@@ -243,6 +305,9 @@ def main(argv=None):
         f"sources={len(sources)} feed_states={json.dumps(c['feed_states'])} "
         f"fetched={c['fetched']} published={c['published']} "
         f"leniency={sum(c['leniency'].values())} drops={json.dumps(c['drops'])} "
+        f"clusters={len(pool['clusters'])} "
+        f"near_dup_groups={sum(len(k['near_duplicates']) for k in pool['clusters'])} "
+        f"cluster_input={timings['cluster_input']} cluster_seconds={timings['cluster_seconds']:.2f} "
         f"bytes={len(body)} seconds={time.monotonic() - t0:.2f}"
     )
     return 0
