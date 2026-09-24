@@ -41,6 +41,12 @@
       "pattern": "^https?://[^\\s]+$",
       "maxLength": 2048
     },
+    "https_url": {
+      "description": "S38: image urls are https only, stricter than http_url used for article and feed links (R34).",
+      "type": "string",
+      "pattern": "^https://[^\\s]+$",
+      "maxLength": 2048
+    },
     "nullable_utc_timestamp": {
       "description": "S06: same shape as utc_timestamp, or null before a source has ever reached that state.",
       "type": ["string", "null"],
@@ -82,7 +88,20 @@
           "type": "array",
           "minItems": 1,
           "items": {"$ref": "#/$defs/topic"}
-        }
+        },
+        "image": {"$ref": "#/$defs/article_image"}
+      }
+    },
+    "article_image": {
+      "description": "S38: optional, stated by the feed itself, never fetched or probed (R34). Sourced in priority order from media:content, media:thumbnail, an enclosure with an image type, or, as a last resort, the first <img src> inside the item's own description or content:encoded. width and height are only present when the feed states them; credit is attribution or caption text the feed gives, also optional.",
+      "type": "object",
+      "required": ["url"],
+      "additionalProperties": false,
+      "properties": {
+        "url": {"$ref": "#/$defs/https_url"},
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "credit": {"type": "string", "minLength": 1, "maxLength": 500}
       }
     },
     "cluster": {
@@ -170,8 +189,40 @@
       "type": "object",
       "additionalProperties": {"$ref": "#/$defs/source_health_entry"}
     },
+    "image_found_counts": {
+      "description": "S38: closed set of extraction methods, each mapped to how many published articles got their image that way.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media_content": {"type": "integer", "minimum": 0},
+        "media_thumbnail": {"type": "integer", "minimum": 0},
+        "enclosure": {"type": "integer", "minimum": 0},
+        "content_img": {"type": "integer", "minimum": 0}
+      }
+    },
+    "image_rejected_counts": {
+      "description": "S38: closed set of rejection reasons, each mapped to how many candidate images were discarded that way. not_https and data_uri are unusable urls; tiny_pixel is a 1x1 or near-1x1 stated size, a tracking pixel not content; repeated_placeholder is a source giving the exact same image url on every one of its own published items, a logo, not a photo.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "not_https": {"type": "integer", "minimum": 0},
+        "data_uri": {"type": "integer", "minimum": 0},
+        "tiny_pixel": {"type": "integer", "minimum": 0},
+        "repeated_placeholder": {"type": "integer", "minimum": 0}
+      }
+    },
+    "image_counts": {
+      "description": "S38: per-run image outcomes, added by S05 fanout runs only (the S01 single-feed fetcher predates it, same as feed_states).",
+      "type": "object",
+      "required": ["found", "rejected"],
+      "additionalProperties": false,
+      "properties": {
+        "found": {"$ref": "#/$defs/image_found_counts"},
+        "rejected": {"$ref": "#/$defs/image_rejected_counts"}
+      }
+    },
     "counts": {
-      "description": "Run ledger. drops maps a fixed reason key to count (S02); leniency maps each parser tolerance applied (R9) to count, keys open. feed_states is optional, added by S05 fanout runs: it maps each closed feed-level outcome to a count, and the sum equals the number of configured sources. fetched == published + sum(drops) is asserted on every run. previous_pool_status is optional, added by S06: it records whether the previous published pool (read back from the live site to carry source_health counters forward) was read ok, was absent, was unreachable, or predated this slice's schema.",
+      "description": "Run ledger. drops maps a fixed reason key to count (S02); leniency maps each parser tolerance applied (R9) to count, keys open. feed_states is optional, added by S05 fanout runs: it maps each closed feed-level outcome to a count, and the sum equals the number of configured sources. fetched == published + sum(drops) is asserted on every run. previous_pool_status is optional, added by S06: it records whether the previous published pool (read back from the live site to carry source_health counters forward) was read ok, was absent, was unreachable, or predated this slice's schema. images is optional, added by S38: found and rejected are closed-set maps of image outcomes for the run.",
       "type": "object",
       "required": ["fetched", "published", "drops", "leniency"],
       "additionalProperties": false,
@@ -181,7 +232,8 @@
         "drops": {"$ref": "#/$defs/drop_counts"},
         "leniency": {"$ref": "#/$defs/count_map"},
         "feed_states": {"$ref": "#/$defs/feed_states"},
-        "previous_pool_status": {"type": "string", "enum": ["ok", "absent", "unreachable", "old_schema"]}
+        "previous_pool_status": {"type": "string", "enum": ["ok", "absent", "unreachable", "old_schema"]},
+        "images": {"$ref": "#/$defs/image_counts"}
       }
     }
   }
