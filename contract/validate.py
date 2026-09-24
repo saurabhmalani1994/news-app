@@ -130,6 +130,9 @@ def check_integrity(pool):
                 errors.append(f"$.clusters[{i}]: unknown article {aid!r}")
     if pool["counts"]["published"] != len(article_ids):
         errors.append("$.counts.published: does not equal the number of articles")
+    c = pool["counts"]
+    if c["fetched"] != c["published"] + sum(c["drops"].values()):
+        errors.append("$.counts: fetched does not equal published plus the sum of drops")
     return errors
 
 
