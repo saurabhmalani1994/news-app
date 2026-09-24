@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://almanac.local/app/profile.schema.json",
+  "title": "Almanac profile",
+  "description": "S10: the owner's opinions about ranking (R10). Device owned, local, versioned, never sent anywhere. Lean and source facts stay in the repo's sources.json; this file only holds what the owner has tuned. Every object is closed except topics, trust and boosts entries which use additionalProperties/items on purpose so new topic buckets and trust overrides are a settings action, not a code change (DESIGN-v1.1 section 9 item 2). Key patterns that additionalProperties cannot express (topic id shape, cross references) are checked by validate.js's checkIntegrity, mirroring contract/validate.py's two-phase approach.",
+  "type": "object",
+  "required": [
+    "schema_version", "profile_version", "updated_at", "topics", "trust", "boosts",
+    "mutes", "seen_penalty"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "profile_version": {
+      "description": "S10: this profile's own version number, one higher every save. The version history keeps every past value, append only.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "updated_at": {"$ref": "#/$defs/utc_timestamp"},
+    "topics": {
+      "description": "Ranking engine input (DESIGN section 4): per bucket affinity weight and recency half-life. Keyed by topic id, open set so adding a bucket needs no code change. must_know's affinity is zeroed by convention (OWNER-BRIEF derived); its floor comes from floor_slots, not affinity.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/topic_setting"}
+    },
+    "trust": {
+      "description": "R10: trust is device owned, keyed by source id (sources.json owns the id, lean is repo owned). A multiplier; a source with no entry here ranks at the ranker's default of 1.0.",
+      "type": "object",
+      "additionalProperties": {"type": "number", "minimum": 0, "maximum": 2}
+    },
+    "boosts": {
+      "description": "Flat boosts (DESIGN section 4): a capped additive term the ranker applies when a story matches.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/boost"}
+    },
+    "mutes": {"$ref": "#/$defs/mutes"},
+    "seen_penalty": {
+      "description": "R17: two weighted signals. opened takes the full penalty, shown (on screen 2s+, scrolled past) a smaller incremental one.",
+      "type": "object",
+      "required": ["opened", "shown"],
+      "additionalProperties": false,
+      "properties": {
+        "opened": {"type": "number", "minimum": 0, "maximum": 1},
+        "shown": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    }
+  },
+  "$defs": {
+    "utc_timestamp": {
+      "description": "RFC 3339 in UTC, second precision, Z suffix. Matches contract/pool.schema.json's utc_timestamp.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "topic_setting": {
+      "type": "object",
+      "required": ["label", "affinity", "half_life_hours", "enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "label": {"type": "string", "minLength": 1, "maxLength": 60},
+        "affinity": {"type": "number", "minimum": 0, "maximum": 1},
+        "half_life_hours": {"type": "number", "minimum": 1, "maximum": 168},
+        "enabled": {"type": "boolean"},
+        "floor_slots": {
+          "description": "Guaranteed slot count at the top of the front page (must_know). Absent or 0 means no floor.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        }
+      }
+    },
+    "boost": {
+      "type": "object",
+      "required": ["id", "label", "match_type", "match_value", "amount"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"},
+        "label": {"type": "string", "minLength": 1, "maxLength": 80},
+        "match_type": {"enum": ["topic", "keyword", "source"]},
+        "match_value": {"type": "string", "minLength": 1, "maxLength": 120},
+        "amount": {"type": "number", "minimum": -1, "maximum": 1}
+      }
+    },
+    "mutes": {
+      "type": "object",
+      "required": ["sources", "topics"],
+      "additionalProperties": false,
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 64}
+        },
+        "topics": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 32}
+        }
+      }
+    }
+  }
+}
