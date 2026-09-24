@@ -21,12 +21,17 @@ Worst case is (cap + extra) x sources articles, 8 x 61 = 488, which at the measu
 ~620 bytes per article stays under the 400KB target. Published clusters list only
 published articles; a cluster left with fewer than two is not published.
 
+S06: every configured source also gets a health entry (fetcher.health), carrying
+consecutive-empty and consecutive-error run counters forward from the previously
+published pool. See fetcher/health.py for where that state lives and why.
+
 Usage: python -m fetcher.fanout --out dist/pool.json --sources sources.json
 """
 import argparse
 import concurrent.futures
 import hashlib
 import json
+import os
 import socket
 import sys
 import time
@@ -39,6 +44,7 @@ from contract.validate import validate
 from fetcher.cluster import cluster_items, method_for
 from fetcher.taxonomy import validate_sources_taxonomy
 from fetcher.topics import load_topics, tag_article
+from fetcher.health import compute_source_health, fetch_previous_health
 from fetcher.fetch import (
     DEK_MAX,
     TITLE_MAX,
@@ -176,12 +182,17 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
 
 
 def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP,
-                      cluster_extra_cap=CLUSTER_EXTRA_CAP, timings=None, topics_doc=None):
+                      cluster_extra_cap=CLUSTER_EXTRA_CAP, timings=None, topics_doc=None,
+                      previous_health=None, previous_pool_status="absent"):
     """Turn fetch results for every source into one pool dict. Pure: no network, no clock.
 
     timings, if a dict is passed, receives the clustering wall time in seconds.
     topics_doc defaults to the repo's topics.json (S08); every article gets a
     deterministic "topics" tag list from its source's bucket and its own text.
+
+    S06: previous_health is the source_health block read back from the previously
+    published pool (fetcher.health.fetch_previous_health), or None/{} when there was
+    none to read; previous_pool_status records why, straight into the ledger.
     """
     if topics_doc is None:
         topics_doc = load_topics()
@@ -189,6 +200,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     drops = Counter()
     feed_states = Counter()
     per_source = {}
+    run_states = {}
     fetched_total = 0
 
     for source in sources:
@@ -196,15 +208,18 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
         data, transport_state = fetch_results[sid]
         if data is None:
             feed_states[transport_state] += 1
+            run_states[sid] = (transport_state, 0, None)
             continue
         try:
             root = parse_xml(data, leniency)
         except FeedError:
             feed_states["parse_error"] += 1
+            run_states[sid] = ("parse_error", 0, None)
             continue
         items = list(root.iter("item"))
         if not items:
             feed_states["empty"] += 1
+            run_states[sid] = ("empty", 0, None)
             continue
         feed_states["ok"] += 1
         fetched_total += len(items)
@@ -216,6 +231,8 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                                         source_bucket=source.get("bucket"), topics_doc=topics_doc)
             if article is not None:
                 kept.append(article)
+        item_time = max((a["published_at"] for a in kept), default=None)
+        run_states[sid] = ("ok", len(items), item_time)
 
     candidates, seen_ids = [], set()
     for source in sources:
@@ -258,23 +275,28 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     clusters = _published_clusters(all_clusters, {a["id"] for a in articles}, by_id,
                                     source_lean, source_syndication)
 
+    generated_at = _utc(now)
+    source_health = compute_source_health(sources, run_states, previous_health, generated_at)
+
     counts = {
         "fetched": fetched_total,
         "published": len(articles),
         "drops": dict(sorted(drops.items())),
         "leniency": dict(sorted(leniency.items())),
         "feed_states": {k: feed_states.get(k, 0) for k in FEED_STATES},
+        "previous_pool_status": previous_pool_status,
     }
     _assert_ledger_invariant(counts)
     return {
         "schema_version": 1,
-        "generated_at": _utc(now),
+        "generated_at": generated_at,
         "sources": [
             {"id": s["id"], "name": s["name"], "feed_url": s["feed_url"]} for s in sources
         ],
         "articles": articles,
         "clusters": clusters,
         "counts": counts,
+        "source_health": source_health,
     }
 
 
@@ -320,6 +342,10 @@ def main(argv=None):
     ap.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
     ap.add_argument("--retries", type=int, default=DEFAULT_RETRIES)
     ap.add_argument("--per-source-cap", type=int, default=PER_SOURCE_CAP)
+    # S06: never hard-code the live site here. The workflow sets PREVIOUS_POOL_URL
+    # (see .github/workflows/publish.yml); a local run with it unset simply starts
+    # every source's health counters at zero, recorded as previous_pool_status=absent.
+    ap.add_argument("--previous-pool-url", default=os.environ.get("PREVIOUS_POOL_URL", ""))
     args = ap.parse_args(argv)
 
     try:
@@ -330,10 +356,11 @@ def main(argv=None):
 
     t0 = time.monotonic()
     fetch_results = fetch_all(sources, timeout=args.timeout, retries=args.retries)
+    previous_health, previous_pool_status = fetch_previous_health(args.previous_pool_url)
     timings = {}
     pool = build_pool_fanout(
         sources, fetch_results, datetime.now(timezone.utc), per_source_cap=args.per_source_cap,
-        timings=timings,
+        timings=timings, previous_health=previous_health, previous_pool_status=previous_pool_status,
     )
     errors = validate(pool)
     if errors:
@@ -362,6 +389,11 @@ def main(argv=None):
         f"syndication_groups={len(syn_groups)} "
         f"topics={json.dumps(dict(sorted(topic_counts.items())))} "
         f"r16_lean_span_clusters={r16_clusters}/{len(pool['clusters'])}"
+    )
+    unhealthy = sorted(sid for sid, h in pool["source_health"].items() if h["unhealthy"])
+    print(
+        f"previous_pool_status={c['previous_pool_status']} "
+        f"unhealthy_sources={len(unhealthy)}/{len(sources)} {json.dumps(unhealthy)}"
     )
     return 0
 
