@@ -1,0 +1,6 @@
+# F3: deploy config for the Almanac feed relay Worker. No bindings, no secrets: the
+# allowlist and upstream URLs are hard-coded in worker.js (R: never print or need a
+# secret for this). Deployed with `npx wrangler deploy` from this directory.
+name = "almanac-relay"
+main = "worker.js"
+compatibility_date = "2026-09-24"
