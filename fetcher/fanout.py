@@ -37,6 +37,8 @@ from pathlib import Path
 
 from contract.validate import validate
 from fetcher.cluster import cluster_items, method_for
+from fetcher.taxonomy import validate_sources_taxonomy
+from fetcher.topics import load_topics, tag_article
 from fetcher.fetch import (
     DEK_MAX,
     TITLE_MAX,
@@ -61,7 +63,8 @@ MAX_WORKERS = 32
 
 
 class SourcesError(Exception):
-    """sources.json is missing a required field or has a duplicate id."""
+    """sources.json is missing a required field, has a duplicate id, or breaks the
+    closed lean/ownership/syndication shape (S08)."""
 
 
 def load_sources(path):
@@ -75,6 +78,9 @@ def load_sources(path):
         if s["id"] in seen:
             raise SourcesError(f"duplicate source id {s['id']!r}")
         seen.add(s["id"])
+    taxonomy_errors = validate_sources_taxonomy(sources)
+    if taxonomy_errors:
+        raise SourcesError("; ".join(taxonomy_errors))
     return sources
 
 
@@ -119,9 +125,13 @@ def fetch_all(sources, fetch_fn=None, timeout=DEFAULT_TIMEOUT, retries=DEFAULT_R
     return results
 
 
-def _extract_article(item, source_id, seen_urls, leniency, drops):
+def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=None, topics_doc=None):
     """Build one article dict from an <item>, or return None (the drop reason is
-    already counted). Mirrors fetcher.fetch.build_pool's per-item rules exactly."""
+    already counted). Mirrors fetcher.fetch.build_pool's per-item rules exactly.
+
+    S08: when topics_doc is given, every returned article also carries a deterministic
+    "topics" tag list, computed from source_bucket plus the article's own title and dek.
+    """
     raw_title = _clean(_text(item, "title"))
     title = _plain(raw_title)
     if title != raw_title:
@@ -160,15 +170,21 @@ def _extract_article(item, source_id, seen_urls, leniency, drops):
     dek = _plain(_text(item, "description"))[:DEK_MAX]
     if dek:
         article["dek"] = dek
+    if topics_doc is not None:
+        article["topics"] = tag_article(source_bucket, title, dek, topics_doc)
     return article
 
 
 def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP,
-                      cluster_extra_cap=CLUSTER_EXTRA_CAP, timings=None):
+                      cluster_extra_cap=CLUSTER_EXTRA_CAP, timings=None, topics_doc=None):
     """Turn fetch results for every source into one pool dict. Pure: no network, no clock.
 
     timings, if a dict is passed, receives the clustering wall time in seconds.
+    topics_doc defaults to the repo's topics.json (S08); every article gets a
+    deterministic "topics" tag list from its source's bucket and its own text.
     """
+    if topics_doc is None:
+        topics_doc = load_topics()
     leniency = Counter()
     drops = Counter()
     feed_states = Counter()
@@ -196,7 +212,8 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
         for item in items:
             # The duplicate url check waits for the publish step below, so a url capped
             # out of one feed can still publish from a later feed, as before S07.
-            article = _extract_article(item, sid, frozenset(), leniency, drops)
+            article = _extract_article(item, sid, frozenset(), leniency, drops,
+                                        source_bucket=source.get("bucket"), topics_doc=topics_doc)
             if article is not None:
                 kept.append(article)
 
@@ -236,7 +253,10 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             published_urls.add(article["url"])
             articles.append(article)
 
-    clusters = _published_clusters(all_clusters, {a["id"] for a in articles}, by_id)
+    source_lean = {s["id"]: s["lean"] for s in sources if s.get("lean")}
+    source_syndication = {s["id"]: s.get("syndication_group") or s["id"] for s in sources}
+    clusters = _published_clusters(all_clusters, {a["id"] for a in articles}, by_id,
+                                    source_lean, source_syndication)
 
     counts = {
         "fetched": fetched_total,
@@ -258,9 +278,17 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     }
 
 
-def _published_clusters(all_clusters, published, by_id):
+def _published_clusters(all_clusters, published, by_id, source_lean=None, source_syndication=None):
     """Restrict clusters to published articles. The id is the earliest published member's,
-    so it holds steady as later coverage joins."""
+    so it holds steady as later coverage joins.
+
+    S08: independent_sources counts distinct syndication groups among the cluster's
+    sources, not distinct source_ids, so two outlets carrying the same wire copy count
+    as one independent source (fixes the S07 deferral). lean_buckets is the deduplicated
+    set of lean buckets those sources cover.
+    """
+    source_lean = source_lean or {}
+    source_syndication = source_syndication or {}
     out = []
     for cl in all_clusters:
         ids = [i for i in cl["article_ids"] if i in published]
@@ -271,11 +299,16 @@ def _published_clusters(all_clusters, published, by_id):
         in_dups = {i for g in dups for i in g}
         units = len(dups) + sum(1 for i in ids if i not in in_dups)
         seed = min(ids, key=lambda i: (by_id[i]["published_at"], i))
+        cluster_source_ids = {by_id[i]["source_id"] for i in ids}
+        syn_groups = {source_syndication.get(sid, sid) for sid in cluster_source_ids}
+        leans = sorted({source_lean[sid] for sid in cluster_source_ids if sid in source_lean})
         out.append({
             "id": f"c_{seed}",
             "method": method_for(units, bool(dups)),
             "article_ids": ids,
             "near_duplicates": dups,
+            "independent_sources": len(syn_groups),
+            "lean_buckets": leans,
         })
     return out
 
@@ -311,6 +344,10 @@ def main(argv=None):
     body = dumps(pool).encode("utf-8")
     out.write_bytes(body)
     c = pool["counts"]
+    lean_counts = Counter(s["lean"] for s in sources if s.get("lean"))
+    syn_groups = {s.get("syndication_group") or s["id"] for s in sources}
+    topic_counts = Counter(t for a in pool["articles"] for t in a.get("topics", ()))
+    r16_clusters = sum(1 for cl in pool["clusters"] if len(cl["lean_buckets"]) >= 2)
     print(
         f"sources={len(sources)} feed_states={json.dumps(c['feed_states'])} "
         f"fetched={c['fetched']} published={c['published']} "
@@ -319,6 +356,12 @@ def main(argv=None):
         f"near_dup_groups={sum(len(k['near_duplicates']) for k in pool['clusters'])} "
         f"cluster_input={timings['cluster_input']} cluster_seconds={timings['cluster_seconds']:.2f} "
         f"bytes={len(body)} seconds={time.monotonic() - t0:.2f}"
+    )
+    print(
+        f"lean_buckets={json.dumps(dict(sorted(lean_counts.items())))} "
+        f"syndication_groups={len(syn_groups)} "
+        f"topics={json.dumps(dict(sorted(topic_counts.items())))} "
+        f"r16_lean_span_clusters={r16_clusters}/{len(pool['clusters'])}"
     )
     return 0
 
