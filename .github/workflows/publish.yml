@@ -5,10 +5,14 @@ name: publish
 # Python only; the pip install lives in the test job, which the schedule trigger
 # skips, so the cron path never installs Python packages. Hourly at :17, approved by
 # the owner 2026-09-24, from the measured run time (about 40s publish, 1 billed minute).
+# A push that touches only docs/ does not deploy: nothing under docs/ reaches the page,
+# and a docs push used to cancel the queued run of a code push (one pending per group).
 on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
   schedule:
     - cron: "17 * * * *"
 
