@@ -18,6 +18,9 @@
 //     the source picker shows each outlet's marker after its name, and a tap on it
 //     opens the lean sheet there too;
 //   - CLS on Today with markers on and off, and zero CSP violations.
+// The R43 trust flip and missing-body fallback need a story whose lead has no body and
+// whose other members with full text span two outlets; a pool without one skips them
+// (say so), and a copy of the pool with one such lead's has_body set false exercises them.
 // Exits 1 on any failure. Screenshots (optional) are named l1-*.png.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
