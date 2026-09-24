@@ -770,6 +770,65 @@ body {
   outline-offset: -2px;
 }
 
+/* S33: the Live tab (R21, R22). A small, calm dot ahead of the label, never a pulse
+   or blink (the design bar's "calm, not garish"): CSS generated content only, so
+   showing or hiding the tab (app/build.py at build, js/tabs.js on a pin or block)
+   never touches the button's own text node, the one the "labels are text only" proof
+   checks for. */
+.tab[data-section="live"]:not([hidden])::before {
+  content: "\25CF";
+  margin-right: 5px;
+  font-size: 7px;
+  vertical-align: middle;
+  color: var(--color-live-dot);
+}
+
+/* The Live panel's own header: a sub-strip naming the event, the same steady rhythm
+   as a module label, never a card. The overflow opens the S24 sheet with the owner's
+   pin and block overrides (live-actions.js); it reuses .story-overflow's own quiet
+   button, just repositioned for a header instead of a card corner. */
+.live-header {
+  position: relative;
+  padding: 20px calc(var(--space-gutter) + var(--touch-min)) 16px var(--space-gutter);
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.live-kicker {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  font-family: var(--type-meta-family);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
+  font-weight: var(--type-meta-weight);
+  letter-spacing: var(--type-meta-tracking);
+  text-transform: var(--type-meta-transform);
+  color: var(--color-tab-active);
+}
+
+.live-kicker::before {
+  content: "\25CF";
+  margin-right: 5px;
+  font-size: 7px;
+  color: var(--color-live-dot);
+}
+
+.live-title {
+  margin: 4px 0 0;
+  font-family: var(--type-river-headline-family);
+  font-size: var(--type-river-headline-size);
+  line-height: var(--type-river-headline-line-height);
+  font-weight: var(--type-river-headline-weight);
+  color: var(--color-headline);
+}
+
+.live-overflow {
+  position: absolute;
+  top: calc(20px - (var(--touch-min) - 22px) / 2);
+  right: calc(var(--space-gutter) - (var(--touch-min) - 22px) / 2);
+  color: var(--color-nav-inactive);
+}
+
 /* The pager: panels side by side, one per section, each its own vertical scroller, so
    a swipe snaps to the next section and every section keeps its own place. */
 .pager {

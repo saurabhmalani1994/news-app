@@ -48,11 +48,16 @@ LIGHT_COLOR = {
     "pressed": "#F0F0F0",
     "imagePlaceholder": "#EEEEEE",
     "themeColor": "#FFFFFF",
+    "liveDot": "#C4272C",
 }
 # Pressed row tint in dark: one step above the page, below the nav surface. An image box
 # before (or instead of) its photo (S39): a quiet step above the pressed tint, still
 # below the nav surface, so a slow or failed photo reads as an empty frame, not a panel.
-DARK_EXTRA = {"pressed": "#1E1E1E", "imagePlaceholder": "#222222", "themeColor": VALUES["color"]["bg"]}
+# S33: liveDot is this repo's own choice too, not measured (no live/breaking indicator
+# turned up in the granted reference captures): a calm, desaturated red, one value in
+# both themes, used only as decoration (a small dot, never text), so it is not part of
+# the AA text-contrast check below.
+DARK_EXTRA = {"pressed": "#1E1E1E", "imagePlaceholder": "#222222", "themeColor": VALUES["color"]["bg"], "liveDot": "#C4272C"}
 
 COLOR_ROLES = [
     # (token slug, JSON key)
@@ -69,6 +74,7 @@ COLOR_ROLES = [
     ("pressed", "pressed"),
     ("image-placeholder", "imagePlaceholder"),
     ("theme", "themeColor"),
+    ("live-dot", "liveDot"),
 ]
 
 WEIGHT_NUM = {"regular": 400, "medium": 500, "bold": 700, "bold-italic": 700}

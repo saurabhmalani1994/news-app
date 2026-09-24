@@ -106,6 +106,7 @@
   --color-pressed: #1E1E1E;
   --color-image-placeholder: #222222;
   --color-theme: #121212;
+  --color-live-dot: #C4272C;
 
   --type-hero-headline-family: var(--font-serif);
   --type-hero-headline-size: 31px;
@@ -194,5 +195,6 @@
     --color-pressed: #F0F0F0;
     --color-image-placeholder: #EEEEEE;
     --color-theme: #FFFFFF;
+    --color-live-dot: #C4272C;
   }
 }
