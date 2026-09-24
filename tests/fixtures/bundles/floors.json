@@ -1,0 +1,11 @@
+{
+ "about": "B1 CI floors: the current clusterer (fetcher.cluster.cluster_items) run on each gold fixture must score at least these. Floors only ratchet up: set a fixture's floors from `python -m fetcher.bundle_eval score <fixture>` (the S07 re-run line), rounded down to 4 decimals, and never lower one. Every gold_*.json needs an entry here.",
+ "gold_2026-09-24.json": {
+  "pair_precision": 0.8484,
+  "pair_recall": 0.2198,
+  "purity": 0.738,
+  "bcubed_precision": 0.9633,
+  "bcubed_recall": 0.8676,
+  "bcubed_f1": 0.913
+ }
+}
