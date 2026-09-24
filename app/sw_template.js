@@ -22,6 +22,15 @@
 // Update flow: install calls skipWaiting() and activate claims every open page, so a
 // fixed worker replaces a broken one at once instead of waiting for every tab to
 // close. That is what lets a phone stuck on the S18 worker heal on its own.
+//
+// H2: a page and its scripts always come from one build. Every script, stylesheet and
+// shell data file is named `?v=<build>` by the page that uses it and precached under
+// that exact key, so a new page fetched over the network never finds an older build's
+// file in an older cache (the You page crash: U2's page ran S10's cached script). A page
+// is stored only when it is this worker's own build (its almanac-build meta), so the
+// offline copy always matches this cache. Activate keeps the one previous build's cache
+// next to this one, so a page from that build still open when this worker takes over
+// keeps getting its own files; every older cache is deleted.
 import { STRATEGY, strategyFor } from "./js/sw-routes.js";
 
 const VERSION = "@@CACHE_VERSION@@";
@@ -33,6 +42,18 @@ const IMAGE_MAX_ENTRIES = 60;
 const IMAGE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const PRECACHE_URLS = @@PRECACHE_URLS@@;
 const NAVIGATION_TIMEOUT_MS = 3000;
+// H2: when this cache was filled, so activate can tell the previous build from older ones.
+const INSTALLED_URL = new URL("/__sw-installed__", self.location.origin).href;
+const BUILD_MARK = `<meta name="almanac-build" content="${VERSION}">`;
+
+/** True when a page response is this worker's own build. */
+async function isThisBuild(response) {
+  try {
+    return (await response.clone().text()).includes(BUILD_MARK);
+  } catch {
+    return false;
+  }
+}
 
 /** A response Chrome will accept for a navigation. A fetch that followed a redirect
  * carries `redirected: true`, and Chrome fails a navigation answered with one
@@ -51,8 +72,18 @@ async function precache() {
   await Promise.all(PRECACHE_URLS.map(async (url) => {
     const response = await fetch(new Request(url, { cache: "no-cache" }));
     if (!response.ok) throw new Error(`precache ${url}: HTTP ${response.status}`);
+    const page = !/[.?]/.test(url.split("/").pop()) || url.endsWith("/");
+    // H2: a page from another deploy (one landed mid-install) fails this install; the
+    // worker of that newer deploy installs instead.
+    if (page && !(await isThisBuild(response))) throw new Error(`precache ${url}: not build ${VERSION}`);
     await cache.put(url, await withoutRedirect(response));
   }));
+  await cache.put(INSTALLED_URL, new Response(String(Date.now())));
+}
+
+async function installedAt(key) {
+  const stamp = await (await caches.open(key)).match(INSTALLED_URL);
+  return stamp ? Number(await stamp.text()) || 0 : 0;
 }
 
 self.addEventListener("install", (event) => {
@@ -62,10 +93,12 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(
-      keys.filter((key) => key.startsWith("almanac-shell-") && key !== SHELL_CACHE)
-        .map((key) => caches.delete(key)),
-    );
+    const others = keys.filter((key) => key.startsWith("almanac-shell-") && key !== SHELL_CACHE);
+    // H2: keep the newest other stamped cache (the previous build, for a page of it that
+    // is still open); an H1 or older cache carries no stamp and is always deleted.
+    const dated = await Promise.all(others.map(async (key) => [key, await installedAt(key)]));
+    const previous = dated.filter(([, at]) => at > 0).sort((a, b) => b[1] - a[1])[0]?.[0];
+    await Promise.all(others.filter((key) => key !== previous).map((key) => caches.delete(key)));
     await self.clients.claim();
   })());
 });
@@ -109,6 +142,9 @@ async function pageNetworkFirst(event) {
   const network = fetch(request).then(async (response) => {
     if (response.type !== "basic" || !response.ok || !PAGE_KEYS.has(key)) return response;
     const page = await withoutRedirect(response);
+    // H2: only this build's page is stored, so the offline copy always matches this
+    // cache's scripts; a newer deploy's page is shown but its own worker caches it.
+    if (!(await isThisBuild(page))) return page;
     const cache = await caches.open(SHELL_CACHE);
     await cache.put(key, page.clone());
     return page;
@@ -124,10 +160,18 @@ async function pageNetworkFirst(event) {
   return first || network; // nothing cached: the network's own answer, or its error
 }
 
+/** Shell files by their exact versioned URL. H2: a URL of another build is looked for
+ * in the previous build's cache before the network, so a page of that build still open
+ * gets its own file. */
 async function shellCacheFirst(request) {
   const cache = await caches.open(SHELL_CACHE);
   const cached = await cache.match(request);
   if (cached) return cached;
+  const v = new URL(request.url).searchParams.get("v");
+  if (v && v !== VERSION) {
+    const older = await caches.match(request);
+    if (older) return older;
+  }
   return fetch(request);
 }
 

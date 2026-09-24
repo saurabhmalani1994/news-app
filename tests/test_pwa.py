@@ -60,7 +60,8 @@ def test_index_and_profile_pages_link_the_manifest_and_apple_touch_icon(tmp_path
         html = (out / name).read_text(encoding="utf-8")
         assert '<link rel="manifest" href="manifest.webmanifest">' in html
         assert '<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">' in html
-        assert '<script src="js/sw-register.js" defer></script>' in html
+        # H2: every script URL carries the build stamp (test_h2_* below).
+        assert re.search(r'<script src="js/sw-register\.js\?v=[0-9a-f]{16}" defer></script>', html)
 
 
 # ---- icons themselves: real PNGs, the sizes the manifest claims -----------
@@ -224,3 +225,61 @@ def test_write_service_worker_returns_the_path_it_wrote(tmp_path):
     path = write_service_worker(out)
     assert path == out / "sw.js"
     assert path.read_text(encoding="utf-8") == before
+
+
+# ---- H2: a page and its scripts and styles always come from one build --------
+
+def _version(out):
+    return re.search(r'const VERSION = "([0-9a-f]{16})";', (out / "sw.js").read_text(encoding="utf-8")).group(1)
+
+
+def test_h2_every_page_names_its_scripts_and_styles_with_its_own_build(tmp_path):
+    out = _build(tmp_path)
+    version = _version(out)
+    for name in ("index.html", "profile.html", "health.html"):
+        html = (out / name).read_text(encoding="utf-8")
+        assert f'<meta name="almanac-build" content="{version}">' in html, name
+        urls = re.findall(r'<(?:script|link)\b[^>]*?\s(?:src|href)="([^"]+\.(?:js|css)(?:\?[^"]*)?)"', html)
+        assert urls, name
+        for url in urls:
+            assert url.endswith(f".js?v={version}") or url.endswith(f".css?v={version}"), (name, url)
+
+
+def test_h2_every_module_import_and_shell_fetch_is_stamped(tmp_path):
+    out = _build(tmp_path)
+    version = _version(out)
+    for script in (out / "js").rglob("*.js"):
+        text = script.read_text(encoding="utf-8")
+        for spec in re.findall(r"""(?:\bfrom|\bimport)\s*\(?\s*["'](\.{1,2}/[^"']+)["']""", text):
+            assert spec.endswith(f".js?v={version}"), (script.name, spec)
+        for name in ("profile.schema.json", "source-catalog.json", "js/rerank.js"):
+            assert f'"{name}"' not in text, (script.name, name)
+    assert f'"js/rerank.js?v={version}"' in (out / "js" / "rank-gate.js").read_text(encoding="utf-8")
+
+
+def test_h2_precache_keys_are_exactly_the_stamped_urls(tmp_path):
+    out = _build(tmp_path)
+    version = _version(out)
+    sw = (out / "sw.js").read_text(encoding="utf-8")
+    urls = re.findall(r'"([^"]+)"', re.search(r"const PRECACHE_URLS = \[(.*?)\];", sw, re.S).group(1))
+    for must in (f"/js/profile-screen.js?v={version}", f"/profile.css?v={version}", f"/style.css?v={version}",
+                 f"/profile.schema.json?v={version}", f"/source-catalog.json?v={version}", "/", "/profile",
+                 "/manifest.webmanifest", "/icons/icon-192.png"):
+        assert must in urls, must
+    assert not [u for u in urls if re.search(r"\.(js|css)$", u)]  # no unstamped script or style
+
+
+def test_h2_the_version_ignores_its_own_stamp_so_a_rebuild_is_identical(tmp_path):
+    out = _build(tmp_path)
+    before = {p: p.read_bytes() for p in out.rglob("*") if p.is_file()}
+    write_service_worker(out)
+    assert {p: p.read_bytes() for p in out.rglob("*") if p.is_file()} == before
+
+
+def test_h2_worker_stores_only_its_own_builds_pages_and_keeps_the_previous_cache():
+    text = (ROOT / "app" / "sw_template.js").read_text(encoding="utf-8")
+    assert 'const BUILD_MARK = `<meta name="almanac-build" content="${VERSION}">`;' in text
+    assert "if (!(await isThisBuild(page))) return page;" in text
+    assert "not build ${VERSION}" in text  # a page of another build fails the install
+    assert "const previous = dated.filter" in text
+    assert 'if (v && v !== VERSION)' in text
