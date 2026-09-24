@@ -29,13 +29,21 @@ GOOD2 = (
 EMPTY_FEED = b'<rss version="2.0"><channel></channel></rss>'
 BROKEN_FEED = b"<rss><channel><item><title>Unclosed</channel>"
 
+def _src(id_, name, url, bucket="general", lean="center", syndication_group=None):
+    return {
+        "id": id_, "name": name, "feed_url": url, "bucket": bucket,
+        "lean": lean, "lean_basis": "test fixture, not a real rating",
+        "syndication_group": syndication_group or id_,
+    }
+
+
 SOURCES = [
-    {"id": "good1", "name": "Good One", "feed_url": "https://good1.example/feed.xml", "bucket": "general"},
-    {"id": "good2", "name": "Good Two", "feed_url": "https://good2.example/feed.xml", "bucket": "general"},
-    {"id": "slow", "name": "Slow Feed", "feed_url": "https://slow.example/feed.xml", "bucket": "general"},
-    {"id": "missing", "name": "Missing Feed", "feed_url": "https://missing.example/feed.xml", "bucket": "general"},
-    {"id": "empty", "name": "Empty Feed", "feed_url": "https://empty.example/feed.xml", "bucket": "general"},
-    {"id": "broken", "name": "Broken Feed", "feed_url": "https://broken.example/feed.xml", "bucket": "general"},
+    _src("good1", "Good One", "https://good1.example/feed.xml"),
+    _src("good2", "Good Two", "https://good2.example/feed.xml"),
+    _src("slow", "Slow Feed", "https://slow.example/feed.xml"),
+    _src("missing", "Missing Feed", "https://missing.example/feed.xml"),
+    _src("empty", "Empty Feed", "https://empty.example/feed.xml"),
+    _src("broken", "Broken Feed", "https://broken.example/feed.xml"),
 ]
 
 
