@@ -79,6 +79,14 @@
         "blocked_labels": {"type": "array", "maxItems": 40, "items": {"type": "string", "minLength": 1, "maxLength": 200}}
       }
     },
+    "display": {
+      "description": "U1/U2 display settings, optional: an absent object or field takes the default. summaries: \"all\" shows a summary under every story, \"top\" only under the lead stories. Default \"all\".",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "summaries": {"enum": ["all", "top"]}
+      }
+    },
     "seen_penalty": {
       "description": "R17: two weighted signals. opened takes the full penalty, shown (on screen 2s+, scrolled past) a smaller incremental one.",
       "type": "object",

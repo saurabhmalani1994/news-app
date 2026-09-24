@@ -27,6 +27,7 @@ from app.frontpage import (CHARS_PER_LINE, DEK_LINES, clean_dek, front_page, pas
                            run_ranker, source_ownership)
 from app.images import THUMB_PX, credit_text, hero_box, hero_media, hero_worthy, image_url, media_for, thumb_ok
 from app.serviceworker import write_service_worker
+from app.source_catalog import write as write_source_catalog
 from app.typography import smart_quotes
 
 ROOT = Path(__file__).resolve().parent
@@ -653,6 +654,8 @@ def main(argv=None):
     # S17: the Health screen, off the You tab, built the same way as the front page
     # (the pool's own ledger and source_health, embedded once, at build time).
     (out / "health.html").write_text(render_health(pool), encoding="utf-8")
+    # U2: the You page's source picker reads names, groups, leans and health from here.
+    write_source_catalog(pool, out)
     # S37: the CSP and other security headers, for the pages just written (app.csp).
     pages = {page.name: page.read_text(encoding="utf-8") for page in sorted(out.glob("*.html"))}
     (out / "_headers").write_text(headers_file(pages), encoding="utf-8")

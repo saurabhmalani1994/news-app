@@ -40,6 +40,9 @@ export const STARTER_TOPICS = Object.freeze({
 // smaller incremental one.
 export const STARTER_SEEN_PENALTY = Object.freeze({ opened: 1.0, shown: 0.25 });
 
+// U1/U2: display settings. summaries is "all" (a summary under every story) or "top".
+export const STARTER_DISPLAY = Object.freeze({ summaries: "all" });
+
 /** A fresh default profile. Pass `timestamp` in tests for a deterministic value. */
 export function buildDefaultProfile(timestamp = nowIso()) {
   return {
@@ -54,5 +57,6 @@ export function buildDefaultProfile(timestamp = nowIso()) {
     passes: structuredClone(PASS_DEFAULTS),
     standing_stories: structuredClone(STANDING_DEFAULTS),
     live_overrides: structuredClone(LIVE_OVERRIDES_DEFAULTS),
+    display: structuredClone(STARTER_DISPLAY),
   };
 }

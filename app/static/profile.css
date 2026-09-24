@@ -389,3 +389,256 @@ a.setting-row:focus-visible {
   outline: 2px solid var(--color-headline);
   outline-offset: -2px;
 }
+
+/* U2: the redesigned You page and its sub-views (js/profile-screen.js). Same rows, same
+   single hairline, same sans chrome; only a few new shapes: a right-hand value with a
+   chevron on a row that opens something, an on/off switch, the level control (four
+   words on one line, the chosen one underlined like an active tab), a full-width
+   slider line, and the source picker's search field and group heads. */
+/* Full width with the title centered inside it, so a view change swaps the text but
+   never moves the heading's own box (a centered shrink-wrapped box would shift). */
+.wordmark--page {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0 calc(var(--space-gutter) + 36px);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-section > .setting-row + .setting-row {
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+#topics-list > .setting-row:first-child {
+  border-top: none;
+}
+
+.setting-row[hidden],
+.settings-section[hidden],
+.settings-hint[hidden] {
+  display: none;
+}
+
+label.setting-row,
+a.setting-row {
+  -webkit-tap-highlight-color: transparent;
+}
+
+label.setting-row {
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+label.setting-row:active {
+  background: var(--color-pressed);
+}
+
+.setting-end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.setting-end .setting-value {
+  color: var(--color-meta);
+}
+
+.setting-chevron {
+  font-family: var(--type-tab-label-family);
+  font-size: 22px;
+  line-height: 20px;
+  position: relative;
+  top: -1px;
+  color: var(--color-meta-tertiary);
+}
+
+.setting-unit {
+  font-family: var(--type-tab-label-family);
+  font-size: 15px;
+  color: var(--color-meta);
+}
+
+.setting-row-text {
+  flex: 1 1 auto;
+}
+
+/* An on/off switch drawn from the checkbox itself: no image, no extra element. The
+   track is the one rounded shape on the page, as on the platform's own switch. */
+input.switch {
+  flex: none;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: 10px;
+  background: var(--color-divider);
+  appearance: none;
+  -webkit-appearance: none;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+input.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-meta);
+  transition: transform var(--motion-duration) var(--motion-ease), background-color var(--motion-duration) var(--motion-ease);
+}
+
+input.switch:checked {
+  background: var(--color-headline);
+}
+
+input.switch:checked::after {
+  background: var(--color-bg);
+  transform: translateX(16px);
+}
+
+input.switch:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: 2px;
+}
+
+/* The level control: four plain words, the chosen one in the headline color with a
+   2px underline, the rest quiet, the same language as the section tabs. */
+.level-control {
+  display: flex;
+  padding: 0 var(--space-gutter);
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.level-option {
+  flex: 1 1 0;
+  min-height: var(--touch-min);
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+  font-family: var(--type-tab-label-family);
+  font-size: var(--type-tab-label-size);
+  font-weight: var(--type-tab-label-weight);
+  color: var(--color-tab-inactive);
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--motion-duration) var(--motion-ease), box-shadow var(--motion-duration) var(--motion-ease);
+}
+
+.level-option[aria-checked="true"] {
+  color: var(--color-tab-active);
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--color-tab-active);
+}
+
+.level-option:active {
+  background: var(--color-pressed);
+}
+
+.level-option:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.settings-hint--after {
+  padding-top: 14px;
+  padding-bottom: 20px;
+}
+
+.settings-hint--top {
+  padding-top: 20px;
+}
+
+/* A slider row: label and explanation on the left, the number on the right, the slider
+   on its own full-width line underneath. */
+.setting-row--slider {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  row-gap: 10px;
+}
+
+.setting-value--num {
+  font-variant-numeric: tabular-nums;
+}
+
+.setting-slider {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 0;
+  accent-color: var(--color-headline);
+}
+
+.boost-block {
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.settings-section > h2 + .boost-block,
+.boost-block > .setting-row {
+  border-top: none;
+}
+
+.text-field--area {
+  display: block;
+  box-sizing: border-box;
+  min-height: 72px;
+  line-height: 21px;
+  resize: vertical;
+}
+
+/* The source picker. The search field is the same bottom-ruled field as every other
+   text input here; group heads carry the region label and a quiet "turn all" action. */
+.search-block {
+  padding: 16px var(--space-gutter) 6px;
+}
+
+.search-field {
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 0;
+}
+
+.search-count {
+  margin: 10px 0 0;
+  font-family: var(--type-bottom-nav-label-family);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-meta);
+}
+
+.group-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.group-head .settings-label {
+  flex: 1 1 auto;
+}
+
+.group-action {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  min-height: 44px;
+  margin-right: var(--space-gutter);
+  padding: 0 0 8px;
+  font-weight: 500;
+}
+
+.settings-section > .setting-row.is-first {
+  border-top: none;
+}
+
+.source-row--unwell .setting-sublabel {
+  color: var(--color-headline);
+}
+
+.colophon--settings {
+  margin-top: 8px;
+}

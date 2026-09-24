@@ -28,7 +28,8 @@ SHELL_EXTENSIONS = (".html", ".css", ".js", ".woff2", ".webmanifest")
 # ProfileStore needs it to validate a save, and offline is exactly when a mute or a
 # boost (story-actions.js) or a profile edit (profile-screen.js) most needs to still
 # work. Every other .json (pool.json, bodies/*) stays out, fetched at runtime instead.
-SHELL_EXTRA_FILES = ("profile.schema.json",)
+# U2: source-catalog.json likewise: the You page's source picker must work offline.
+SHELL_EXTRA_FILES = ("profile.schema.json", "source-catalog.json")
 
 
 def precache_files(dist: Path):
