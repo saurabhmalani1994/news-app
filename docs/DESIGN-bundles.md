@@ -109,9 +109,11 @@ The intermediate pairs are data in geo.json (`intermediate`), repo-owned and dir
 | outlet country | story country | why |
 |---|---|---|
 | HK | CN | R40 answer 5: between mainland and other foreign outlets (SCMP, HKFP) |
-| MO | CN | My call: the same special administrative region status as Hong Kong; no Macau feed today |
+| MO | CN | R42: same special administrative region status as Hong Kong; no Macau feed today |
+| MY | SG | R42: Malaysian outlets on Singapore stories |
+| SG | MY | R42: Singaporean outlets on Malaysian stories |
 
-Pairs I would suggest are open questions, not decisions (section 9). Exile newsrooms (Radio Dabanga, based in the Netherlands, covering Sudan) keep the earlier proposal, `country` is the country a newsroom reports for, so Dabanga is SD; R40 did not rule on it.
+Taiwan outlets on China stories are **overseas**, the third tier (R42), so no row. Exile newsrooms are **intermediate** on the country they cover (R42): a source carries `country` (where it is based) and `exile_of` (the country it reports for), and the pair (outlet, `exile_of`) counts as intermediate. Radio Dabanga is NL with `exile_of: SD`; B4 sets `exile_of` for any other exile newsroom in sources.json with a cited reason.
 Singapore today: scaffold netting (Straits Times, CNA: both Local) and the okapi birth (Straits Times, Mothership). Overseas coverage of Singapore stories is thin in today's feeds (VnExpress's fake S$10,000 notes piece stood alone), so the gold set must include Singapore stories to test it.
 
 ## 4a. Best version
@@ -210,7 +212,9 @@ Not queued: B7 embeddings-term (fetcher, sonnet), only if B2 misses recall; lowe
 8. Word marks on by default, after a design sweep for an unobtrusive treatment in B6.
 9. Full text in the reader for all sources, now that Access is on (R39).
 
-New open questions:
-1. More intermediate pairs: Taiwan outlets on China stories? Malaysian and Singaporean outlets on each other's stories?
-2. Exile newsrooms: `country` by the country they cover (Dabanga as SD)? R40 answer 5 covered only the Hong Kong half of the old question.
-3. Macau as intermediate on China stories, as I judged it, or leave it out until a Macau feed exists?
+## 10. Owner rulings, R42
+
+1. Taiwan outlets are the third tier (overseas) on China stories.
+2. Malaysian and Singaporean outlets are intermediate on each other's stories.
+3. Exile newsrooms are intermediate on the country they cover (`exile_of`).
+4. Macau is intermediate on China stories, like Hong Kong.
