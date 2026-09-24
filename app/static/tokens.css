@@ -1,0 +1,196 @@
+/* GENERATED FILE. Run `python -m app.design.generate_tokens` to rebuild.
+   Source: app/design/nyt-design-values.json (measured, R3, R14) plus this repo's own
+   light palette and font metrics (see generate_tokens.py). Do not hand edit. */
+
+@font-face {
+  font-family: 'Newsreader';
+  src: url('fonts/Newsreader-Bold-latin.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Newsreader';
+  src: url('fonts/Newsreader-Regular-latin.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Libre Franklin';
+  src: url('fonts/LibreFranklin-Medium-latin.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Newsreader Fallback';
+  src: local('Georgia Bold'), local('Georgia-Bold');
+  font-weight: 700;
+  size-adjust: 85.53%;
+  ascent-override: 85.93%;
+  descent-override: 30.98%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Newsreader Fallback Android';
+  src: local('Noto Serif Bold'), local('NotoSerif-Bold');
+  font-weight: 700;
+  size-adjust: 86.97%;
+  ascent-override: 84.51%;
+  descent-override: 30.47%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Newsreader Fallback';
+  src: local('Georgia');
+  font-weight: 400;
+  size-adjust: 96.65%;
+  ascent-override: 76.05%;
+  descent-override: 27.42%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Newsreader Fallback Android';
+  src: local('Noto Serif'), local('NotoSerif-Regular');
+  font-weight: 400;
+  size-adjust: 84.69%;
+  ascent-override: 86.79%;
+  descent-override: 31.29%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Libre Franklin Fallback';
+  src: local('Arial');
+  font-weight: 500;
+  size-adjust: 105.1%;
+  ascent-override: 91.91%;
+  descent-override: 23.41%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Libre Franklin Fallback Android';
+  src: local('Roboto Medium'), local('Roboto-Medium');
+  font-weight: 500;
+  size-adjust: 104.9%;
+  ascent-override: 92.09%;
+  descent-override: 23.45%;
+  line-gap-override: 0%;
+}
+
+:root {
+  color-scheme: dark light;
+  --font-serif: 'Newsreader', 'Newsreader Fallback', 'Newsreader Fallback Android', Georgia, serif;
+  --font-sans: 'Libre Franklin', 'Libre Franklin Fallback', 'Libre Franklin Fallback Android', Arial, sans-serif;
+
+  /* Color: dark is the primary theme (R3). Overridden below only when the OS
+     explicitly prefers light; no preference stays dark. */
+  --color-bg: #121212;
+  --color-nav-surface: #2A2A2A;
+  --color-headline: #F8F8F8;
+  --color-dek: #BBBBBB;
+  --color-meta: #BBBBBB;
+  --color-meta-tertiary: #A3A3A3;
+  --color-divider: #3C3C3C;
+  --color-tab-active: #F8F8F8;
+  --color-tab-inactive: #BBBBBB;
+  --color-nav-inactive: #A3A3A3;
+  --color-pressed: #1E1E1E;
+  --color-theme: #121212;
+
+  --type-hero-headline-family: var(--font-serif);
+  --type-hero-headline-size: 31px;
+  --type-hero-headline-line-height: 33px;
+  --type-hero-headline-weight: 700;
+  --type-hero-headline-tracking: 0em;
+  --type-hero-headline-transform: none;
+  --type-river-headline-family: var(--font-serif);
+  --type-river-headline-size: 22.5px;
+  --type-river-headline-line-height: 23px;
+  --type-river-headline-weight: 700;
+  --type-river-headline-tracking: 0em;
+  --type-river-headline-transform: none;
+  --type-text-only-headline-family: var(--font-serif);
+  --type-text-only-headline-size: 16.5px;
+  --type-text-only-headline-line-height: 22px;
+  --type-text-only-headline-weight: 700;
+  --type-text-only-headline-tracking: 0em;
+  --type-text-only-headline-transform: none;
+  --type-dek-family: var(--font-serif);
+  --type-dek-size: 16.5px;
+  --type-dek-line-height: 22px;
+  --type-dek-weight: 400;
+  --type-dek-tracking: 0em;
+  --type-dek-transform: none;
+  --type-meta-family: var(--font-sans);
+  --type-meta-size: 10.5px;
+  --type-meta-line-height: 11px;
+  --type-meta-weight: 500;
+  --type-meta-tracking: 0.08em;
+  --type-meta-transform: uppercase;
+  --type-tab-label-family: var(--font-sans);
+  --type-tab-label-size: 15px;
+  --type-tab-label-line-height: 16px;
+  --type-tab-label-weight: 500;
+  --type-tab-label-tracking: 0em;
+  --type-tab-label-transform: none;
+  --type-bottom-nav-label-family: var(--font-sans);
+  --type-bottom-nav-label-size: 11.5px;
+  --type-bottom-nav-label-line-height: 16px;
+  --type-bottom-nav-label-weight: 500;
+  --type-bottom-nav-label-tracking: 0em;
+  --type-bottom-nav-label-transform: none;
+  --type-article-headline-family: var(--font-serif);
+  --type-article-headline-size: 37.5px;
+  --type-article-headline-line-height: 39px;
+  --type-article-headline-weight: 700;
+  --type-article-headline-tracking: 0em;
+  --type-article-headline-transform: none;
+  --type-body-family: var(--font-serif);
+  --type-body-size: 18.5px;
+  --type-body-line-height: 25px;
+  --type-body-weight: 400;
+  --type-body-tracking: 0em;
+  --type-body-transform: none;
+  --type-wordmark-size: 28px;
+  --type-wordmark-line-height: 32px;
+  --type-wordmark-tracking: -0.01em;
+  --space-gutter: 20px;
+  --space-headline-to-dek: 14px;
+  --space-dek-to-meta: 15px;
+  --space-block-gap: 37px;
+  --divider-weight: 1px;
+  --divider-inset: 20px;
+  --chrome-masthead: 56px;
+  --chrome-tab-bar: 50px;
+  --chrome-bottom-nav: 56px;
+  --touch-min: 48px;
+  --viewport-primary: 360px;
+  --motion-duration: 160ms;
+  --motion-ease: cubic-bezier(0, 0, 0.2, 1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-bg: #FFFFFF;
+    --color-nav-surface: #F7F7F7;
+    --color-headline: #121212;
+    --color-dek: #4D4D4D;
+    --color-meta: #5A5A5A;
+    --color-meta-tertiary: #6B6B6B;
+    --color-divider: #E2E2E2;
+    --color-tab-active: #121212;
+    --color-tab-inactive: #5A5A5A;
+    --color-nav-inactive: #6B6B6B;
+    --color-pressed: #F0F0F0;
+    --color-theme: #FFFFFF;
+  }
+}

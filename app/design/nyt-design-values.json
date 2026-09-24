@@ -1,0 +1,147 @@
+{
+  "source": "research/nyt-capture, Galaxy S23 1080x2340@480dpi, scale 3.0, measured 2026-09-23",
+  "scale": 3.0,
+  "color": {
+    "bg": "#121212",
+    "surface": "#2A2A2A",
+    "text": "#F8F8F8",
+    "textDek": "#BBBBBB",
+    "textMeta": "#BBBBBB",
+    "textMetaTertiary": "#A3A3A3",
+    "ruleThin": "#3C3C3C",
+    "ruleHeavy": "#3C3C3C",
+    "tabActive": "#F8F8F8",
+    "tabInactive": "#BBBBBB",
+    "navInactive": "#A3A3A3",
+    "osNavBar": "#0B0B0B"
+  },
+  "rule": {
+    "thinPx": 1,
+    "heavyPx": 1,
+    "thinInsetDp": 20,
+    "note": "single hairline weight confirmed app-wide; no distinct heavy rule exists, heavyPx==thinPx intentionally"
+  },
+  "space": {
+    "gutterDp": 20,
+    "headlineToDekDp": 14,
+    "dekToMetaDp": 15,
+    "blockGapDp": 37
+  },
+  "type": {
+    "heroHeadline": {
+      "sizeDp": 30,
+      "lineHeightDp": 33,
+      "weight": "bold",
+      "case": "sentence",
+      "trackingEm": 0,
+      "confidence": "INFERRED",
+      "capDp": 20.7
+    },
+    "riverHeadline": {
+      "sizeDp": 21,
+      "lineHeightDp": 23,
+      "weight": "bold",
+      "case": "sentence",
+      "trackingEm": 0,
+      "confidence": "INFERRED",
+      "capDp": 15.0
+    },
+    "textOnlyHeadline": {
+      "sizeDp": 15,
+      "lineHeightDp": 22,
+      "weight": "bold",
+      "case": "sentence",
+      "trackingEm": 0,
+      "confidence": "INFERRED",
+      "capDp": 10.7
+    },
+    "dek": {
+      "sizeDp": 16,
+      "lineHeightDp": 22,
+      "weight": "regular",
+      "case": "sentence",
+      "trackingEm": 0,
+      "confidence": "INFERRED",
+      "capDp": 10.9
+    },
+    "meta": {
+      "sizeDp": 11,
+      "lineHeightDp": 11,
+      "weight": "medium",
+      "case": "upper",
+      "trackingEm": 0.08,
+      "confidence": "INFERRED",
+      "capDp": 7.7
+    },
+    "tabLabel": {
+      "sizeDp": 16,
+      "lineHeightDp": 16,
+      "weight": "medium",
+      "case": "title",
+      "trackingEm": 0,
+      "confidence": "INFERRED",
+      "capDp": 11.3
+    },
+    "bottomNavLabel": {
+      "sizeDp": 12,
+      "lineHeightDp": 16,
+      "weight": "medium",
+      "case": "title",
+      "trackingEm": 0,
+      "confidence": "INFERRED",
+      "capDp": 8.7
+    },
+    "articleHeadline": {
+      "sizeDp": 36,
+      "lineHeightDp": 39,
+      "weight": "bold-italic",
+      "case": "sentence",
+      "trackingEm": 0,
+      "confidence": "INFERRED",
+      "capDp": 25.0
+    },
+    "bodyText": {
+      "sizeDp": 18,
+      "lineHeightDp": 25,
+      "weight": "regular",
+      "case": "sentence",
+      "trackingEm": 0,
+      "confidence": "INFERRED",
+      "capDp": 12.3
+    },
+    "youSectionHeading": {
+      "sizeDp": 18,
+      "lineHeightDp": 18,
+      "weight": "bold",
+      "case": "sentence",
+      "trackingEm": 0,
+      "confidence": "INFERRED"
+    },
+    "youKicker": {
+      "sizeDp": 11,
+      "lineHeightDp": 11,
+      "weight": "bold",
+      "case": "upper",
+      "trackingEm": 0.08,
+      "confidence": "INFERRED"
+    },
+    "youMeta": {
+      "sizeDp": 11,
+      "lineHeightDp": 11,
+      "weight": "medium",
+      "case": "upper",
+      "trackingEm": 0.06,
+      "confidence": "INFERRED"
+    }
+  },
+  "chrome": {
+    "tabBarDp": 50,
+    "bottomNavDp": 56,
+    "mastheadDp": 56
+  },
+  "image": {
+    "heroAspect": "1:1",
+    "thumbDp": 88,
+    "thumbAspect": "1:1"
+  }
+}
