@@ -37,9 +37,15 @@ added as it lands. Work outside the repo for steps 1 to 5; the raw dump is never
    cancelled, dispatch again after the other run finishes.
 2. Wait for it: `gh run list --workflow publish.yml --event workflow_dispatch --limit 1`,
    then `gh run watch <run id> --exit-status`.
+   The upload is the job's last step and may fail without failing the run, so check it:
+   `gh api repos/saurabhmalani1994/news-app/actions/runs/<run id>/artifacts --jq '.artifacts[] | {name, size_in_bytes, expires_at}'`
+   Empty means the upload was refused. On 2026-09-24 the account's Actions artifact
+   storage quota was full ("Artifact storage quota has been hit", run 36070646825);
+   GitHub recalculates usage every 6 to 12 hours. Retry later rather than raising a
+   spending limit (the owner wants no charges beyond the free plan).
 3. Download within 7 days (the artifact's retention):
    `gh run download <run id> --name candidates --dir <scratch>`
-   gives `<scratch>/candidates.json`: every pre-cap candidate (about 4,000) with id,
+   gives `<scratch>/candidates.json`: every pre-cap candidate (5,117 and 2.6MB on 2026-09-24) with id,
    source_id, url, title, dek, published_at, `s07_cluster` (its whole-run S07 group, null
    when alone) and `published`.
 4. Sample the 20 largest candidate groups plus 50 random singletons:

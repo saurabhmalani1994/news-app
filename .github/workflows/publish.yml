@@ -84,15 +84,6 @@ jobs:
           DUMP_CANDIDATES_PATH: ${{ (github.event_name == 'workflow_dispatch' && inputs.dump_candidates) && 'candidates/candidates.json' || '' }}
         run: python3 -m fetcher.fanout --out dist/pool.json --sources sources.json
 
-      - name: Upload candidate dump (B1, dispatch with dump_candidates only)
-        if: github.event_name == 'workflow_dispatch' && inputs.dump_candidates
-        uses: actions/upload-artifact@v4
-        with:
-          name: candidates
-          path: candidates/candidates.json
-          retention-days: 7
-          if-no-files-found: error
-
       # F6: saved right after Fetch, unconditionally, so this run's state reaches
       # the next run even if a later step (build, deploy) fails.
       - name: Save run-to-run state (F6)
@@ -151,3 +142,16 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
           WRANGLER_SEND_METRICS: 'false'
         run: npx --yes wrangler@4.137.0 pages deploy dist --project-name almanac --branch main
+
+      # B1: last, and allowed to fail, so a refused upload (the account's artifact storage
+      # quota, measured full on 2026-09-24) can never stop the site from publishing. Runs
+      # even when a step above failed, so the dump is not lost with the deploy.
+      - name: Upload candidate dump (B1, dispatch with dump_candidates only)
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.dump_candidates }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidates
+          path: candidates/candidates.json
+          retention-days: 7
+          if-no-files-found: error

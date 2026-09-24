@@ -299,7 +299,11 @@ def test_publish_uploads_the_dump_only_on_a_dispatch_that_asks():
     upload = wf.split("uses: actions/upload-artifact@v4")
     assert len(upload) == 2, "exactly one upload step"
     step = upload[0].rsplit("- name:", 1)[1] + upload[1].split("- name:", 1)[0]
-    assert f"if: {gate}" in step
+    assert f"if: ${{{{ !cancelled() && {gate} }}}}" in step
+    # A refused upload (storage quota) must never block publishing: it is the last step
+    # and it may fail without failing the run.
+    assert "continue-on-error: true" in step
+    assert "- name:" not in upload[1] and "pages deploy" in upload[0]
     assert "retention-days: 7" in step
     assert "path: candidates/candidates.json" in step
     assert f"DUMP_CANDIDATES_PATH: ${{{{ ({gate}) && 'candidates/candidates.json' || '' }}}}" in wf
