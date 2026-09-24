@@ -13,15 +13,27 @@
 // S13: a section's order is its own page from the post-passes (passes.js): the same
 // list filtered, then that tab's lean quota and other-side slot, for the profile the
 // page is showing (the stored one when rank-gate re-ranked, else the default).
+//
+// S33: the Live tab is the one exception to "starts empty, filled from Today's rows
+// later": which event is live (live.js currentLiveEvent, the pool's own pick plus the
+// owner's pin and block overrides) decides the tab's own shown/hidden state and label,
+// and that has to be right from the first frame, not after the idle-deferred build
+// every other panel waits for, or a pin or a block taken on a stored profile would
+// flash the wrong tab into the strip. syncLiveTab is cheap (no ranking, just
+// live.js's pure pick) and runs at once, then again after any profile save that could
+// change the outcome (story-actions.js, live-actions.js).
 import { rankPages } from "./passes.js";
 import { buildDefaultProfile } from "./profile/default-profile.js";
+import { STORAGE_KEY } from "./profile/store.js";
 import { SECTIONS } from "./sections.js";
 import { retier, placeOtherSide } from "./tiers.js";
+import { currentLiveEvent } from "./live.js";
 
 const root = document.documentElement;
 const pager = document.getElementById("pager");
 const strip = document.querySelector(".tabs-scroll");
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+const input = JSON.parse(document.getElementById("rank-input").content.textContent);
 let built = false;
 
 const visibleTabs = () => [...strip.querySelectorAll(".tab")].filter((t) => !t.hidden);
@@ -33,6 +45,71 @@ function el(tag, className, text) {
   if (className) node.className = className;
   if (text != null) node.textContent = text;
   return node;
+}
+
+// The same quiet three-dot glyph the story overflow menu uses (app/build.py
+// STORY_OVERFLOW, story-actions.js ICONS.more): one filled path, no text, no brand.
+const OVERFLOW_ICON_D = "M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z";
+
+function overflowIcon() {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("class", "story-overflow-icon");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "20");
+  svg.setAttribute("height", "20");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", OVERFLOW_ICON_D);
+  svg.append(path);
+  return svg;
+}
+
+/** The stored profile straight from localStorage, bypassing rank-gate's own narrower
+ * ranking-fields check (rank-gate.js only reruns the ranker when a *ranking* field
+ * differs from the build's default; live_overrides is not one, so window.almanacProfile
+ * can be unset even though the owner has pinned or blocked something). Never throws;
+ * an absent or corrupt store falls through to the default, the same as rank-gate.js. */
+function storedProfile() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const history = JSON.parse(raw).history;
+    return Array.isArray(history) && history.length ? history[history.length - 1].profile : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The profile every section, including Live, ranks and picks overrides against: a
+ * rerank.js result if one already ran this load, else the real stored profile, else
+ * the shipped default. Exported so story-actions.js's own profile-save re-render (and
+ * the Live panel's own override sheet) read the same profile this module does. */
+export function currentProfile() {
+  return window.almanacProfile || storedProfile() || buildDefaultProfile(input.now);
+}
+
+/** Keeps the Live tab and panel's own chrome, shown or hidden and its label, in sync
+ * with whichever event is live right now for this profile (live.js currentLiveEvent):
+ * cheap and synchronous, so it runs before the panel's own stories are ever built and
+ * again after any profile save that could change the outcome. Falls back to Today if
+ * the tab it just hid was the active one, since a panel with no tab left cannot stay
+ * on screen. Returns the event, or null when the tab is hidden. */
+export function syncLiveTab(profile) {
+  const tab = document.getElementById("tab-live");
+  const panel = document.getElementById("section-live");
+  if (!tab || !panel) return null;
+  const event = currentLiveEvent(input.events || [], profile);
+  const wasActive = tab.getAttribute("aria-selected") === "true";
+  tab.hidden = !event;
+  panel.hidden = !event;
+  if (event) tab.textContent = event.label;
+  if (!event && wasActive) {
+    const today = document.getElementById("tab-today");
+    const i = today && visibleTabs().indexOf(today);
+    if (i >= 0) select(i, true);
+  }
+  return event;
 }
 
 /** The skeleton build.py gives Today, then rows placed by the shared re-tier. */
@@ -66,19 +143,52 @@ function fillPanel(panel, section, ids, rows, input) {
   }
 }
 
+/** S33: the Live panel's own header, a small kicker naming it live plus the event's
+ * own label (the tab strip already carries the red dot and the same label; this is
+ * the "sub-strip or header naming the event" the panel itself needs, since a reader
+ * can land here straight from a swipe without ever reading the tab). The overflow
+ * button opens the S24 sheet with the owner's pin and block actions
+ * (live-actions.js), the one owner-only surface for the R22 overrides. Then the
+ * event's own clusters, ranked, tiered exactly like any other section's river. */
+export function fillLivePanel(panel, liveSection, rows, input) {
+  const header = el("header", "live-header");
+  header.append(
+    el("p", "live-kicker", "Live"),
+    el("h2", "live-title", liveSection.event.label),
+  );
+  const overflow = el("button", "story-overflow live-overflow");
+  overflow.type = "button";
+  overflow.setAttribute("aria-haspopup", "dialog");
+  overflow.setAttribute("aria-label", `Live coverage settings: ${liveSection.event.label}`);
+  overflow.dataset.eventId = liveSection.event.id;
+  overflow.dataset.eventLabel = liveSection.event.label;
+  overflow.append(overflowIcon());
+  header.append(overflow);
+  panel.append(header);
+  const ids = liveSection.stories.map((s) => s.id).filter((id) => rows.has(id));
+  fillPanel(panel, { id: "live", label: liveSection.label }, ids, rows, input);
+}
+
 function buildSections() {
   if (built) return;
   built = true;
-  const input = JSON.parse(document.getElementById("rank-input").content.textContent);
-  const profile = window.almanacProfile || buildDefaultProfile(input.now);
-  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health });
+  const profile = currentProfile();
+  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health, events: input.events || [] });
+  syncLiveTab(profile);
   const todayRows = [...document.querySelectorAll("#section-today li.story[data-sid]")];
   const byId = new Map(todayRows.map((li) => [li.dataset.sid, li]));
   for (const section of SECTIONS) {
-    if (section.all || section.slot) continue;
+    if (section.all) continue;
     const panel = document.getElementById(`section-${section.id}`);
     if (!panel || panel.childElementCount) continue;
     const page = pages.sections.find((p) => p.id === section.id);
+    if (section.slot === "live") {
+      if (!page.event) continue; // tab hidden; nothing to build until an event is live
+      const stories = page.stories.filter((s) => byId.has(s.id));
+      const rows = new Map(stories.map((s) => [s.id, byId.get(s.id).cloneNode(true)]));
+      fillLivePanel(panel, page, rows, input);
+      continue;
+    }
     const stories = page.stories.filter((s) => byId.has(s.id));
     const ids = stories.map((s) => s.id);
     const rows = new Map(ids.map((id) => [id, byId.get(id).cloneNode(true)]));
@@ -168,6 +278,12 @@ document.querySelector('.nav-item[data-screen="home"]')?.addEventListener("click
 });
 addEventListener("hashchange", route);
 route();
+
+// S33: the Live tab's own shown/hidden state and label are correct from the first
+// frame the SSR gives them (app/build.py, the default profile); this only corrects
+// them for a stored profile whose pin or block changes the outcome, before anything
+// paints, so there is nothing to correct visibly later.
+whenRanked(() => syncLiveTab(currentProfile()));
 
 // Fill the other sections off the critical path: after Today's first paint and any
 // re-rank, when the main thread is idle (or at once, on the first tap or swipe).

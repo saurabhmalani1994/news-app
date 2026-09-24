@@ -171,7 +171,7 @@ async function storyForWhy(li, sid) {
   } catch {
     profile = buildDefaultProfile(input.now);
   }
-  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health });
+  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health, events: input.events || [] });
   const { tab } = domPlacement(li);
   const list = tab === "today" ? pages.today : pages.sections.find((s) => s.id === tab)?.stories || pages.today;
   const story = list.find((s) => s.id === sid) || pages.today.find((s) => s.id === sid);
@@ -280,7 +280,7 @@ function applyPanel(panel, stories, input) {
 function rerenderAfterProfileChange(profile, sourcePanel) {
   const input = getInput();
   window.almanacProfile = profile;
-  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health });
+  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health, events: input.events || [] });
   const storiesFor = (id) => (id === "today" ? pages.today : (pages.sections.find((s) => s.id === id)?.stories || []));
   for (const panel of document.querySelectorAll(".panel")) {
     if (!panel.childElementCount) continue;
