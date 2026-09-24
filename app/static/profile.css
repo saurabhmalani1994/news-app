@@ -331,3 +331,61 @@ input[type="number"].setting-half-life:focus-visible {
   font-size: var(--type-bottom-nav-label-size);
   color: var(--color-meta);
 }
+
+/* S17: the Health screen. Same settings rows as the rest of this file; only new shapes
+   are the pool-age block (reuses .notice from style.css, S28's own quiet non-card
+   block) and a row with a right-hand value column instead of a control. */
+.health-age-block {
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.health-age-block.is-stale .notice-head {
+  font-weight: 700;
+}
+
+.setting-value {
+  flex: none;
+  font-family: var(--type-tab-label-family);
+  font-size: 15px;
+  color: var(--color-headline);
+  text-align: right;
+}
+
+.setting-row-text--end {
+  align-items: flex-end;
+  text-align: right;
+  flex: none;
+}
+
+.health-source-row .setting-row-text:first-child {
+  flex: 1 1 auto;
+}
+
+.health-source-row {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.health-source-row--unhealthy .setting-label,
+.health-source-row--failing .setting-label {
+  font-weight: 700;
+}
+
+/* S17: the "Feed health" link row on the profile screen, and the < back link's target.
+   A .setting-row can be an <a>; reset the browser's own link styling to the same quiet
+   row the rest of this screen uses, color and underline coming from the row's own
+   spans, not the anchor default. */
+a.setting-row {
+  color: inherit;
+  text-decoration: none;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+a.setting-row:active {
+  background: var(--color-pressed);
+}
+
+a.setting-row:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}

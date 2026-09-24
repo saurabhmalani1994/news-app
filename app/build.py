@@ -21,6 +21,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from app.csp import headers_file
+from app.health import render as render_health
 from app.dek import fit_dek
 from app.frontpage import (CHARS_PER_LINE, DEK_LINES, clean_dek, front_page, pass_input, rank_input,
                            run_ranker)
@@ -515,6 +516,9 @@ def main(argv=None):
     ranking = run_ranker(pool)
     (out / "index.html").write_text(render(pool, ranking), encoding="utf-8")
     _copy_static(out)
+    # S17: the Health screen, off the You tab, built the same way as the front page
+    # (the pool's own ledger and source_health, embedded once, at build time).
+    (out / "health.html").write_text(render_health(pool), encoding="utf-8")
     # S37: the CSP and other security headers, for the pages just written (app.csp).
     pages = {page.name: page.read_text(encoding="utf-8") for page in sorted(out.glob("*.html"))}
     (out / "_headers").write_text(headers_file(pages), encoding="utf-8")
