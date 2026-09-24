@@ -6,7 +6,7 @@
    for its quiet secondary line, meta for the small uppercase section labels. */
 
 .settings {
-  padding-bottom: 48px;
+  padding-bottom: calc(48px + var(--chrome-bottom-nav) + env(safe-area-inset-bottom));
 }
 
 .settings-section {

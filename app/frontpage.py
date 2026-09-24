@@ -19,6 +19,9 @@ from app.dek import ELLIPSIS, fit_dek, strip_wire_junk
 from app.typography import fold_quotes
 
 RANK_CLI = Path(__file__).resolve().parent / "rank_cli.mjs"
+# S27: source buckets are facts about a source (R10), repo owned in sources.json; the
+# pool's own source records do not carry them, so the build reads them from here.
+SOURCES_JSON = Path(__file__).resolve().parent.parent / "sources.json"
 
 # Dek line limits per tier (style.css clamps at the same counts). A dek ends on the last
 # whole sentence inside the limit; CHARS_PER_LINE is a conservative fill of a 320px
@@ -139,13 +142,27 @@ def rank_input(pool):
     }
 
 
+def source_buckets(pool, sources_path=SOURCES_JSON):
+    """{source_id: bucket} for the pool's sources, from sources.json (S27 section tabs).
+    Sorted by id so the page embeds it byte for byte the same whatever the input order;
+    an absent or unreadable file leaves every section to its topic tags alone."""
+    try:
+        sources = json.loads(Path(sources_path).read_text(encoding="utf-8")).get("sources", [])
+    except (OSError, ValueError):
+        return {}
+    present = {s.get("id") for s in pool.get("sources", [])} | {a.get("source_id") for a in pool["articles"]}
+    return {s["id"]: s["bucket"] for s in sorted(sources, key=lambda s: str(s.get("id")))
+            if s.get("id") in present and isinstance(s.get("bucket"), str)}
+
+
 def run_ranker(pool):
-    """{key, ranked}: the default profile's ranking-field key and every story, best
-    first, with its score and explanation (app/static/js/ranker.js under Node)."""
+    """{key, ranked, sections}: the default profile's ranking-field key, every story best
+    first with its score and explanation (app/static/js/ranker.js under Node), and S27's
+    section tabs, each its ids in that order (app/static/js/sections.js)."""
     node = shutil.which("node")
     if node is None:
         raise RuntimeError("the S11 ranker needs Node on PATH (preinstalled on GitHub's Ubuntu runners)")
-    payload = json.dumps({"pool": rank_input(pool), "now": pool.get("generated_at")})
+    payload = json.dumps({"pool": rank_input(pool), "now": pool.get("generated_at"), "buckets": source_buckets(pool)})
     done = subprocess.run([node, str(RANK_CLI)], input=payload.encode("utf-8"), capture_output=True, check=False)
     if done.returncode:
         raise RuntimeError("ranker failed: " + done.stderr.decode("utf-8", "replace")[-2000:])

@@ -50,7 +50,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; }).observe({ type: "layout-shift", buffered: true });
   requestAnimationFrame(() => {
     const root = document.documentElement;
-    window.__first = { hidden: root.classList.contains("rerank"), order: [...document.querySelectorAll("li.story[data-sid]")].map((li) => li.dataset.sid) };
+    window.__first = { hidden: root.classList.contains("rerank"), order: [...document.querySelectorAll("#section-today li.story[data-sid]")].map((li) => li.dataset.sid) };
   });` });
 
 async function visit(stored, scheme, shot) {
@@ -62,7 +62,7 @@ async function visit(stored, scheme, shot) {
   await sleep(2500);
   const out = JSON.parse(await evaluate(`document.fonts.ready.then(() => JSON.stringify({ cls: window.__cls, first: window.__first,
     hiddenNow: document.documentElement.classList.contains("rerank"),
-    order: [...document.querySelectorAll("li.story[data-sid]")].map((li) => li.dataset.sid),
+    order: [...document.querySelectorAll("#section-today li.story[data-sid]")].map((li) => li.dataset.sid),
     input: JSON.parse(document.getElementById("rank-input").content.textContent),
     top: [...document.querySelectorAll("#headlines .headline")].slice(0, 5).map((h) => h.textContent), w: innerWidth, dpr: devicePixelRatio }))`));
   if (shot) {

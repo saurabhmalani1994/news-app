@@ -1,4 +1,4 @@
-// S39 browser proof, run by hand (needs Chrome, so not in the node --test glob):
+// S39 browser proof (S27: Today scrolls in its own panel now), run by hand (needs Chrome, so not in the node --test glob):
 //   node tests/browser/images_cls.mjs <built dist dir> [<screenshot dir>]
 // Serves the built page and opens it in headless Chrome at 360x780 CSS px, DPR 3. Every
 // photo request is held by the DevTools Fetch domain and answered late (1.2 s, then
@@ -82,8 +82,8 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   window.__cls = 0;
   new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; }).observe({ type: "layout-shift", buffered: true });` });
 
-const BOXES = `JSON.stringify([...document.querySelectorAll("li.story, .story-media, .story-credit, .colophon")].map((el) => {
-  const r = el.getBoundingClientRect(); return [el.dataset.sid || el.className, Math.round((r.top + scrollY) * 100) / 100, Math.round(r.height * 100) / 100, Math.round(r.width * 100) / 100]; }))`;
+const BOXES = `JSON.stringify([...document.querySelectorAll("#section-today li.story, #section-today .story-media, #section-today .story-credit, #section-today .colophon")].map((el) => {
+  const r = el.getBoundingClientRect(); return [el.dataset.sid || el.className, Math.round((r.top + document.getElementById("section-today").scrollTop) * 100) / 100, Math.round(r.height * 100) / 100, Math.round(r.width * 100) / 100]; }))`;
 const AUDIT = `JSON.stringify([...document.querySelectorAll("img")].map((img) => {
   const frame = img.closest(".story-media"), li = img.closest("li.story"), cs = getComputedStyle(img), fr = frame && frame.getBoundingClientRect(), ir = img.getBoundingClientRect();
   return { src: img.getAttribute("src"), w: img.getAttribute("width"), h: img.getAttribute("height"), ratio: cs.aspectRatio, fit: cs.objectFit,
@@ -135,9 +135,9 @@ async function visit({ name, scheme = "dark", stored = null, imageMode, shots = 
     writeFileSync(join(shotsArg, `${name}-placeholder.png`), Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
   }
   // Scroll the whole page in viewport steps so every lazy thumbnail is requested.
-  const height = await evaluate("document.documentElement.scrollHeight");
-  for (let y = 0; y <= height; y += 600) { await evaluate(`scrollTo(0, ${y})`); await sleep(imageMode === "real" ? 250 : 120); }
-  await evaluate("scrollTo(0, 0)");
+  const height = await evaluate('document.getElementById("section-today").scrollHeight');
+  for (let y = 0; y <= height; y += 600) { await evaluate(`document.getElementById("section-today").scrollTo(0, ${y})`); await sleep(imageMode === "real" ? 250 : 120); }
+  await evaluate('document.getElementById("section-today").scrollTo(0, 0)');
   await sleep(imageMode === "real" ? 4000 : 1500 + 250 * 20);
   await evaluate(`Promise.all([...document.images].map((i) => i.complete ? 0 : new Promise((r) => { i.onload = i.onerror = r; setTimeout(r, 8000); })))`);
   const after = JSON.parse(await evaluate(BOXES));
@@ -149,12 +149,12 @@ async function visit({ name, scheme = "dark", stored = null, imageMode, shots = 
   for (const s of shots) {
     if (s === "placeholder") continue;
     if (s === "river") {
-      await evaluate(`scrollTo(0, document.querySelector(".story--river .story-media").closest("li").getBoundingClientRect().top + scrollY - 60)`);
+      await evaluate(`document.getElementById("section-today").scrollTo(0, document.querySelector("#section-today .story--river .story-media").closest("li").getBoundingClientRect().top + document.getElementById("section-today").scrollTop - 60)`);
       await sleep(imageMode === "real" ? 1500 : 300);
     }
     const file = s === "top" ? name : name.startsWith("final-") ? name.replace("final-", "river-") : `${name}-river`;
     writeFileSync(join(shotsArg, `${file}.png`), Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64"));
-    await evaluate("scrollTo(0, 0)");
+    await evaluate('document.getElementById("section-today").scrollTo(0, 0)');
   }
   const pass = cls === 0 && moved === 0 && problems.length === 0 && (imageMode !== "fail" || (failed.length >= 1 && failed.every((i) => i.sameBox && i.tint === tintRgb)));
   const heroImg = imgs.find((i) => i.kind?.includes("hero"));

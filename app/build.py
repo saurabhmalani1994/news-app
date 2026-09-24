@@ -20,7 +20,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from app.dek import fit_dek
-from app.frontpage import CHARS_PER_LINE, DEK_LINES, clean_dek, front_page, rank_input, run_ranker
+from app.frontpage import (CHARS_PER_LINE, DEK_LINES, clean_dek, front_page, rank_input, run_ranker,
+                           source_buckets)
 from app.images import THUMB_PX, hero_box, hero_media, image_url, media_for, thumb_ok
 from app.typography import smart_quotes
 
@@ -45,25 +46,106 @@ PAGE = """<!doctype html>
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="style.css">
 <script src="js/rank-gate.js"></script>
+<script type="module" src="js/tabs.js"></script>
 </head>
-<body>
-<header class="masthead">
+<body class="app">
+<div class="screens">
+<div class="screen screen--home is-current" id="screen-home" data-screen="home">
+<nav class="tabs" aria-label="Sections">
+<div class="tabs-scroll" role="tablist">
+{tabs}
+</div>
+</nav>
+<main class="pager" id="pager">
+<section class="panel" id="section-today" role="tabpanel" aria-labelledby="tab-today" data-section="today">
+<header class="masthead masthead--nameplate">
 <h1 class="wordmark">Almanac</h1>
-<a class="masthead-action" href="profile.html" aria-label="Profile settings">
-<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"></circle><path d="M19.4 13.5a1.6 1.6 0 0 0 .3 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.3 1.6 1.6 0 0 0-1 1.47V19.5a2 2 0 1 1-4 0v-.09a1.6 1.6 0 0 0-1.05-1.47 1.6 1.6 0 0 0-1.77.3l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.6 1.6 0 0 0 .3-1.77 1.6 1.6 0 0 0-1.47-1H4.5a2 2 0 1 1 0-4h.09a1.6 1.6 0 0 0 1.47-1.05 1.6 1.6 0 0 0-.3-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.6 1.6 0 0 0 1.77.3H10.5a1.6 1.6 0 0 0 1-1.47V4.5a2 2 0 1 1 4 0v.09a1.6 1.6 0 0 0 1 1.47 1.6 1.6 0 0 0 1.77-.3l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.6 1.6 0 0 0-.3 1.77V10.5a1.6 1.6 0 0 0 1.47 1H19.5a2 2 0 1 1 0 4h-.09a1.6 1.6 0 0 0-1.01 1z"></path></svg>
-</a>
 </header>
-<main>
 <ol class="river river--top" id="headlines">
 {top}
 </ol>
 {more}
-</main>
-<template id="rank-input">{rank_input}</template>
 <footer class="colophon"><p class="colophon-text">{count} stories from {articles} articles. Updated <time datetime="{generated_at}">{updated}</time></p></footer>
+</section>
+{panels}
+</main>
+</div>
+{views}
+</div>
+{nav}
+<template id="rank-input">{rank_input}</template>
 </body>
 </html>
 """
+
+# S27 app chrome. The tab strip, bottom nav and empty views are the app's own static
+# markup; every label is plain text from the one section table (app/static/js/sections.js)
+# or this file, never a feed string. Section panels start empty: tabs.js fills each from
+# Today's own rows, filtered by the same table, so the page carries no second copy.
+TAB = ('<button class="tab" type="button" role="tab" id="tab-{id}" aria-controls="section-{id}" '
+       'aria-selected="{selected}" tabindex="{tabindex}" data-section="{id}"{hidden}>{label}</button>')
+PANEL = ('<section class="panel" id="section-{id}" role="tabpanel" aria-labelledby="tab-{id}" '
+         'data-section="{id}"{hidden}></section>')
+
+# Bottom nav (R21): Home, Following, Saved, You. Icons are the app's own simple filled
+# glyphs, 20dp, one path each; the label under each is text only. You opens the S10
+# profile screen, the entry NYT puts on its You tab (it left the masthead here).
+NAV_ICONS = {
+    "home": "M12 3.2 2.6 11.3h2.8v9.5h5.1v-6h3v6h5.1v-9.5h2.8z",
+    "following": "M12 2.6 2.4 7.8 12 13l9.6-5.2zM4.7 11.2l-2.3 1.3L12 17.7l9.6-5.2-2.3-1.3L12 15.1zM4.7 15.9l-2.3 1.3L12 22.4l9.6-5.2-2.3-1.3L12 19.8z",
+    "saved": "M6.2 2.6h11.6c.5 0 .9.4.9.9v18.1L12 17.1l-6.7 4.5V3.5c0-.5.4-.9.9-.9z",
+    "you": "M12 11.6a4.3 4.3 0 1 0 0-8.6 4.3 4.3 0 0 0 0 8.6zm0 2.1c-4.8 0-8.4 2.6-8.4 6.2v1.5h16.8v-1.5c0-3.6-3.6-6.2-8.4-6.2z",
+}
+NAV_ITEMS = (("home", "Home", "#home"), ("following", "Following", "#following"),
+             ("saved", "Saved", "#saved"), ("you", "You", "profile.html"))
+NAV_ITEM = ('<a class="nav-item" href="{href}" data-screen="{id}"{current}>'
+            '<svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">'
+            '<path d="{icon}"></path></svg><span class="nav-label">{label}</span></a>')
+
+
+def bottom_nav(current):
+    """The four-item bottom nav with `current` marked, shared by the front page and the
+    profile page (which links home by page, not by fragment)."""
+    items = []
+    for key, label, href in NAV_ITEMS:
+        if current == "you" and href.startswith("#"):
+            href = "index.html" + href
+        items.append(NAV_ITEM.format(href=href, id=key, icon=NAV_ICONS[key], label=label,
+                                     current=' aria-current="page"' if key == current else ""))
+    return '<nav class="bottom-nav" aria-label="Primary">\n' + "\n".join(items) + "\n</nav>"
+
+
+# Following (S30) and Saved (S26) are later slices; until then each is a calm view with
+# its title and one quiet line about what will live there, set like NYT's You tab.
+VIEW = """<section class="screen screen--view" id="screen-{id}" data-screen="{id}" aria-labelledby="{id}-title">
+<div class="view">
+<h1 class="view-title" id="{id}-title">{title}</h1>
+<div class="empty">
+<p class="empty-head">{head}</p>
+<p class="empty-text">{text}</p>
+</div>
+</div>
+</section>"""
+VIEWS = (
+    ("following", "Following", "Nothing followed yet",
+     "Standing stories and the names you follow will each get a page here, with a timeline and how every outlet covered it."),
+    ("saved", "Saved", "Nothing saved yet",
+     "Stories you save will wait here, and the ones with full text stay readable offline."),
+)
+
+
+def _chrome(sections):
+    tabs, panels = [], []
+    for index, section in enumerate(sections):
+        hidden = " hidden" if section.get("slot") else ""
+        tabs.append(TAB.format(id=escape(section["id"], quote=True), label=escape(section["label"], quote=False),
+                               selected="true" if index == 0 else "false", tabindex="0" if index == 0 else "-1",
+                               hidden=hidden))
+        if index:
+            panels.append(PANEL.format(id=escape(section["id"], quote=True), hidden=hidden))
+    views = "\n".join(VIEW.format(id=v, title=t, head=h, text=x) for v, t, h, x in VIEWS)
+    return "\n".join(tabs), "\n".join(panels), views
+
 
 # Front page length (D1). The design doc sets no length, so the page ends the way NYT's
 # Today does: a clear module break, a quiet label, a short run of text-only headlines,
@@ -238,7 +320,7 @@ def _rank_input_json(pool, stories, by_id, source_names):
     """The device's ranking input as template text. Only &, < and > are escaped, so no
     feed string can close the template or open a tag (R26); JSON quotes stay readable."""
     data = {"now": pool.get("generated_at"), "pool": rank_input(pool), "deks": _dek_pairs(stories),
-            "images": _image_records(stories, by_id, source_names)}
+            "images": _image_records(stories, by_id, source_names), "buckets": source_buckets(pool)}
     return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
 
 
@@ -268,7 +350,12 @@ def render(pool, ranking=None):
         for f in PRELOAD_FONTS
     )
     updated = now.strftime("%d %b %H:%M UTC") if now else ""
+    tabs, panels, views = _chrome(ranking["sections"])
     return PAGE.format(
+        tabs=tabs,
+        panels=panels,
+        views=views,
+        nav=bottom_nav("home"),
         rank_key=escape(ranking["key"], quote=True),
         rank_input=_rank_input_json(pool, [s for name in tiers for s in tiers[name]], by_id, source_names),
         preloads=preloads,
@@ -308,6 +395,7 @@ def main(argv=None):
     tiers = front_page(pool, ranking)
     counts = ", ".join(f"{name} {len(tiers[name])}" for name in tiers)
     print(f"built {out / 'index.html'}: {counts}")
+    print("sections: " + ", ".join(f"{s['label']} {len(s['ids'])}" for s in ranking["sections"] if not s.get("slot")))
     return 0
 
 

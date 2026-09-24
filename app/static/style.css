@@ -53,14 +53,14 @@ body {
   color: var(--color-headline);
 }
 
-/* A quiet control in the masthead: the S10 entry point to Profile, the gear icon in
-   the same spot NYT's You tab uses (research/nyt-capture you-00, private reference).
-   S27 replaces this with the bottom nav's You tab; this stays until then. Full touch
-   target even though the glyph is small, right up against the masthead's own inset. */
-.masthead-action,
+/* A quiet control in the masthead: the profile screen's back link. (S27 moved the
+   profile entry from the front page's masthead gear to the bottom nav's You tab, where
+   NYT keeps its settings.) Full touch target even though the glyph is small, right up
+   against the masthead's own inset. */
 .masthead-back {
   position: absolute;
   top: calc(env(safe-area-inset-top) + (var(--chrome-masthead) - var(--touch-min)) / 2);
+  left: calc(var(--space-gutter) - (var(--touch-min) - 22px) / 2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -70,20 +70,10 @@ body {
   transition: background-color var(--motion-duration) var(--motion-ease);
 }
 
-.masthead-action {
-  right: calc(var(--space-gutter) - (var(--touch-min) - 22px) / 2);
-}
-
-.masthead-back {
-  left: calc(var(--space-gutter) - (var(--touch-min) - 22px) / 2);
-}
-
-.masthead-action:active,
 .masthead-back:active {
   background: var(--color-pressed);
 }
 
-.masthead-action:focus-visible,
 .masthead-back:focus-visible {
   outline: 2px solid var(--color-headline);
   outline-offset: -2px;
@@ -410,4 +400,262 @@ body {
    hidden, so no row is ever seen moving; the layout box is kept, nothing shifts. */
 .rerank main {
   visibility: hidden;
+}
+
+/* ---- S27 app chrome ------------------------------------------------------------
+   One fixed-height column: the section strip, the pager, the bottom nav. Nothing in
+   it scrolls the document, so the chrome never rubber-bands or shifts. Measured
+   (nyt-measured, layout): strip 50dp with a full-bleed hairline, active underline
+   3.3dp reaching about 4dp past the label, bottom nav 56dp on #2A2A2A, 20dp icons. */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.screens {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.screen:not(.is-current) {
+  visibility: hidden;
+}
+
+/* Section tabs: a native horizontal scroller, labels 20dp apart (10dp padding a
+   side), the first label on the 20dp gutter. Active and inactive share one weight, so
+   selecting a tab changes only its color and underline, never its width. */
+.tabs {
+  flex: none;
+  padding-top: env(safe-area-inset-top);
+  background: var(--color-bg);
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.tabs-scroll {
+  display: flex;
+  height: var(--chrome-tab-bar);
+  padding: 0 calc(var(--space-gutter) / 2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  position: relative;
+  flex: none;
+  margin: 0;
+  padding: 0 calc(var(--space-gutter) / 2);
+  border-width: 0;
+  background: none;
+  appearance: none;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: var(--type-tab-label-family);
+  font-size: var(--type-tab-label-size);
+  line-height: var(--type-tab-label-line-height);
+  font-weight: var(--type-tab-label-weight);
+  letter-spacing: var(--type-tab-label-tracking);
+  color: var(--color-tab-inactive);
+  transition: color var(--motion-duration) var(--motion-ease), background-color var(--motion-duration) var(--motion-ease);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--color-tab-active);
+}
+
+.tab::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--space-gutter) / 2 - 4px);
+  right: calc(var(--space-gutter) / 2 - 4px);
+  bottom: 0;
+  height: 3px;
+  background: var(--color-tab-active);
+  transform: scaleX(0);
+  transition: transform var(--motion-duration) var(--motion-ease);
+}
+
+.tab[aria-selected="true"]::after {
+  transform: none;
+}
+
+.tab:active {
+  background: var(--color-pressed);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+/* The pager: panels side by side, one per section, each its own vertical scroller, so
+   a swipe snaps to the next section and every section keeps its own place. */
+.pager {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.pager::-webkit-scrollbar {
+  display: none;
+}
+
+.panel {
+  flex: 0 0 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+/* Today's nameplate sits in its panel under the strip and scrolls away with it; the
+   strip already carries the status bar inset and the full-bleed rule. */
+.masthead--nameplate {
+  height: var(--chrome-masthead);
+  padding-top: 0;
+  border-bottom-width: 0;
+}
+
+/* Bottom nav: four equal targets, icon over label, on the measured lighter surface;
+   the safe-area inset is added below it, so it never covers a row. */
+.bottom-nav {
+  display: flex;
+  flex: none;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--color-nav-surface);
+}
+
+.nav-item {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  height: var(--chrome-bottom-nav);
+  padding-top: 10px;
+  color: var(--color-nav-inactive);
+  text-decoration: none;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.nav-item[aria-current="page"] {
+  color: var(--color-headline);
+}
+
+.nav-item:active {
+  background: var(--color-pressed);
+}
+
+.nav-item:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.nav-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.nav-label {
+  margin-top: 5px;
+  font-family: var(--type-bottom-nav-label-family);
+  font-size: var(--type-bottom-nav-label-size);
+  line-height: var(--type-bottom-nav-label-line-height);
+  font-weight: var(--type-bottom-nav-label-weight);
+  letter-spacing: var(--type-bottom-nav-label-tracking);
+}
+
+/* The profile page scrolls the document, so there the nav is pinned and the page
+   leaves room for it (profile.css). */
+.bottom-nav--fixed {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+}
+
+/* Following and Saved until their slices land: the You tab's 16dp gutter, a serif
+   title, then one calm empty state, no icon, no box. */
+.view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: calc(env(safe-area-inset-top) + 28px) 16px 32px;
+}
+
+.view-title {
+  margin: 0;
+  font-family: var(--type-hero-headline-family);
+  font-size: var(--type-hero-headline-size);
+  line-height: var(--type-hero-headline-line-height);
+  font-weight: var(--type-hero-headline-weight);
+  letter-spacing: var(--type-hero-headline-tracking);
+  color: var(--color-headline);
+}
+
+.empty {
+  max-width: 300px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.empty--section {
+  margin: 0 var(--space-gutter);
+  padding-top: 28px;
+  border-top-style: none;
+}
+
+.empty-head {
+  margin: 0;
+  font-family: var(--type-river-headline-family);
+  font-size: var(--type-river-headline-size);
+  line-height: var(--type-river-headline-line-height);
+  font-weight: var(--type-river-headline-weight);
+  color: var(--color-headline);
+}
+
+.empty-text {
+  margin: 10px 0 0;
+  font-family: var(--type-dek-family);
+  font-size: var(--type-dek-size);
+  line-height: var(--type-dek-line-height);
+  color: var(--color-dek);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab,
+  .tab::after,
+  .nav-item {
+    transition: none;
+  }
 }

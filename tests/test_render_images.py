@@ -218,7 +218,7 @@ def test_hostile_image_url_is_an_escaped_attribute_value():
     markup = re.sub(r'<template id="rank-input">.*?</template>', "", page, flags=re.S)
     assert "onerror" not in re.sub(r'src="[^"]*"', "", markup)
     assert "&gt;&lt;script&gt;" in page and "<script>alert" not in page
-    assert re.findall(r"<script\b[^>]*>", page) == ['<script src="js/rank-gate.js">']
+    assert re.findall(r"<script\b[^>]*>", page) == ['<script src="js/rank-gate.js">', '<script type="module" src="js/tabs.js">']  # S11 gate, S27 tabs
 
 
 def test_credit_is_text_under_the_hero_only():

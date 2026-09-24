@@ -160,10 +160,12 @@ def test_cluster_meta_names_its_source_count_quietly():
 # field, so allowing them here does not touch the R26 guarantee this test checks.
 # S11: script is the app's own head gate (APP_SCRIPTS, an external file carrying no feed
 # data) and template holds the device ranker's input as escaped text, never markup.
+# S27: nav, div and button are the app's own tab strip, bottom nav and empty views, and
+# tabs.js is the app's own module (no feed data); their labels are checked below.
 APP_TAGS = {"html", "head", "meta", "title", "link", "body", "header", "h1", "main", "ol", "li",
             "a", "span", "section", "h2", "footer", "p", "time", "svg", "circle", "path",
-            "script", "template"}
-APP_SCRIPTS = ['<script src="js/rank-gate.js">']
+            "script", "template", "nav", "div", "button"}
+APP_SCRIPTS = ['<script src="js/rank-gate.js">', '<script type="module" src="js/tabs.js">']
 
 
 def test_every_rendered_string_is_text_only():
@@ -300,3 +302,26 @@ def test_device_rank_input_is_escaped_text_that_round_trips():
     rows = re.findall(r'<li class="story story--[\w-]+" data-sid="([^"]+)">', page)
     assert rows == [r["id"] for r in run_ranker(pool)["ranked"]]
     assert re.search(r'<html lang="en" data-rank-key="[^"]+">', page)
+
+
+# S27: the section tabs and the bottom nav are the app's own text-only labels, in the
+# owner's order, the Live slot rendered hidden for S33, and You reaches the profile.
+def test_section_tabs_and_bottom_nav_are_text_only_labels():
+    page = render(fixture_pool())
+    tabs = re.findall(r'<button class="tab"[^>]*data-section="([^"]+)"([^>]*)>([^<]*)</button>', page)
+    assert [label for _, _, label in tabs] == ["Today", "Live", "US Politics", "World", "Singapore", "Asia", "AI", "Biotech"]
+    assert [sid for sid, rest, _ in tabs if "hidden" in rest] == ["live"]
+    assert re.findall(r'<span class="nav-label">([^<]*)</span>', page) == ["Home", "Following", "Saved", "You"]
+    assert '<a class="nav-item" href="profile.html" data-screen="you">' in page
+    assert 'class="masthead-action"' not in page  # the gear moved to the You tab
+    for view in ("following", "saved"):
+        assert f'id="screen-{view}"' in page and "empty-head" in page
+    panels = re.findall(r'<section class="panel" id="section-([^"]+)"', page)
+    assert panels == ["today", "live", "us-politics", "world", "singapore", "asia", "ai", "biotech"]
+
+
+def test_profile_page_carries_the_same_bottom_nav_with_you_current():
+    from app.build import STATIC, bottom_nav
+    profile = (STATIC / "profile.html").read_text(encoding="utf-8")
+    assert bottom_nav("you").replace('class="bottom-nav"', 'class="bottom-nav bottom-nav--fixed"') in profile
+    assert 'data-screen="you" aria-current="page"' in profile
