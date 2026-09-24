@@ -82,13 +82,26 @@ ROUTES = ("direct", "relay", "google_news")
 GOOGLE_NEWS_HOST = "news.google.com"
 _HREF_RE = re.compile(r'href="([^"]+)"')
 
+# F4: the relay Worker's own host, named once here rather than in every relay source's
+# via_url. A relay source in sources.json sets "via_url" to just the path
+# ("/feed/<id>"); _fetch_url_for joins it onto this base. RELAY_BASE_URL is
+# overridable with the RELAY_BASE_URL env var (same pattern publish.yml already uses
+# for PREVIOUS_POOL_URL) so a relay redeploy to a new URL is a one-line change, never
+# a sources.json edit.
+RELAY_BASE_URL = os.environ.get(
+    "RELAY_BASE_URL", "https://almanac-relay.saurabhmalani1994.workers.dev"
+)
+
 
 def _route_for(source):
     return source.get("via") or "direct"
 
 
 def _fetch_url_for(source):
-    return source.get("via_url") or source["feed_url"]
+    via_url = source.get("via_url")
+    if via_url and source.get("via") == "relay" and not via_url.startswith(("http://", "https://")):
+        return RELAY_BASE_URL.rstrip("/") + via_url
+    return via_url or source["feed_url"]
 
 
 def _google_news_real_url(item):
