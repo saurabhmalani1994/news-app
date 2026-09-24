@@ -1,7 +1,8 @@
 name: publish
 
-# Fetch the NPR feed, validate the pool, build the page, deploy to Cloudflare Pages
-# by direct upload (R1, R30). The publish job runs standard library Python only; the
+# Fetch every feed in sources.json, validate the pool, build the page, deploy to
+# Cloudflare Pages by direct upload (R1, R30). The publish job runs standard library
+# Python only; the
 # pip install lives in the test job, which a future schedule trigger skips, so the
 # cron path never installs Python packages. No schedule yet: cadence is set from the
 # measured run time.
@@ -41,7 +42,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Fetch
-        run: python3 -m fetcher.fetch --out dist/pool.json
+        run: python3 -m fetcher.fanout --out dist/pool.json --sources sources.json
 
       - name: Validate pool (stdlib)
         run: python3 -m contract.validate dist/pool.json
