@@ -133,6 +133,12 @@ def check_integrity(pool):
     c = pool["counts"]
     if c["fetched"] != c["published"] + sum(c["drops"].values()):
         errors.append("$.counts: fetched does not equal published plus the sum of drops")
+    if "feed_states" in c:
+        total_feeds = sum(c["feed_states"].values())
+        if total_feeds != len(pool["sources"]):
+            errors.append(
+                "$.counts.feed_states: total does not equal the number of sources"
+            )
     return errors
 
 

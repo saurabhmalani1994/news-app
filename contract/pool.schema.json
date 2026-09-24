@@ -92,8 +92,20 @@
         "over_cap": {"type": "integer", "minimum": 0}
       }
     },
+    "feed_states": {
+      "description": "S05: every configured feed ends in exactly one state per run, closed set. Item-level drops (drop_counts) are separate from this feed-level outcome.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {"type": "integer", "minimum": 0},
+        "empty": {"type": "integer", "minimum": 0},
+        "http_error": {"type": "integer", "minimum": 0},
+        "timeout": {"type": "integer", "minimum": 0},
+        "parse_error": {"type": "integer", "minimum": 0}
+      }
+    },
     "counts": {
-      "description": "Run ledger. drops maps a fixed reason key to count (S02); leniency maps each parser tolerance applied (R9) to count, keys open. fetched == published + sum(drops) is asserted on every run.",
+      "description": "Run ledger. drops maps a fixed reason key to count (S02); leniency maps each parser tolerance applied (R9) to count, keys open. feed_states is optional, added by S05 fanout runs: it maps each closed feed-level outcome to a count, and the sum equals the number of configured sources. fetched == published + sum(drops) is asserted on every run.",
       "type": "object",
       "required": ["fetched", "published", "drops", "leniency"],
       "additionalProperties": false,
@@ -101,7 +113,8 @@
         "fetched": {"type": "integer", "minimum": 0},
         "published": {"type": "integer", "minimum": 0},
         "drops": {"$ref": "#/$defs/drop_counts"},
-        "leniency": {"$ref": "#/$defs/count_map"}
+        "leniency": {"$ref": "#/$defs/count_map"},
+        "feed_states": {"$ref": "#/$defs/feed_states"}
       }
     }
   }
