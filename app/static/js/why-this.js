@@ -79,6 +79,12 @@ function describeTerm(term, story, profile, names) {
     const label = value && value !== 1 ? `Trust, ×${value} for ${name}` : "Trust, no override on this story's sources";
     return { label, editHref: "profile.html#raw-json" };
   }
+  // S15 seen penalty (R17): term.detail is already the finished plain-words label
+  // ("You opened this 2 hours ago"), computed per story by history/penalty.js, since
+  // only it knows which signal (or both) fired and how long ago.
+  if (term.term === "seen_penalty") {
+    return { label: term.detail || "Seen before, on this device", editHref: "profile.html#raw-json" };
+  }
   // boost:<id>: term.detail is the boost's own label, already plain text (S11).
   return { label: `Boost: ${term.detail}`, editHref: "profile.html#raw-json" };
 }

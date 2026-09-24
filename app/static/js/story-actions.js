@@ -23,6 +23,17 @@ import { toggleThumb, undoThumb } from "./actions/thumbs.js";
 import { withSourceMuted, withTopicMuted, withTopicBoosted } from "./actions/mute-boost.js";
 import { anchoredRerender } from "./actions/scroll-anchor.js";
 import { renderWhyContent } from "./why-this.js";
+// S15: "opened" (R17, R23), and the seen-penalty term (history/penalty.js) so the
+// device re-rank after a mute or boost, and the why-this sheet, agree with what the
+// page already shows.
+import { openedStore } from "./history/store.js";
+import { recordOpened } from "./history/record.js";
+import { readSummary, summaryToHistory, noteSeen } from "./history/summary.js";
+import { seenPenaltyTerm } from "./history/penalty.js";
+
+function currentHistoryTerms() {
+  return [seenPenaltyTerm(summaryToHistory(readSummary(window.localStorage)))];
+}
 
 // S12: the why-this sheet reads the same rankPages() output the device re-rank and the
 // build already agree on, so the item can stay on from here.
@@ -141,7 +152,12 @@ async function openStoryMenu(li) {
   menu.addEventListener("click", (event) => {
     const button = event.target.closest(".sheet-item[data-action]");
     if (!button) return;
-    if (button.tagName === "A") { closeSheet(); return; } // "Open at source": let the link navigate
+    if (button.tagName === "A") {
+      // "Open at source": let the link navigate (target="_blank"); record opened (S15).
+      recordOpened(openedStore, sid, { ...attrs, ...facts }, nowIso, (snapshot) => noteSeen(window.localStorage, "opened", snapshot.id, snapshot.time)).catch(() => {});
+      closeSheet();
+      return;
+    }
     event.preventDefault();
     handleAction(button.dataset.action, { li, sid, attrs, facts });
   });
@@ -171,7 +187,7 @@ async function storyForWhy(li, sid) {
   } catch {
     profile = buildDefaultProfile(input.now);
   }
-  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health });
+  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health, terms: currentHistoryTerms() });
   const { tab } = domPlacement(li);
   const list = tab === "today" ? pages.today : pages.sections.find((s) => s.id === tab)?.stories || pages.today;
   const story = list.find((s) => s.id === sid) || pages.today.find((s) => s.id === sid);
@@ -280,7 +296,7 @@ function applyPanel(panel, stories, input) {
 function rerenderAfterProfileChange(profile, sourcePanel) {
   const input = getInput();
   window.almanacProfile = profile;
-  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health });
+  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health, terms: currentHistoryTerms() });
   const storiesFor = (id) => (id === "today" ? pages.today : (pages.sections.find((s) => s.id === id)?.stories || []));
   for (const panel of document.querySelectorAll(".panel")) {
     if (!panel.childElementCount) continue;

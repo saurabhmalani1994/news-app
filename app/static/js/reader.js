@@ -25,6 +25,28 @@ import { thumbsStore } from "./actions/store.js";
 import { toggleThumb, undoThumb } from "./actions/thumbs.js";
 import { nowIso } from "./profile/time.js";
 import { showToast } from "./toast.js";
+// S15: "opened" (R17, R23): opening the story here, or tapping a headline straight out
+// to its source (the click handler below), is one of the two seen signals. Local only,
+// never sent anywhere; the localStorage write is the compact summary the pre-paint
+// re-rank reads (history/summary.js), never a copy of the article itself.
+import { openedStore } from "./history/store.js";
+import { recordOpened } from "./history/record.js";
+import { noteSeen } from "./history/summary.js";
+
+/** The card snapshot for story `sid`, from the page's own embedded input: the same
+ * source (storyAttributes, input.images) the card's own overflow sheet and Save use,
+ * so a history entry and a save agree on what a "card" is. */
+function historyAttrs(data, sid, title, url) {
+  const attrs = storyAttributes(data, sid);
+  const image = data.images?.[sid];
+  return { ...attrs, title, url, image: image?.hero?.[0] || image?.thumb || null };
+}
+
+function markOpened(sid, attrs) {
+  if (!sid) return;
+  recordOpened(openedStore, sid, attrs, nowIso, (snapshot) => noteSeen(localStorage, "opened", snapshot.id, snapshot.time))
+    .catch(() => {}); // no IndexedDB (old browser, private-mode block): reading still works, just unrecorded
+}
 
 const reader = document.getElementById("reader");
 const scroller = document.getElementById("reader-scroll");
@@ -333,6 +355,9 @@ function open(id, link, push) {
   clearTimeout(hideTimer);
   const facts = storyFacts(id, link);
   render(id, facts);
+  const data = pageInput();
+  const sid = storyIdForArticle(data, id);
+  markOpened(sid, historyAttrs(data, sid, facts.title, facts.href));
   current = { id, link, pushed: push };
   if (push) history.pushState({ almanacReader: id }, "", `#read-${id}`);
   for (const node of underneath) node.inert = true;
@@ -380,7 +405,15 @@ document.addEventListener("click", (event) => {
   const link = event.target.closest?.("a.story-link");
   if (!link || reader.contains(link)) return;
   const id = readerChoice(link, event);
-  if (!id) return;
+  if (!id) {
+    // Not a has-body story: the link's own href carries the tap straight out to the
+    // source (target="_blank", app/build.py _render_story), which is still "opened"
+    // (R17, R23). The tab it opens in outlives this click handler, so the async record
+    // has time to finish; nothing here blocks or delays the navigation.
+    const sid = link.closest("li.story[data-sid]")?.dataset.sid;
+    if (sid) markOpened(sid, historyAttrs(pageInput(), sid, link.querySelector(".headline")?.textContent || "", link.getAttribute("href") || ""));
+    return;
+  }
   event.preventDefault();
   open(id, link, true);
 });

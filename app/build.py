@@ -59,6 +59,7 @@ PAGE = """<!doctype html>
 <script type="module" src="js/reader.js"></script>
 <script type="module" src="js/story-actions.js"></script>
 <script type="module" src="js/coverage-view.js"></script>
+<script type="module" src="js/history/observe.js"></script>
 <script src="js/sw-register.js" defer></script>
 </head>
 <body class="app">
