@@ -33,6 +33,7 @@ body {
 /* Masthead: Almanac's own serif wordmark, centered in the measured 56dp band, below
    the status bar inset. Full bleed hairline at the module edge. */
 .masthead {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -50,6 +51,42 @@ body {
   font-weight: 700;
   letter-spacing: var(--type-wordmark-tracking);
   color: var(--color-headline);
+}
+
+/* A quiet control in the masthead: the S10 entry point to Profile, the gear icon in
+   the same spot NYT's You tab uses (research/nyt-capture you-00, private reference).
+   S27 replaces this with the bottom nav's You tab; this stays until then. Full touch
+   target even though the glyph is small, right up against the masthead's own inset. */
+.masthead-action,
+.masthead-back {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + (var(--chrome-masthead) - var(--touch-min)) / 2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-min);
+  height: var(--touch-min);
+  color: var(--color-tab-inactive);
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.masthead-action {
+  right: calc(var(--space-gutter) - (var(--touch-min) - 22px) / 2);
+}
+
+.masthead-back {
+  left: calc(var(--space-gutter) - (var(--touch-min) - 22px) / 2);
+}
+
+.masthead-action:active,
+.masthead-back:active {
+  background: var(--color-pressed);
+}
+
+.masthead-action:focus-visible,
+.masthead-back:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
 }
 
 .river {
