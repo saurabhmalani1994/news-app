@@ -176,6 +176,7 @@ def test_single_divider_weight_everywhere():
     # top and its drag handle, as NYT's sheets have; never a card or a box in the page.
     radii = re.findall(r"([^{}]+)\{[^}]*border-radius:\s*([^;]+);", STYLE_CSS)
     assert sorted((sel.strip().splitlines()[-1].strip(), r) for sel, r in radii) == [
+        (".lean > i", "50%"), (".lean-sheet-dots > i", "50%"),  # L1: the lean marker's dots, not boxes
         (".sheet", "16px 16px 0 0"), (".sheet-grabber", "2px")]
 
 

@@ -26,8 +26,10 @@ const body = document.getElementById("sheet-body");
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
 const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const DRAG_DISMISS_PX = 90;
+// L1: the You page opens the lean sheet too; its own settings and masthead go inert there.
 const underneath = () => [document.querySelector(".screens"), document.querySelector(".bottom-nav"),
-  document.getElementById("reader")].filter((el) => el && !el.hidden);
+  document.getElementById("reader"), document.getElementById("settings-root"), document.querySelector("body > .masthead")]
+  .filter((el) => el && !el.hidden);
 
 let current = null; // { token }
 let token = 0;

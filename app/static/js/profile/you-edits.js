@@ -142,6 +142,28 @@ export function withSummaries(profile, mode) {
   return { ...profile, display: { ...(profile.display || {}), summaries: mode } };
 }
 
+// L1: the lean marker after a source name, on unless turned off; its filled dot grey
+// unless colored. An absent field reads as the default, so an older profile needs no
+// migration. rank-gate.js reads the same two fields before first paint.
+
+export function leanMarkersOn(profile) {
+  return profile.display?.lean_markers !== false;
+}
+
+export function leanColorOn(profile) {
+  return profile.display?.lean_color === true;
+}
+
+export function withLeanMarkers(profile, on) {
+  if (typeof on !== "boolean" || leanMarkersOn(profile) === on) return null;
+  return { ...profile, display: { ...(profile.display || {}), lean_markers: on } };
+}
+
+export function withLeanColor(profile, on) {
+  if (typeof on !== "boolean" || leanColorOn(profile) === on) return null;
+  return { ...profile, display: { ...(profile.display || {}), lean_color: on } };
+}
+
 // --- Sources: on or off, written as mutes.sources so the ranker's S13 mute pass does
 // the removing (no ranker change). ---
 //

@@ -170,6 +170,7 @@ def test_cluster_meta_names_its_source_count_quietly():
 # S24: story-actions.js is the app's own module wiring the overflow sheet, no feed data.
 # S14: coverage-view.js is the app's own module wiring the coverage sheet, no feed data.
 # S26: saved-screen.js is the app's own module wiring the Saved screen, no feed data.
+# L1: lean-view.js is the app's own module wiring the lean sheet, no feed data.
 APP_TAGS = {"html", "head", "meta", "title", "link", "body", "header", "h1", "main", "ol", "li",
             "a", "span", "section", "h2", "footer", "p", "time", "svg", "circle", "path",
             "script", "template", "nav", "div", "button", "article"}
@@ -177,6 +178,7 @@ APP_SCRIPTS = ['<script src="js/offline-gate.js">', '<script src="js/rank-gate.j
                '<script type="module" src="js/tabs.js">', '<script type="module" src="js/reader.js">',
                '<script type="module" src="js/story-actions.js">',
                '<script type="module" src="js/coverage-view.js">',
+               '<script type="module" src="js/lean-view.js">',
                '<script type="module" src="js/history/observe.js">',
                '<script type="module" src="js/live-actions.js">',
                '<script type="module" src="js/saved-screen.js">',

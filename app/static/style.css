@@ -445,12 +445,11 @@ body {
 
 /* R43: when the full text that opens is another outlet's, its name after the mark
    ("Read here · Reuters"), in the same quietest tone. When the line runs out of room
-   this name and the source name give way together, each keeping the same share of
-   itself (equal shrink, weighted by width) and at least a few letters; the source
-   count and the age never do. */
+   this name gives way first, down to its first letters; then the source name; the
+   source count and the age never do. */
 .meta-read-source {
-  flex: 0 1 auto;
-  min-width: 3.4em;
+  flex: 0 1000 auto;
+  min-width: 4.6em;
   overflow: hidden;
   white-space: pre;
   text-overflow: ellipsis;
@@ -462,7 +461,7 @@ body {
 }
 
 /* L1: the lean marker (js/lean.js leanMarker, app/lean.py), the one block for every
-   place a source name shows. Five 4dp dots right after the name, left to right the US
+   place a source name shows. Five 3.5dp dots right after the name, left to right the US
    scale left, center-left, center, center-right, right; the source's own bucket is
    filled, the other four faint, all in the meta's own tone, so it reads as metadata and
    not decoration. It sits inside the meta line's own 11dp line box (never taller than
@@ -482,18 +481,18 @@ body {
   align-self: center;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  margin-left: 7px;
+  gap: 2.5px;
+  margin: 0 2px 0 6px;
   anchor-name: --lean;
 }
 
 .lean > i {
   display: block;
-  width: 4px;
-  height: 4px;
+  width: 3.5px;
+  height: 3.5px;
   border-radius: 50%;
   background: currentColor;
-  opacity: 0.28;
+  opacity: 0.3;
 }
 
 .lean--left > i:nth-child(1),
@@ -553,14 +552,15 @@ body {
   height: var(--touch-min);
   padding: 0;
   border-style: none;
-  border-radius: 50%;
   background: transparent;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color var(--motion-duration) var(--motion-ease);
 }
 
-.lean-hit:active {
-  background: color-mix(in srgb, var(--color-headline) 9%, transparent);
+/* A quiet round tint while pressed, drawn (not a rounded box), the dots still showing
+   through it. */
+.lean-hit:active,
+.lean-open:active::before {
+  background: radial-gradient(circle closest-side, color-mix(in srgb, var(--color-headline) 10%, transparent) 96%, transparent);
 }
 
 .lean-hit:focus-visible {
@@ -579,11 +579,18 @@ body {
   }
 }
 
-/* Beside the coverage view's outlet name, and after the reader's byline source (there
-   a real button into the same sheet, its 48dp target drawn around the dots by ::before,
-   so the byline keeps its 20dp line). */
+/* Beside the coverage view's outlet name and the You page picker's source name (its
+   tap target a .lean-hit anchored by a per-source name), and after the reader's byline
+   source (there a real button into the same sheet, its 48dp target drawn around the
+   dots by ::before, so the byline keeps its 20dp line). */
 .coverage-row-head .lean {
   margin-left: -1px;
+  color: var(--color-meta);
+}
+
+.setting-label .lean {
+  margin-left: 8px;
+  vertical-align: middle;
   color: var(--color-meta);
 }
 
@@ -605,12 +612,6 @@ body {
   content: "";
   position: absolute;
   inset: -14px -8px -14px -2px;
-  border-radius: 24px;
-  transition: background-color var(--motion-duration) var(--motion-ease);
-}
-
-.lean-open:active::before {
-  background: color-mix(in srgb, var(--color-headline) 9%, transparent);
 }
 
 .lean-open:focus-visible {
@@ -622,12 +623,6 @@ body {
 .lean-off .lean-hit,
 .lean-off .lean-open {
   display: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lean-hit {
-    transition: none;
-  }
 }
 
 /* The lean sheet (js/lean.js leanSheetContent) in S24's sheet: the same scale, larger,
@@ -1849,6 +1844,16 @@ body {
 .dek,
 .meta {
   padding-right: 40px;
+}
+
+/* L1: under a shown summary the meta line sits well below the glyph (a headline and two
+   summary lines down), so it takes the full measure; the 40dp column is kept only where
+   the line can sit beside the glyph, a text-only row with summaries off. The room goes
+   to the source name the lean marker follows. */
+:root:not(.summaries-top) .dek + .meta,
+.story--hero .dek + .meta,
+.story--secondary .dek + .meta {
+  padding-right: 0;
 }
 
 /* D3: where the glyph sits on a photo, the text never runs under it, so the text keeps
