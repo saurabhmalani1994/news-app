@@ -103,12 +103,16 @@ export function syncLiveTab(profile) {
   const wasActive = tab.getAttribute("aria-selected") === "true";
   tab.hidden = !event;
   panel.hidden = !event;
-  if (event) tab.textContent = event.label;
+  if (event) {
+    tab.textContent = event.label;
+    tab.dataset.label = event.label; // style.css reserves the bold width from this
+  }
   if (!event && wasActive) {
     const today = document.getElementById("tab-today");
     const i = today && visibleTabs().indexOf(today);
     if (i >= 0) select(i, true);
   }
+  placeInk();
   return event;
 }
 
@@ -206,6 +210,60 @@ function whenRanked(fn) {
   watch.observe(root, { attributes: true, attributeFilter: ["class"] });
 }
 
+// D3: one underline (the "ink") for the whole strip, so a change of tab slides it rather
+// than jumping. It sits inside the scroller, so it scrolls with the labels, and moves by
+// transform only (translateX and scaleX of a 1px bar), never by layout, so it can never
+// count as a layout shift. A tap or key eases it to the new tab (style.css, 160ms
+// ease-out, none under reduced motion); a swipe drives it straight from the pager's
+// scroll position, so it follows the finger. Until this runs, the active tab paints its
+// own underline (style.css), in the same place, so first paint already has one.
+const INSET = 6; // the underline reaches 4dp past the label: 10dp padding less 4
+const ink = document.createElement("span");
+ink.className = "tabs-ink";
+ink.setAttribute("aria-hidden", "true");
+let jumpTarget = null;
+
+/** The tab's box in the strip's own scrolled coordinates, to the subpixel (offsetLeft
+ * would round), less the inset each side. */
+function inkBox(tab) {
+  const r = tab.getBoundingClientRect();
+  const x = r.left - strip.getBoundingClientRect().left - strip.clientLeft + strip.scrollLeft;
+  return { x: x + INSET, w: Math.max(0, r.width - 2 * INSET) };
+}
+
+function setInk(box, animate) {
+  ink.classList.toggle("is-tracking", !animate);
+  ink.style.transform = `translateX(${box.x}px) scaleX(${box.w})`;
+}
+
+/** Puts the ink under the selected tab, without easing (load, resize, relabel). */
+function placeInk() {
+  const tab = visibleTabs()[currentIndex()];
+  if (tab) setInk(inkBox(tab), false);
+}
+
+/** The ink for the pager's scroll position: between the two tabs whose panels straddle
+ * it, in proportion, so mid-swipe it sits part way and part width between them. */
+function trackInk() {
+  const tabs = visibleTabs();
+  const lefts = tabs.map((t) => panelFor(t).offsetLeft);
+  const x = pager.scrollLeft;
+  let i = 0;
+  while (i < tabs.length - 1 && lefts[i + 1] <= x) i++;
+  const a = inkBox(tabs[i]);
+  const next = tabs[i + 1];
+  const span = next ? lefts[i + 1] - lefts[i] : 0;
+  const f = span > 0 ? Math.min(1, Math.max(0, (x - lefts[i]) / span)) : 0;
+  const b = next ? inkBox(next) : a;
+  setInk({ x: a.x + (b.x - a.x) * f, w: a.w + (b.w - a.w) * f }, false);
+}
+
+strip.append(ink);
+placeInk();
+strip.classList.add("has-ink");
+new ResizeObserver(placeInk).observe(strip);
+document.fonts?.ready.then(placeInk);
+
 /** Marks tab i active; with `move`, jumps the pager to its panel (tap, key). */
 function select(i, move) {
   const tabs = visibleTabs();
@@ -216,7 +274,11 @@ function select(i, move) {
     t.setAttribute("aria-selected", n === i ? "true" : "false");
     t.tabIndex = n === i ? 0 : -1;
   });
-  if (move) pager.scrollTo({ left: panelFor(tab).offsetLeft, behavior: "instant" });
+  if (move) {
+    setInk(inkBox(tab), !reduced.matches);
+    jumpTarget = panelFor(tab).offsetLeft;
+    pager.scrollTo({ left: jumpTarget, behavior: "instant" });
+  }
   const left = tab.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2;
   strip.scrollTo({ left: Math.max(0, left), behavior: reduced.matches ? "instant" : "smooth" });
 }
@@ -247,6 +309,10 @@ pager.addEventListener("scroll", () => {
   frame = requestAnimationFrame(() => {
     frame = 0;
     if (!built && !root.classList.contains("rerank")) buildSections();
+    // A tap's own instant jump lands exactly on its panel: the ink is already easing
+    // there, so leave it be. Any other scroll is a finger (or its snap): track it.
+    if (jumpTarget !== null && Math.abs(pager.scrollLeft - jumpTarget) < 1) jumpTarget = null;
+    else { jumpTarget = null; trackInk(); }
     const width = pager.clientWidth || 1;
     const tabs = visibleTabs();
     const i = tabs.findIndex((t) => Math.abs(panelFor(t).offsetLeft - pager.scrollLeft) < width / 2);

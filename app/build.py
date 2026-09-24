@@ -105,24 +105,28 @@ PAGE = """<!doctype html>
 # or this file, never a feed string. Section panels start empty: tabs.js fills each from
 # Today's own rows, filtered by the same table, so the page carries no second copy.
 TAB = ('<button class="tab" type="button" role="tab" id="tab-{id}" aria-controls="section-{id}" '
-       'aria-selected="{selected}" tabindex="{tabindex}" data-section="{id}"{hidden}>{label}</button>')
+       'aria-selected="{selected}" tabindex="{tabindex}" data-section="{id}" data-label="{label_attr}"{hidden}>{label}</button>')
 PANEL = ('<section class="panel" id="section-{id}" role="tabpanel" aria-labelledby="tab-{id}" '
          'data-section="{id}"{hidden}></section>')
 
-# Bottom nav (R21): Home, Following, Saved, You. Icons are the app's own simple filled
-# glyphs, 20dp, one path each; the label under each is text only. You opens the S10
-# profile screen, the entry NYT puts on its You tab (it left the masthead here).
+# Bottom nav (R21): Home, Following, Saved, You. D3: one drawn set on a 24dp grid, one
+# stroke weight (style.css .nav-icon), outlined when inactive; the current item fills its
+# `nav-shape` parts, as NYT's bar does. Each glyph spans about 20dp of the 24dp box (the
+# measured icon size). The label under each is text only. You opens the S10 profile
+# screen, the entry NYT puts on its You tab (it left the masthead here).
 NAV_ICONS = {
-    "home": "M12 3.2 2.6 11.3h2.8v9.5h5.1v-6h3v6h5.1v-9.5h2.8z",
-    "following": "M12 2.6 2.4 7.8 12 13l9.6-5.2zM4.7 11.2l-2.3 1.3L12 17.7l9.6-5.2-2.3-1.3L12 15.1zM4.7 15.9l-2.3 1.3L12 22.4l9.6-5.2-2.3-1.3L12 19.8z",
-    "saved": "M6.2 2.6h11.6c.5 0 .9.4.9.9v18.1L12 17.1l-6.7 4.5V3.5c0-.5.4-.9.9-.9z",
-    "you": "M12 11.6a4.3 4.3 0 1 0 0-8.6 4.3 4.3 0 0 0 0 8.6zm0 2.1c-4.8 0-8.4 2.6-8.4 6.2v1.5h16.8v-1.5c0-3.6-3.6-6.2-8.4-6.2z",
+    "home": '<path class="nav-shape" d="M3.6 10.1 12 3.3l8.4 6.8V20.9h-5.9v-6h-5v6H3.6z"></path>',
+    "following": ('<path class="nav-shape" d="M12 3.2 20.9 8 12 12.8 3.1 8z"></path>'
+                  '<path d="M3.1 12.3 12 17.1l8.9-4.8M3.1 16.4 12 21.2l8.9-4.8"></path>'),
+    "saved": '<path class="nav-shape" d="M6.2 3.1h11.6v17.8L12 16.6l-5.8 4.3z"></path>',
+    "you": ('<circle class="nav-shape" cx="12" cy="7.6" r="4.2"></circle>'
+            '<path class="nav-shape" d="M4 20.9c0-4.3 3.6-6.6 8-6.6s8 2.3 8 6.6z"></path>'),
 }
 NAV_ITEMS = (("home", "Home", "#home"), ("following", "Following", "#following"),
              ("saved", "Saved", "#saved"), ("you", "You", "profile.html"))
 NAV_ITEM = ('<a class="nav-item" href="{href}" data-screen="{id}"{current}>'
-            '<svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">'
-            '<path d="{icon}"></path></svg><span class="nav-label">{label}</span></a>')
+            '<svg class="nav-icon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">'
+            '{icon}</svg><span class="nav-label">{label}</span></a>')
 
 
 def bottom_nav(current):
@@ -286,6 +290,7 @@ def _chrome(sections):
     for index, section in enumerate(sections):
         hidden = " hidden" if section.get("slot") and not section.get("ids") else ""
         tabs.append(TAB.format(id=escape(section["id"], quote=True), label=escape(section["label"], quote=False),
+                               label_attr=escape(section["label"], quote=True),
                                selected="true" if index == 0 else "false", tabindex="0" if index == 0 else "-1",
                                hidden=hidden))
         if index:

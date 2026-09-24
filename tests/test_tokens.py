@@ -171,7 +171,12 @@ def test_single_divider_weight_everywhere():
     assert DARK_TOKENS["divider-weight"] == "1px"
     borders = re.findall(r"border(?:-top|-bottom)?:\s*([^;]+);", STYLE_CSS)
     assert borders and all(b == "var(--divider-weight) solid var(--color-divider)" for b in borders)
-    assert "box-shadow" not in STYLE_CSS and "border-radius" not in STYLE_CSS
+    assert "box-shadow" not in STYLE_CSS
+    # D3 (intended visual change): the one rounded shape is the system bottom sheet's own
+    # top and its drag handle, as NYT's sheets have; never a card or a box in the page.
+    radii = re.findall(r"([^{}]+)\{[^}]*border-radius:\s*([^;]+);", STYLE_CSS)
+    assert sorted((sel.strip().splitlines()[-1].strip(), r) for sel, r in radii) == [
+        (".sheet", "16px 16px 0 0"), (".sheet-grabber", "2px")]
 
 
 def test_gutter_is_20dp_and_viewport_is_360dp():

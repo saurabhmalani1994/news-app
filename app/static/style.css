@@ -16,6 +16,17 @@ html {
   box-sizing: inherit;
 }
 
+/* D3: no scrollbar anywhere, as in NYT's app: every scroller (panels, the pager, the
+   strip, the reader, sheets, the profile page) still scrolls natively by touch, wheel
+   and keys; only the bar is gone, so no sliver shows at the right edge. */
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
 body {
   margin: 0;
   min-width: 0;
@@ -699,8 +710,10 @@ body {
 }
 
 /* Section tabs: a native horizontal scroller, labels 20dp apart (10dp padding a
-   side), the first label on the 20dp gutter. Active and inactive share one weight, so
-   selecting a tab changes only its color and underline, never its width. */
+   side), the first label on the 20dp gutter. D3: the active label is bold, as NYT's
+   is, yet no tab ever changes width: each tab reserves its bold width with a hidden,
+   zero-height bold copy of its own label (::after, from data-label), so the box is the
+   bold width in both states. One underline, the ink (js/tabs.js), slides between tabs. */
 .tabs {
   flex: none;
   padding-top: env(safe-area-inset-top);
@@ -712,14 +725,10 @@ body {
   display: flex;
   height: var(--chrome-tab-bar);
   padding: 0 calc(var(--space-gutter) / 2);
+  position: relative;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
-  scrollbar-width: none;
-}
-
-.tabs-scroll::-webkit-scrollbar {
-  display: none;
 }
 
 .tab {
@@ -743,26 +752,47 @@ body {
 
 .tab[aria-selected="true"] {
   color: var(--color-tab-active);
+  font-weight: 700;
+  /* The first-paint underline, before js/tabs.js places the sliding ink in the same
+     spot: 3dp, reaching 4dp past the label each side (10dp padding less 4). */
+  background-image: linear-gradient(var(--color-tab-active), var(--color-tab-active));
+  background-repeat: no-repeat;
+  background-size: calc(100% - 12px) 3px;
+  background-position: 50% 100%;
+}
+
+.has-ink .tab[aria-selected="true"] {
+  background-image: none;
 }
 
 .tab::after {
-  content: "";
+  content: attr(data-label);
+  content: attr(data-label) / "";
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: 700;
+}
+
+.tabs-ink {
   position: absolute;
-  left: calc(var(--space-gutter) / 2 - 4px);
-  right: calc(var(--space-gutter) / 2 - 4px);
+  left: 0;
   bottom: 0;
+  width: 1px;
   height: 3px;
   background: var(--color-tab-active);
-  transform: scaleX(0);
+  transform-origin: 0 0;
+  pointer-events: none;
   transition: transform var(--motion-duration) var(--motion-ease);
 }
 
-.tab[aria-selected="true"]::after {
-  transform: none;
+.tabs-ink.is-tracking {
+  transition: none;
 }
 
 .tab:active {
-  background: var(--color-pressed);
+  background-color: var(--color-pressed);
 }
 
 .tab:focus-visible {
@@ -775,11 +805,18 @@ body {
    showing or hiding the tab (app/build.py at build, js/tabs.js on a pin or block)
    never touches the button's own text node, the one the "labels are text only" proof
    checks for. */
+.tab[data-section="live"] {
+  padding-left: calc(var(--space-gutter) / 2 + 10px);
+}
+
 .tab[data-section="live"]:not([hidden])::before {
   content: "\25CF";
-  margin-right: 5px;
+  position: absolute;
+  left: calc(var(--space-gutter) / 2);
+  top: 50%;
+  transform: translateY(-50%);
   font-size: 7px;
-  vertical-align: middle;
+  line-height: 1;
   color: var(--color-live-dot);
 }
 
@@ -840,11 +877,6 @@ body {
   overflow-y: hidden;
   overscroll-behavior: contain;
   scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-}
-
-.pager::-webkit-scrollbar {
-  display: none;
 }
 
 .panel {
@@ -880,7 +912,7 @@ body {
   flex-direction: column;
   align-items: center;
   height: var(--chrome-bottom-nav);
-  padding-top: 10px;
+  padding-top: 8px;
   color: var(--color-nav-inactive);
   text-decoration: none;
   transition: background-color var(--motion-duration) var(--motion-ease);
@@ -899,15 +931,25 @@ body {
   outline-offset: -2px;
 }
 
+/* D3: one drawn set, 24dp box, glyphs about 20dp (measured), one 1.8dp stroke; the
+   current item fills its shapes (NYT's bar: outlined at rest, solid when current). */
 .nav-icon {
   flex: none;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.nav-item[aria-current="page"] .nav-shape {
   fill: currentColor;
 }
 
 .nav-label {
-  margin-top: 5px;
+  margin-top: 1px;
   font-family: var(--type-bottom-nav-label-family);
   font-size: var(--type-bottom-nav-label-size);
   line-height: var(--type-bottom-nav-label-line-height);
@@ -946,10 +988,13 @@ body {
 }
 
 .empty {
-  max-width: 300px;
-  margin-top: 28px;
-  padding-top: 20px;
+  margin-top: 24px;
+  padding-top: 24px;
   border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.empty > * {
+  max-width: 300px;
 }
 
 .empty--section {
@@ -989,7 +1034,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .tab,
-  .tab::after,
+  .tabs-ink,
   .nav-item {
     transition: none;
   }
@@ -1400,24 +1445,44 @@ body {
   fill: currentColor;
 }
 
+/* D3: over a photo the glyph sits on a small round scrim tucked 4dp into the photo's
+   top-right corner (hero: the full-bleed photo's; river: the 88dp thumbnail's), never a
+   square box hanging past the thumbnail's edge. The 48dp target is unchanged. */
 .story--hero .story-overflow,
 .story--river .story-overflow,
 .story--river .saved-overflow {
-  top: 6px;
   color: #F8F8F8;
-  background: rgba(18, 18, 18, 0.45);
+  background: radial-gradient(circle closest-side, rgba(18, 18, 18, 0.5) 15.5px, transparent 16px);
+}
+
+.story--hero .story-overflow {
+  top: 0;
+  right: 0;
+}
+
+.story--river .story-overflow,
+.story--river .saved-overflow {
+  top: 7px;
+  right: calc(var(--space-gutter) - 4px);
 }
 
 .story--hero .story-overflow:active,
 .story--river .story-overflow:active,
 .story--river .saved-overflow:active {
-  background: rgba(18, 18, 18, 0.65);
+  background: radial-gradient(circle closest-side, rgba(18, 18, 18, 0.72) 15.5px, transparent 16px);
 }
 
 .headline,
 .dek,
 .meta {
   padding-right: 40px;
+}
+
+/* D3: where the glyph sits on a photo, the text never runs under it, so the text keeps
+   its full measure (river headlines were wrapping a word a line). */
+.story--hero .story-body:has(.story-media) :is(.headline, .dek, .meta),
+.story--river .story-body:has(.story-media) :is(.headline, .dek, .meta) {
+  padding-right: 0;
 }
 
 /* S24: the reusable bottom sheet (js/sheet.js), an NYT-style overflow/share sheet.
@@ -1454,7 +1519,7 @@ body {
   max-height: 80vh;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border-top: var(--divider-weight) solid var(--color-divider);
+  border-radius: 16px 16px 0 0;
   padding-bottom: max(8px, env(safe-area-inset-bottom));
   background: var(--color-nav-surface);
   transform: translateY(100%);
@@ -1477,10 +1542,12 @@ body {
 
 .sheet-grabber {
   display: block;
-  width: 36px;
-  height: 3px;
-  margin: 10px auto 2px;
-  background: var(--color-divider);
+  width: 32px;
+  height: 4px;
+  margin: 10px auto 4px;
+  border-radius: 2px;
+  background: var(--color-nav-inactive);
+  opacity: 0.4;
   grid-column: 1 / -1;
 }
 
@@ -1593,14 +1660,14 @@ body {
   position: fixed;
   left: var(--space-gutter);
   right: var(--space-gutter);
-  bottom: calc(var(--chrome-bottom-nav) + env(safe-area-inset-bottom) + 12px);
+  bottom: calc(var(--chrome-bottom-nav) + env(safe-area-inset-bottom) + 8px);
   z-index: 4;
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 46px;
+  min-height: 48px;
   padding: 0 8px 0 16px;
-  background: var(--color-nav-surface);
+  background: #3A3A3A;
   opacity: 0;
   transform: translateY(8px);
   transition: opacity var(--motion-duration) var(--motion-ease), transform var(--motion-duration) var(--motion-ease);
@@ -1625,7 +1692,7 @@ body {
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 500;
-  color: var(--color-headline);
+  color: #F8F8F8;
 }
 
 .toast-action {
@@ -1637,7 +1704,7 @@ body {
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 700;
-  color: var(--color-headline);
+  color: #F8F8F8;
   text-transform: uppercase;
   letter-spacing: 0.02em;
   -webkit-tap-highlight-color: transparent;
