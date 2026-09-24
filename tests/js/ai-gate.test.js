@@ -92,6 +92,7 @@ const VIOLATIONS = [
   ["reserved: trust", proposal([{ path: "$.trust.bbc", old_value: 1.2, new_value: 1.1 }]), REASONS.RESERVED_PATH],
   ["reserved: standing stories", proposal([{ path: "$.standing_stories[sudan].floor_hours", old_value: 24, new_value: 48 }]), REASONS.RESERVED_PATH],
   ["reserved: exploration", proposal([{ path: "$.exploration_slots", old_value: 2, new_value: 0 }]), REASONS.RESERVED_PATH],
+  ["reserved: live overrides (S33, R22 owner only)", proposal([{ path: "$.live_overrides.pinned_event_id", old_value: false, new_value: true }]), REASONS.RESERVED_PATH],
   ["reserved: boost on must-know", proposal([{ path: "$.boosts[mk].amount", old_value: 0.1, new_value: 0 }]), REASONS.RESERVED_PATH],
   ["unknown topic", proposal([{ path: "$.topics.sports.affinity", old_value: 0.5, new_value: 0.6 }]), REASONS.UNKNOWN_TARGET],
   ["unknown boost", proposal([{ path: "$.boosts[nope].amount", old_value: 0.1, new_value: 0.2 }]), REASONS.UNKNOWN_TARGET],
