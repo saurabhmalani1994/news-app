@@ -100,7 +100,7 @@ def test_hostile_title_renders_as_text_only():
     parsed = _parse(render(pool))
     rendered = parsed.items[_row_of(parsed, evil)]
     assert rendered == smart_quotes(evil) and fold_quotes(rendered) == evil
-    assert parsed.tags.count("script") == 6 and "img" not in parsed.tags  # S11/S18 gates, S27 tabs.js, S25 reader.js, S18 offline+sw
+    assert parsed.tags.count("script") == 7 and "img" not in parsed.tags  # S11/S18 gates, S27 tabs.js, S25 reader.js, S18 offline+sw, S24 story-actions.js
 
 
 def test_page_has_no_images_or_scripts():
@@ -118,8 +118,9 @@ def test_page_has_no_images_or_scripts():
     assert re.findall(r"<script\b[^>]*>", page) == [
         '<script src="js/offline-gate.js">', '<script src="js/rank-gate.js">',
         '<script type="module" src="js/tabs.js">', '<script type="module" src="js/reader.js">',
+        '<script type="module" src="js/story-actions.js">',
         '<script src="js/sw-register.js" defer>', '<script src="js/offline.js">',
-    ]  # S11/S18 gates, S27 tabs, S25 reader, S18 offline+sw
+    ]  # S11/S18 gates, S27 tabs, S25 reader, S24 story-actions, S18 offline+sw
 
 
 def test_stylesheets_are_same_origin_only():

@@ -56,6 +56,7 @@ PAGE = """<!doctype html>
 <script src="js/rank-gate.js"></script>
 <script type="module" src="js/tabs.js"></script>
 <script type="module" src="js/reader.js"></script>
+<script type="module" src="js/story-actions.js"></script>
 <script src="js/sw-register.js" defer></script>
 </head>
 <body class="app">
@@ -87,6 +88,8 @@ PAGE = """<!doctype html>
 </div>
 {nav}
 {reader}
+{sheet}
+{toast}
 <template id="rank-input">{rank_input}</template>
 </body>
 </html>
@@ -140,6 +143,31 @@ READER = """<div class="reader" id="reader" role="dialog" aria-modal="true" aria
 <button class="reader-back" id="reader-back" type="button" aria-label="Back"><svg class="reader-bar-icon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20z"></path></svg></button>
 <a class="reader-out" id="reader-out" target="_blank" rel="noopener noreferrer" aria-label="Read at the source" hidden><svg class="reader-bar-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3zM19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z"></path></svg></a>
 </nav>
+</div>"""
+
+# S24: the reusable bottom sheet (js/sheet.js), an NYT-style overflow/share sheet.
+# Static chrome only, empty and hidden until a caller opens it: this slice's own
+# story-actions menu, and S12's why-this sheet and S14's coverage view after it, each
+# filling #sheet-body with their own content through the same open/close API.
+SHEET = """<div class="sheet-root" id="sheet-root" hidden>
+<div class="sheet-scrim" id="sheet-scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-label">
+<div class="sheet-drag" id="sheet-drag">
+<span class="sheet-grabber" aria-hidden="true"></span>
+<h2 class="sheet-label" id="sheet-label"></h2>
+<button class="sheet-close" id="sheet-close" type="button" aria-label="Close">
+<svg class="sheet-close-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7 4.3 4.3l6.3 6.3 6.3-6.3z"></path></svg>
+</button>
+</div>
+<div class="sheet-body" id="sheet-body"></div>
+</div>
+</div>"""
+
+# S24: the shared quiet confirmation with an optional Undo (js/toast.js), for Save,
+# thumbs, Mute source, Mute topic and Boost topic alike.
+TOAST = """<div class="toast" id="toast" role="status" aria-live="polite" hidden>
+<p class="toast-text" id="toast-text"></p>
+<button class="toast-action" id="toast-action" type="button" hidden></button>
 </div>"""
 
 # S25: a story opens in the reader only when its lead article has a body file (S22
@@ -244,13 +272,23 @@ REST = """<details class="more-rest">
 </details>
 """
 
+# S24: the per-story overflow control (js/story-actions.js), a sibling of the row's
+# own link, never nested inside it (a button inside an <a> would fire both on a tap).
+# A quiet 48dp target, the three-dot glyph NYT's own article bar uses; CSS reserves a
+# matching gutter on the headline, dek and meta so the icon is never fought for room.
+STORY_OVERFLOW = (
+    '<button class="story-overflow" type="button" aria-label="Story actions" aria-haspopup="dialog">'
+    '<svg class="story-overflow-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">'
+    '<path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"></path>'
+    "</svg></button>"
+)
 # One row shape for every tier; the tier only changes classes, whether a dek shows and
 # whether a photo shows. The photo goes first inside .story-body; its box is sized by
 # width, height and aspect-ratio before a byte arrives (style.css), so text never moves.
 STORY = (
     '<li class="story story--{tier}" data-sid="{sid}">{open}'
     '<span class="story-body">{media}<span class="headline{headline_mod}">{title}</span>{dek}'
-    '<span class="meta">{meta}</span></span>{close}{other}</li>'
+    '<span class="meta">{meta}</span></span>{close}' + STORY_OVERFLOW + "{other}</li>"
 )
 # S13 other-side slot: one attached link under a many-outlet card, to the same story as
 # an outlet of the lean least seen on this page tells it (app/static/js/passes.js says
@@ -480,6 +518,8 @@ def render(pool, ranking=None):
         views=views,
         nav=bottom_nav("home"),
         reader=READER,
+        sheet=SHEET,
+        toast=TOAST,
         rank_key=escape(ranking["key"], quote=True),
         notices=render_notices(ranking.get("notices", [])),
         rank_input=_rank_input_json(pool, shown_stories, by_id, source_names, links),

@@ -19,6 +19,11 @@ TEMPLATE = Path(__file__).resolve().parent / "sw_template.js"
 # worker imports), fonts and the manifest. Icons are added separately (a whole
 # directory). pool.json, _headers and sw.js itself are never precached.
 SHELL_EXTENSIONS = (".html", ".css", ".js", ".woff2", ".webmanifest")
+# S24: profile.schema.json is the one data file that is app shell, not feed data: S10's
+# ProfileStore needs it to validate a save, and offline is exactly when a mute or a
+# boost (story-actions.js) or a profile edit (profile-screen.js) most needs to still
+# work. Every other .json (pool.json, bodies/*) stays out, fetched at runtime instead.
+SHELL_EXTRA_FILES = ("profile.schema.json",)
 
 
 def precache_files(dist: Path):
@@ -30,7 +35,7 @@ def precache_files(dist: Path):
         rel = path.relative_to(dist).as_posix()
         if rel in ("pool.json", "_headers", "sw.js"):
             continue
-        if path.suffix in SHELL_EXTENSIONS or rel.startswith("icons/"):
+        if path.suffix in SHELL_EXTENSIONS or rel.startswith("icons/") or rel in SHELL_EXTRA_FILES:
             paths.append(rel)
     return sorted(paths)
 
