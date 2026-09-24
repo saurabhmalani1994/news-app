@@ -162,10 +162,14 @@ def test_cluster_meta_names_its_source_count_quietly():
 # data) and template holds the device ranker's input as escaped text, never markup.
 # S27: nav, div and button are the app's own tab strip, bottom nav and empty views, and
 # tabs.js is the app's own module (no feed data); their labels are checked below.
+# S18: offline-gate.js/offline.js (the offline line) and sw-register.js (the service
+# worker) are the app's own external files too, no feed data.
 APP_TAGS = {"html", "head", "meta", "title", "link", "body", "header", "h1", "main", "ol", "li",
             "a", "span", "section", "h2", "footer", "p", "time", "svg", "circle", "path",
             "script", "template", "nav", "div", "button"}
-APP_SCRIPTS = ['<script src="js/rank-gate.js">', '<script type="module" src="js/tabs.js">']
+APP_SCRIPTS = ['<script src="js/offline-gate.js">', '<script src="js/rank-gate.js">',
+               '<script type="module" src="js/tabs.js">', '<script src="js/sw-register.js" defer>',
+               '<script src="js/offline.js">']
 
 
 def test_every_rendered_string_is_text_only():
@@ -301,7 +305,7 @@ def test_device_rank_input_is_escaped_text_that_round_trips():
     assert re.findall(r"<script\b[^>]*>", page) == APP_SCRIPTS
     rows = re.findall(r'<li class="story story--[\w-]+" data-sid="([^"]+)">', page)
     assert rows == [r["id"] for r in run_ranker(pool)["ranked"]]
-    assert re.search(r'<html lang="en" data-rank-key="[^"]+">', page)
+    assert re.search(r'<html lang="en" data-rank-key="[^"]+" data-generated-at="[^"]*">', page)
 
 
 # S27: the section tabs and the bottom nav are the app's own text-only labels, in the

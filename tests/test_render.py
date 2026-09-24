@@ -100,7 +100,7 @@ def test_hostile_title_renders_as_text_only():
     parsed = _parse(render(pool))
     rendered = parsed.items[_row_of(parsed, evil)]
     assert rendered == smart_quotes(evil) and fold_quotes(rendered) == evil
-    assert parsed.tags.count("script") == 2 and "img" not in parsed.tags  # S11 gate, S27 tabs.js only
+    assert parsed.tags.count("script") == 5 and "img" not in parsed.tags  # S11/S18 gates, S27 tabs.js, S18 offline+sw
 
 
 def test_page_has_no_images_or_scripts():
@@ -110,10 +110,16 @@ def test_page_has_no_images_or_scripts():
     # feed data and is not user input.
     # S11: the one script is the app's own external head gate (rank-gate.js), which
     # carries no feed data; no other script tag, inline or not, may appear.
+    # S18 adds three more of the app's own external scripts: offline-gate.js and
+    # offline.js (the offline line) and sw-register.js (the service worker).
     page = render(GOLDEN)
     tags = set(_parse(page).tags)
     assert not tags & {"img", "iframe"}
-    assert re.findall(r"<script\b[^>]*>", page) == ['<script src="js/rank-gate.js">', '<script type="module" src="js/tabs.js">']  # S11 gate, S27 tabs
+    assert re.findall(r"<script\b[^>]*>", page) == [
+        '<script src="js/offline-gate.js">', '<script src="js/rank-gate.js">',
+        '<script type="module" src="js/tabs.js">', '<script src="js/sw-register.js" defer>',
+        '<script src="js/offline.js">',
+    ]  # S11/S18 gates, S27 tabs, S18 offline+sw
 
 
 def test_stylesheets_are_same_origin_only():
