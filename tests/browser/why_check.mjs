@@ -109,7 +109,7 @@ check("why-this on the standing-story pick shows its pass entry in plain words",
   !sd.hidden && sd.passes.length === 1 && /^Placed by standing story: Sudan, floor 1 in the top 15/.test(sd.passes[0]),
   { passes: sd.passes });
 check("its own rows also sum exactly to its own total", sdSum === parseSigned(sd.total), { sdSum, total: sd.total });
-check("it carries the edit-what-drove-this-most link", sd.editHref.startsWith("profile.html"), { editHref: sd.editHref });
+check("it carries the edit-what-drove-this-most link", sd.editHref.startsWith("/profile"), { editHref: sd.editHref });
 
 await evaluate("history.back()");
 await sleep(400);

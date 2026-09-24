@@ -2,7 +2,7 @@
 // sanitizer's node test (the real HTML parser) and the CSP browser proof. No npm
 // dependencies: Node's own fetch and WebSocket, and the Chrome already on the machine
 // (CHROME env, the Windows default path, or /usr/bin/google-chrome on the CI runner).
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
@@ -12,14 +12,15 @@ export const CHROME = process.env.CHROME || ["C:/Program Files/Google/Chrome/App
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const TYPES = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".woff2": "font/woff2" };
 
-/** The `/*` rule of a Cloudflare Pages _headers file as {name: value}. */
-export function parseHeaders(text) {
+/** One rule of a Cloudflare Pages _headers file as {name: value}: the `/*` catch-all
+ * by default, or the rule for one exact path (H1: `/sw.js`). */
+export function parseHeaders(text, rule = "/*") {
   const headers = {};
-  let inAll = false;
+  let inRule = false;
   for (const line of text.split(/\r?\n/)) {
     if (!line.trim() || line.trim().startsWith("#")) continue;
-    if (!/^\s/.test(line)) { inAll = line.trim() === "/*"; continue; }
-    if (!inAll) continue;
+    if (!/^\s/.test(line)) { inRule = line.trim() === rule; continue; }
+    if (!inRule) continue;
     const at = line.indexOf(":");
     headers[line.slice(0, at).trim()] = line.slice(at + 1).trim();
   }
@@ -27,20 +28,33 @@ export function parseHeaders(text) {
 }
 
 /**
- * Serve `dir` on 127.0.0.1 the way Pages does for this app: files by path, `/` as
- * index.html, and every response carrying `headers`. `extra` maps a path to a body.
+ * Serve `dir` on 127.0.0.1 the way Cloudflare Pages does for this app, every response
+ * carrying `headers` (plus `pathHeaders[path]` for one exact path). H1: including Pages'
+ * pretty URLs, since S18's proof missed a blank screen by serving `.html` files as is:
+ * `/x.html` answers 308 to `/x` (`/index.html` to `/`), and `/x` serves `x.html`.
+ * `extra` maps a path to a body, served as is.
  */
-export async function serve(dir, headers = {}, extra = {}) {
+export async function serve(dir, headers = {}, extra = {}, pathHeaders = {}) {
   const root = resolve(dir);
   const server = createServer((req, res) => {
-    const pathname = decodeURIComponent(new URL(req.url, "http://x").pathname);
+    const url = new URL(req.url, "http://x");
+    const pathname = decodeURIComponent(url.pathname);
+    const own = { ...headers, ...(pathHeaders[pathname] || {}) };
     if (extra[pathname] !== undefined) {
-      res.writeHead(200, { ...headers, "content-type": TYPES[extname(pathname) || ".html"] }).end(extra[pathname]);
+      res.writeHead(200, { ...own, "content-type": TYPES[extname(pathname) || ".html"] }).end(extra[pathname]);
       return;
     }
-    const path = join(root, pathname.replace(/\/$/, "/index.html"));
-    if (!path.startsWith(root) || !existsSync(path)) { res.writeHead(404, headers).end(); return; }
-    res.writeHead(200, { ...headers, "content-type": TYPES[extname(path)] || "application/octet-stream" }).end(readFileSync(path));
+    const file = (p) => join(root, p);
+    const inRoot = (p) => p.startsWith(root) && existsSync(p) && statSync(p).isFile();
+    if (pathname.endsWith(".html") && inRoot(file(pathname))) {
+      const pretty = pathname.endsWith("/index.html") ? pathname.slice(0, -"index.html".length) : pathname.slice(0, -".html".length);
+      res.writeHead(308, { ...own, location: pretty + url.search }).end();
+      return;
+    }
+    let path = file(pathname.endsWith("/") ? pathname + "index.html" : pathname);
+    if (!inRoot(path) && !extname(pathname) && inRoot(file(pathname + ".html"))) path = file(pathname + ".html");
+    if (!inRoot(path)) { res.writeHead(404, own).end(); return; }
+    res.writeHead(200, { ...own, "content-type": TYPES[extname(path)] || "application/octet-stream" }).end(readFileSync(path));
   }).listen(0, "127.0.0.1");
   await new Promise((r) => server.on("listening", r));
   return { origin: `http://127.0.0.1:${server.address().port}`, close: () => server.close() };

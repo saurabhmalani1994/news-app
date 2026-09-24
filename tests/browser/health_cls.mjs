@@ -51,8 +51,8 @@ const check = (name, pass, detail) => { results[name] = { pass, ...detail }; ok 
 // 1. Serve headers match the build's own CSP, and health.html is reachable from the
 // You tab (profile.html carries the link).
 await load("profile.html");
-const linkHref = await evaluate(`document.querySelector('a[href="health.html"]')?.getAttribute("href")`);
-check("profile links to health.html", linkHref === "health.html", { linkHref });
+const linkHref = await evaluate(`document.querySelector('a[href="/health"]')?.getAttribute("href")`);
+check("profile links to /health", linkHref === "/health", { linkHref });
 
 // 2. health.html itself: every pool source appears exactly once, in the right order.
 await load("health.html");
