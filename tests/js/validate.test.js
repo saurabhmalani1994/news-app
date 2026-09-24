@@ -89,3 +89,40 @@ test("an unsupported schema keyword raises SchemaError instead of silently passi
   const badSchema = { type: "object", patternProperties: {} };
   assert.throws(() => validateSchema(profile, badSchema), /unsupported keywords/);
 });
+
+// S37 regression: the S10 validator looked up property names with `in`, which sees
+// Object.prototype, so a key named like a prototype member passed a closed object
+// unchecked (found by S19). Every one of these must now be rejected.
+const PROTOTYPE_NAMES = ["constructor", "toString", "valueOf", "hasOwnProperty", "isPrototypeOf", "__proto__"];
+
+test("prototype member names are unknown keys in a closed object, at the top level and nested", () => {
+  for (const name of PROTOTYPE_NAMES) {
+    const top = buildDefaultProfile("2026-09-24T00:00:00Z");
+    Object.defineProperty(top, name, { value: 5, enumerable: true, configurable: true, writable: true });
+    assert.ok(validateSchema(top, SCHEMA).some((e) => e.includes(`$.${name}: not allowed`)), `top-level ${name}`);
+
+    const nested = JSON.parse(JSON.stringify(buildDefaultProfile("2026-09-24T00:00:00Z")));
+    Object.defineProperty(nested.topics.singapore, name, { value: "x", enumerable: true, configurable: true, writable: true });
+    assert.ok(validateSchema(nested, SCHEMA).some((e) => e.includes(`$.topics.singapore.${name}: not allowed`)), `nested ${name}`);
+  }
+});
+
+test("a JSON-parsed __proto__ key is an unknown key, not a prototype swap", () => {
+  const raw = JSON.stringify(buildDefaultProfile("2026-09-24T00:00:00Z")).replace(/^\{/, '{"__proto__":{"x":1},');
+  const errors = validateSchema(JSON.parse(raw), SCHEMA);
+  assert.ok(errors.some((e) => e.includes("$.__proto__: not allowed")));
+});
+
+test("a required field is present only as an own key, never through the prototype", () => {
+  const schema = { type: "object", required: ["toString", "constructor"], properties: {} };
+  const errors = validateSchema({}, schema);
+  assert.equal(errors.length, 2);
+  assert.match(errors[0], /missing required field "toString"/);
+});
+
+test("a muted topic named like a prototype member is not a topic in this profile", () => {
+  const profile = buildDefaultProfile("2026-09-24T00:00:00Z");
+  profile.mutes.topics = ["constructor", "toString"];
+  const errors = checkIntegrity(profile);
+  assert.equal(errors.filter((e) => e.includes("is not a topic in this profile")).length, 2);
+});

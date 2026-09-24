@@ -73,7 +73,7 @@ function check(value, schema, root, path, errors) {
       return;
     }
   }
-  if ("const" in schema && !same(value, schema.const)) {
+  if (Object.hasOwn(schema, "const") && !same(value, schema.const)) {
     errors.push(`${path}: must equal ${JSON.stringify(schema.const)}`);
   }
   if (schema.enum && !schema.enum.some((v) => same(value, v))) {
@@ -116,11 +116,13 @@ function check(value, schema, root, path, errors) {
       errors.push(`${path}: fewer than ${schema.minProperties} properties`);
     }
     for (const key of schema.required || []) {
-      if (!(key in value)) errors.push(`${path}: missing required field ${JSON.stringify(key)}`);
+      if (!Object.hasOwn(value, key)) errors.push(`${path}: missing required field ${JSON.stringify(key)}`);
     }
     const props = schema.properties || {};
     for (const [key, item] of Object.entries(value)) {
-      if (key in props) check(item, props[key], root, `${path}.${key}`, errors);
+      // Own keys only (S37): `key in props` also sees Object.prototype, so a key named
+      // constructor or toString slipped through a closed object unchecked.
+      if (Object.hasOwn(props, key)) check(item, props[key], root, `${path}.${key}`, errors);
       else if (schema.additionalProperties !== undefined) {
         check(item, schema.additionalProperties, root, `${path}.${key}`, errors);
       }
@@ -150,7 +152,7 @@ export function checkIntegrity(profile) {
     boostIds.add(boost.id);
   });
   for (const topicId of (profile.mutes && profile.mutes.topics) || []) {
-    if (!(topicId in topics)) {
+    if (!Object.hasOwn(topics, topicId)) {
       errors.push(`$.mutes.topics: ${JSON.stringify(topicId)} is not a topic in this profile`);
     }
   }
