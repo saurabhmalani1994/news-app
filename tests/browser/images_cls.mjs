@@ -6,7 +6,9 @@
 // "one failing" visits the first thumbnail's request fails outright. For each visit it
 // records every row's and photo frame's box before any photo arrives, scrolls the whole
 // page so every lazy thumbnail loads, then records them again. It fails on CLS above 0,
-// any box that moved or resized, an img without width, height and a 1 / 1 aspect-ratio,
+// any box that moved or resized, an img without width, height and its aspect-ratio (1 / 1
+// for a thumbnail; D2: for the hero, the stated shape from pool.json clamped to 1:1..4:3,
+// checked on the laid-out frame),
 // a non-https src, a photo outside the hero and river tiers, or a failed photo whose
 // frame lost its token tint. A last visit loads the real photos for the screenshots.
 import { createServer } from "node:http";
@@ -20,6 +22,14 @@ import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
 
 const [distArg, shotsArg] = process.argv.slice(2);
 const dist = resolve(distArg || "dist");
+// D2: the hero frame's expected height from the photo's stated size in the served pool.
+const stated = new Map(JSON.parse(readFileSync(join(dist, "pool.json"), "utf-8")).articles
+  .filter((a) => a.image && a.image.url).map((a) => [a.image.url, a.image]));
+function heroHeight(src) {
+  const im = stated.get(src);
+  const ratio = im && im.width > 0 && im.height > 0 ? Math.min(Math.max(im.width / im.height, 1), 4 / 3) : 1;
+  return Math.round(360 / ratio);
+}
 const CHROME = process.env.CHROME || ["C:/Program Files/Google/Chrome/Application/chrome.exe", "/usr/bin/google-chrome"].find(existsSync);
 const TYPES = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".woff2": "font/woff2" };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -80,13 +90,16 @@ const AUDIT = `JSON.stringify([...document.querySelectorAll("img")].map((img) =>
     alt: img.getAttribute("alt"), loading: img.getAttribute("loading"), priority: img.getAttribute("fetchpriority"), decoding: img.getAttribute("decoding"),
     referrer: img.getAttribute("referrerpolicy"), tier: li && li.className, kind: frame && frame.className, frameRatio: frame && getComputedStyle(frame).aspectRatio,
     tint: frame && getComputedStyle(frame).backgroundColor, sameBox: !!fr && Math.abs(fr.width - ir.width) < 0.5 && Math.abs(fr.height - ir.height) < 0.5,
-    box: [Math.round(ir.width), Math.round(ir.height)], complete: img.complete, natural: img.naturalWidth }; }))`;
+    box: [Math.round(ir.width), Math.round(ir.height)], frame: fr && [fr.width, fr.height], complete: img.complete, natural: img.naturalWidth }; }))`;
 
 function auditPass(imgs, tintExpected) {
   const problems = [];
   for (const i of imgs) {
     const hero = i.kind?.includes("story-media--hero");
-    if (!i.w || !i.h || i.ratio !== "1 / 1" || i.frameRatio !== "1 / 1") problems.push(["box", i.src]);
+    const ratio = hero ? `${i.w} / ${i.h}` : "1 / 1";
+    if (!i.w || !i.h || i.ratio !== ratio || i.frameRatio !== ratio) problems.push(["box", i.src, i.ratio, i.frameRatio]);
+    if (hero && (i.w !== "360" || Number(i.h) !== heroHeight(i.src) || Math.abs(i.frame[0] - 360) > 0.5
+      || Math.abs(i.frame[1] - heroHeight(i.src)) > 0.5)) problems.push(["hero-box", i.src, i.h, i.frame]);
     if (!/^https:\/\/[^\s]+$/i.test(i.src || "")) problems.push(["src", i.src]);
     if (!i.sameBox || i.fit !== "cover" || i.alt !== "" || i.decoding !== "async" || i.referrer !== "no-referrer") problems.push(["attrs", i.src]);
     if (hero ? i.priority !== "high" || i.loading : i.loading !== "lazy") problems.push(["loading", i.src]);
@@ -144,7 +157,9 @@ async function visit({ name, scheme = "dark", stored = null, imageMode, shots = 
     await evaluate("scrollTo(0, 0)");
   }
   const pass = cls === 0 && moved === 0 && problems.length === 0 && (imageMode !== "fail" || (failed.length >= 1 && failed.every((i) => i.sameBox && i.tint === tintRgb)));
+  const heroImg = imgs.find((i) => i.kind?.includes("hero"));
   return { name, pass, cls, boxes: before.length, moved, imgs: imgs.length, hero: imgs.filter((i) => i.kind?.includes("hero")).length,
+    heroBox: heroImg ? heroImg.frame.map((v) => Math.round(v * 100) / 100) : null, heroSrc: heroImg ? heroImg.src.slice(0, 60) : null,
     thumbs: imgs.filter((i) => i.kind?.includes("thumb")).length, requested: seen.length, failed: failed.length, problems: problems.slice(0, 5), tint };
 }
 
