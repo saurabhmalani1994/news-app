@@ -1,0 +1,9 @@
+{
+  "name": "almanac",
+  "private": true,
+  "type": "module",
+  "description": "Browser-side ES modules for Almanac (S10 onward). No npm dependencies by design (BUILDER-RULES): runtime code is plain modern JavaScript, tested with Node's built-in runner.",
+  "scripts": {
+    "test": "node --test tests/js/*.test.js"
+  }
+}
