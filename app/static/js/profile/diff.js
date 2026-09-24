@@ -69,6 +69,12 @@ function diffAny(path, before, after, changes) {
       diffById(path, before, after, changes);
       return;
     }
+    // S13: an ordered list of numbers (passes.exploration.positions) is one value,
+    // changed only when its contents are.
+    if (before.every((v) => typeof v === "number") && after.every((v) => typeof v === "number")) {
+      if (before.length !== after.length || before.some((v, i) => v !== after[i])) changes.push({ path, kind: "changed", before, after });
+      return;
+    }
   }
   diffScalar(path, before, after, changes);
 }

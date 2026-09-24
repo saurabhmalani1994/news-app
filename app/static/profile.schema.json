@@ -34,6 +34,35 @@
       "items": {"$ref": "#/$defs/boost"}
     },
     "mutes": {"$ref": "#/$defs/mutes"},
+    "passes": {
+      "description": "S13 post-pass settings (app/static/js/passes.js), optional: an absent object or field takes the default. Design-set defaults: lean quota at most 60% of any 10 cards from one lean bucket (DESIGN-v1 section 6, R29); exploration slots at positions 4, 14, 24 (DESIGN-v1 section 6). Chosen where the design is silent: one other-side link per page. The must-know floor is topics.must_know.floor_slots.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lean_quota": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "window": {"type": "integer", "minimum": 2, "maximum": 50},
+            "max_share": {"type": "number", "minimum": 0.1, "maximum": 1}
+          }
+        },
+        "exploration": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "positions": {"type": "array", "maxItems": 10, "items": {"type": "integer", "minimum": 1, "maximum": 200}}
+          }
+        },
+        "other_side": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "per_page": {"type": "integer", "minimum": 0, "maximum": 10}
+          }
+        }
+      }
+    },
     "seen_penalty": {
       "description": "R17: two weighted signals. opened takes the full penalty, shown (on screen 2s+, scrolled past) a smaller incremental one.",
       "type": "object",

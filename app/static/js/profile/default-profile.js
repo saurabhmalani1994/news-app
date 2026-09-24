@@ -17,6 +17,8 @@
 // under a low weight while the fetcher side proves itself out.
 
 import { nowIso } from "./time.js";
+// S13 post-pass settings: passes.js PASS_DEFAULTS is the one source of the numbers.
+import { PASS_DEFAULTS } from "../passes.js";
 
 export const STARTER_TOPICS = Object.freeze({
   us_politics: { label: "US Politics", affinity: 0.8, half_life_hours: 8, enabled: true },
@@ -42,5 +44,6 @@ export function buildDefaultProfile(timestamp = nowIso()) {
     boosts: [],
     mutes: { sources: [], topics: [] },
     seen_penalty: structuredClone(STARTER_SEEN_PENALTY),
+    passes: structuredClone(PASS_DEFAULTS),
   };
 }

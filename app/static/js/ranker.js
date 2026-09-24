@@ -17,9 +17,10 @@
 //   trust       (trust - 1) * (recency + affinity + importance): the profile's trust is
 //               a multiplier (R10, default 1.0), shown as its own signed contribution
 //   boost:<id>  each matching flat boost's amount * W_BOOST
-// Seams, not built here: S15 adds the seen penalty (R17) through `opts.terms`, and S13
-// adds its post-passes (mute, dedup, lean quota, exploration, other side, must-know
-// floor) through `opts.passes`; each pass names itself in the story's `passes` list.
+// Seams: S15 adds the seen penalty (R17) through `opts.terms`. S13's post-passes (mute,
+// dedup, lean quota, exploration, other side, must-know floor) live in passes.js, whose
+// rankPages() scores here and then runs them per page; each pass has the `opts.passes`
+// shape and names itself in the story's `passes` list.
 
 export const SCALE = 1_000_000;
 export const WEIGHTS = Object.freeze({ recency: 1, affinity: 1, importance: 0.5, boost: 1 });
@@ -159,8 +160,8 @@ const sum = (terms) => terms.reduce((s, t) => s + t.value, 0);
 /**
  * Ranks a pool for a profile at a time. Returns stories best first, each with
  * `score` (integer micro-points), `explanation` (signed named terms summing to it
- * exactly), `must_know` (R16 eligibility) and `passes` (names of post-passes that
- * touched it; empty until S13). `now` is an ISO timestamp or epoch milliseconds.
+ * exactly), `must_know` (R16 eligibility) and `passes` (entries of the post-passes
+ * that touched it; see passes.js). `now` is an ISO timestamp or epoch milliseconds.
  *
  * opts.terms: extra per-story terms [{name, fn(story, ctx) -> points}] (S15 seen penalty).
  * opts.passes: post-passes [{name, fn(ranked, ctx) -> ranked}] run in order (S13).
@@ -186,7 +187,7 @@ export function rank(pool, profile, now, opts = {}) {
  * rank-gate.js carries a byte-identical copy of `canonical` (a node test checks). */
 export function profileKey(profile) {
   const p = profile || {};
-  return canonical([p.topics, p.trust, p.boosts, p.mutes, p.seen_penalty]);
+  return canonical([p.topics, p.trust, p.boosts, p.mutes, p.seen_penalty, p.passes]);
 }
 
 export function canonical(v) {
