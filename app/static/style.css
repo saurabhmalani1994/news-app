@@ -754,3 +754,359 @@ body {
     transition: none;
   }
 }
+
+/* ---- S25 reader -----------------------------------------------------------------
+   One layer over the app, set like an NYT article page (nyt-measured, article page):
+   serif body at the measured size and leading in #DFDFDF, a 20dp gutter, paragraphs
+   about 38dp apart baseline to baseline, a bold serif headline at the article size,
+   the source and time in the sans under it, and NYT's story bar where the bottom nav
+   sits. Photos run full bleed with their box reserved before a byte arrives. */
+.reader {
+  --color-body: #DFDFDF;
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  opacity: 0;
+  transform: translateX(24px);
+  transition: opacity 180ms var(--motion-ease), transform 180ms var(--motion-ease);
+}
+
+.reader[hidden] {
+  display: none;
+}
+
+.reader.is-open {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-color-scheme: light) {
+  .reader {
+    --color-body: #1F1F1F;
+  }
+}
+
+.reader-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+
+.reader-article {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 26px var(--space-gutter) 0;
+}
+
+.reader-title {
+  margin: 0;
+  font-family: var(--type-article-headline-family);
+  font-size: var(--type-article-headline-size);
+  line-height: var(--type-article-headline-line-height);
+  font-weight: var(--type-article-headline-weight);
+  color: var(--color-headline);
+  text-wrap: balance;
+  overflow-wrap: break-word;
+}
+
+.reader-dek {
+  margin: var(--space-headline-to-dek) 0 0;
+  font-family: var(--type-body-family);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
+  color: var(--color-dek);
+  text-wrap: pretty;
+}
+
+.reader-hero {
+  margin: 24px calc(-1 * var(--space-gutter)) 0;
+}
+
+.reader-hero-img,
+.reader-body img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  object-position: 50% 30%;
+  background: var(--color-image-placeholder);
+  color: transparent;
+}
+
+.reader-credit,
+.reader-body figcaption {
+  padding: 8px var(--space-gutter) 0;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 17px;
+  font-weight: 500;
+  color: var(--color-meta-tertiary);
+}
+
+.reader-credit {
+  text-align: right;
+}
+
+.reader-byline {
+  margin-top: 22px;
+}
+
+.reader-source {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--color-headline);
+}
+
+.reader-time {
+  margin: 4px 0 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--color-dek);
+}
+
+.reader-body {
+  margin-top: 26px;
+  font-family: var(--type-body-family);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
+  font-weight: var(--type-body-weight);
+  color: var(--color-body);
+  overflow-wrap: break-word;
+}
+
+.reader-body p {
+  margin: 0 0 12px;
+}
+
+.reader-body a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--color-meta-tertiary);
+}
+
+.reader-body h2,
+.reader-body h3 {
+  margin: 32px 0 12px;
+  font-family: var(--type-river-headline-family);
+  font-size: var(--type-river-headline-size);
+  line-height: var(--type-river-headline-line-height);
+  font-weight: 700;
+  color: var(--color-headline);
+  text-wrap: balance;
+}
+
+.reader-body h4,
+.reader-body h5,
+.reader-body h6 {
+  margin: 26px 0 8px;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 700;
+  color: var(--color-headline);
+}
+
+.reader-body blockquote {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  border-left: var(--divider-weight) solid var(--color-divider);
+  color: var(--color-dek);
+}
+
+.reader-body ul,
+.reader-body ol {
+  margin: 0 0 12px;
+  padding-left: 24px;
+}
+
+.reader-body li + li {
+  margin-top: 6px;
+}
+
+.reader-body figure {
+  margin: 26px calc(-1 * var(--space-gutter));
+}
+
+/* A body photo the feed gave no size for still gets its box before it loads. */
+.reader-body img:not([width]) {
+  aspect-ratio: 3 / 2;
+}
+
+.reader-body figure:first-child {
+  margin-top: 0;
+}
+
+/* While the body loads: quiet bars in the body's own 26px line rhythm, shown only if
+   the wait is long enough to notice. */
+.reader-skeleton {
+  animation: reader-appear 200ms 150ms var(--motion-ease) both;
+}
+
+.reader-skeleton-line {
+  display: block;
+  height: 12px;
+  margin: 7px 0;
+  background: var(--color-image-placeholder);
+}
+
+.reader-skeleton-line.is-mid {
+  width: 62%;
+}
+
+.reader-skeleton-line.is-short {
+  width: 40%;
+}
+
+.reader-skeleton-gap {
+  display: block;
+  height: 12px;
+}
+
+@keyframes reader-appear {
+  from {
+    opacity: 0;
+  }
+}
+
+.reader-note {
+  padding: 4px 0 8px;
+}
+
+.reader-note-head {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--color-headline);
+}
+
+.reader-note-text {
+  margin: 6px 0 0;
+  font-family: var(--type-dek-family);
+  font-size: var(--type-dek-size);
+  line-height: var(--type-dek-line-height);
+  color: var(--color-dek);
+}
+
+.reader-retry {
+  min-height: var(--touch-min);
+  margin: 6px 0 0 -12px;
+  padding: 0 12px;
+  border-style: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-headline);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.reader-end {
+  margin-top: 30px;
+  padding-bottom: 40px;
+}
+
+.reader-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  border-top: var(--divider-weight) solid var(--color-divider);
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--color-headline);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.reader-link-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.reader-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  height: calc(var(--chrome-bottom-nav) + env(safe-area-inset-bottom));
+  padding: 0 4px env(safe-area-inset-bottom);
+  background: var(--color-nav-surface);
+}
+
+.reader-back,
+.reader-out {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--chrome-bottom-nav);
+  height: var(--chrome-bottom-nav);
+  padding: 0;
+  border-style: none;
+  background: transparent;
+  color: var(--color-headline);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.reader-out[hidden] {
+  display: none;
+}
+
+.reader-bar-icon {
+  fill: currentColor;
+}
+
+.reader-back:active,
+.reader-out:active,
+.reader-link:active,
+.reader-retry:active {
+  background: var(--color-pressed);
+}
+
+.reader-back:focus-visible,
+.reader-out:focus-visible,
+.reader-link:focus-visible,
+.reader-retry:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader,
+  .reader-back,
+  .reader-out,
+  .reader-link {
+    transition: none;
+  }
+
+  .reader {
+    transform: none;
+  }
+
+  .reader-skeleton {
+    animation: none;
+  }
+}

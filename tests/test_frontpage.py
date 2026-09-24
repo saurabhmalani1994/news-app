@@ -162,10 +162,13 @@ def test_cluster_meta_names_its_source_count_quietly():
 # data) and template holds the device ranker's input as escaped text, never markup.
 # S27: nav, div and button are the app's own tab strip, bottom nav and empty views, and
 # tabs.js is the app's own module (no feed data); their labels are checked below.
+# S25: article is the reader layer's empty container, filled on the device only with
+# text nodes and S37-sanitized body markup; reader.js is the app's own module.
 APP_TAGS = {"html", "head", "meta", "title", "link", "body", "header", "h1", "main", "ol", "li",
             "a", "span", "section", "h2", "footer", "p", "time", "svg", "circle", "path",
-            "script", "template", "nav", "div", "button"}
-APP_SCRIPTS = ['<script src="js/rank-gate.js">', '<script type="module" src="js/tabs.js">']
+            "script", "template", "nav", "div", "button", "article"}
+APP_SCRIPTS = ['<script src="js/rank-gate.js">', '<script type="module" src="js/tabs.js">',
+               '<script type="module" src="js/reader.js">']
 
 
 def test_every_rendered_string_is_text_only():

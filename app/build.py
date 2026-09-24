@@ -12,6 +12,7 @@ Usage: python -m app.build --pool dist/pool.json --out dist
 """
 import argparse
 import json
+import re
 import shutil
 import sys
 from datetime import datetime
@@ -23,7 +24,7 @@ from app.csp import headers_file
 from app.dek import fit_dek
 from app.frontpage import (CHARS_PER_LINE, DEK_LINES, clean_dek, front_page, pass_input, rank_input,
                            run_ranker)
-from app.images import THUMB_PX, hero_box, hero_media, image_url, media_for, thumb_ok
+from app.images import THUMB_PX, credit_text, hero_box, hero_media, hero_worthy, image_url, media_for, thumb_ok
 from app.typography import smart_quotes
 
 ROOT = Path(__file__).resolve().parent
@@ -48,6 +49,7 @@ PAGE = """<!doctype html>
 <link rel="stylesheet" href="style.css">
 <script src="js/rank-gate.js"></script>
 <script type="module" src="js/tabs.js"></script>
+<script type="module" src="js/reader.js"></script>
 </head>
 <body class="app">
 <div class="screens">
@@ -75,6 +77,7 @@ PAGE = """<!doctype html>
 {views}
 </div>
 {nav}
+{reader}
 <template id="rank-input">{rank_input}</template>
 </body>
 </html>
@@ -115,6 +118,46 @@ def bottom_nav(current):
         items.append(NAV_ITEM.format(href=href, id=key, icon=NAV_ICONS[key], label=label,
                                      current=' aria-current="page"' if key == current else ""))
     return '<nav class="bottom-nav" aria-label="Primary">\n' + "\n".join(items) + "\n</nav>"
+
+
+# S25 reader: one layer over the app, filled by js/reader.js when a story with a body
+# file is tapped. Static chrome only: the scroller, an empty article, and NYT's bottom
+# story bar in the bottom nav's place (back on the left, the source link on the right).
+READER = """<div class="reader" id="reader" role="dialog" aria-modal="true" aria-labelledby="reader-title" hidden>
+<div class="reader-scroll" id="reader-scroll">
+<article class="reader-article" id="reader-article"></article>
+</div>
+<nav class="reader-bar" aria-label="Story">
+<button class="reader-back" id="reader-back" type="button" aria-label="Back"><svg class="reader-bar-icon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20z"></path></svg></button>
+<a class="reader-out" id="reader-out" target="_blank" rel="noopener noreferrer" aria-label="Read at the source" hidden><svg class="reader-bar-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3zM19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z"></path></svg></a>
+</nav>
+</div>"""
+
+# S25: a story opens in the reader only when its lead article has a body file (S22
+# has_body) and a link out; the id is the contract's article id shape, so it can only
+# ever name a file under bodies/.
+BODY_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def body_id(article):
+    """The lead's article id when the reader can open it, else None."""
+    aid = article.get("id")
+    if article.get("has_body") is True and isinstance(aid, str) and BODY_ID.match(aid) and _safe_url(article.get("url")):
+        return aid
+    return None
+
+
+def reader_photos(stories):
+    """{article_id: [url, width, height, credit]} for each shown story whose lead the
+    reader can open and whose own photo is hero-worthy (S39): the article's own photo,
+    never one borrowed from another outlet in its cluster, in the D2 hero box."""
+    photos = {}
+    for story in stories:
+        aid = body_id(story.lead)
+        image = story.lead.get("image")
+        if aid and hero_worthy(image):
+            photos[aid] = [image_url(image), *hero_box(image), credit_text(image)]
+    return dict(sorted(photos.items()))
 
 
 # Following (S30) and Saved (S26) are later slices; until then each is a calm view with
@@ -343,8 +386,10 @@ def _render_story(story, tier, source_names, now, by_id, other=""):
     if url is None:
         open_, close = '<span class="story-link">', "</span>"
     else:
+        aid = body_id(article)
+        body = f' data-body="{escape(aid, quote=True)}"' if aid else ""
         open_ = (f'<a class="story-link" href="{escape(url, quote=True)}" '
-                 'target="_blank" rel="noopener noreferrer">')
+                 f'target="_blank" rel="noopener noreferrer"{body}>')
         close = "</a>"
     return STORY.format(
         tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
@@ -383,7 +428,8 @@ def _rank_input_json(pool, stories, by_id, source_names, links):
     feed string can close the template or open a tag (R26); JSON quotes stay readable.
     S13: buckets, leans and names for the passes, and the other-side link data."""
     data = {"now": pool.get("generated_at"), "pool": rank_input(pool), "deks": _dek_pairs(stories),
-            "images": _image_records(stories, by_id, source_names), **pass_input(pool), "links": links}
+            "images": _image_records(stories, by_id, source_names), **pass_input(pool), "links": links,
+            "reader": reader_photos(stories)}
     return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
 
 
@@ -424,6 +470,7 @@ def render(pool, ranking=None):
         panels=panels,
         views=views,
         nav=bottom_nav("home"),
+        reader=READER,
         rank_key=escape(ranking["key"], quote=True),
         notices=render_notices(ranking.get("notices", [])),
         rank_input=_rank_input_json(pool, shown_stories, by_id, source_names, links),
