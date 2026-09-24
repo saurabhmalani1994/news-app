@@ -134,8 +134,11 @@ def test_cluster_meta_names_its_source_count_quietly():
 
 # Proof 3: every rendered string is text only (R26).
 
+# S10: svg/circle/path are the app's own static masthead icon (the profile-screen
+# entry point), authored in app/build.py's PAGE template, never built from a feed
+# field, so allowing them here does not touch the R26 guarantee this test checks.
 APP_TAGS = {"html", "head", "meta", "title", "link", "body", "header", "h1", "main", "ol", "li",
-            "a", "span", "section", "h2", "footer", "p", "time"}
+            "a", "span", "section", "h2", "footer", "p", "time", "svg", "circle", "path"}
 
 
 def test_every_rendered_string_is_text_only():

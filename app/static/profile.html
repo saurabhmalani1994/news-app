@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121212">
+<title>Profile - Almanac</title>
+<link rel="preload" href="fonts/LibreFranklin-Medium-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="profile.css">
+</head>
+<body>
+<header class="masthead">
+<a class="masthead-back" href="index.html" aria-label="Back to front page">
+<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+</a>
+<h1 class="wordmark">Profile</h1>
+</header>
+<main class="settings" id="settings-root" aria-busy="true">
+
+<section class="settings-section" aria-labelledby="interests-label">
+<h2 class="settings-label" id="interests-label">Interests</h2>
+<p class="settings-hint">What the ranker weighs, and how quickly each topic goes stale. Not exhaustive: add a bucket below any time.</p>
+<div id="topics-list"></div>
+<div class="setting-row setting-row--stack">
+<div class="add-topic-fields">
+<input class="text-field" id="new-topic-id" type="text" placeholder="id, e.g. climate" autocomplete="off">
+<input class="text-field" id="new-topic-label" type="text" placeholder="Label, e.g. Climate" autocomplete="off">
+</div>
+<button class="btn-quiet" id="add-topic-btn" type="button">+ Add an interest</button>
+</div>
+</section>
+
+<button class="btn-row" id="save-form-btn" type="button">Save changes</button>
+<div class="form-errors" id="form-errors" role="alert" aria-live="polite"></div>
+<div class="form-note" id="form-note" role="status" aria-live="polite"></div>
+
+<section class="settings-section" aria-labelledby="advanced-label">
+<h2 class="settings-label" id="advanced-label">Advanced</h2>
+<p class="settings-hint">Everything the form above does not cover: trust per source, boosts, mutes. Edited as the raw profile JSON, validated the same way on save.</p>
+<div class="setting-row setting-row--stack">
+<textarea class="raw-editor" id="raw-json" spellcheck="false" aria-label="Raw profile JSON"></textarea>
+<div class="form-errors" id="raw-errors" role="alert" aria-live="polite"></div>
+</div>
+<button class="btn-row" id="save-raw-btn" type="button">Save raw JSON</button>
+</section>
+
+<section class="settings-section" aria-labelledby="history-label">
+<h2 class="settings-label" id="history-label">Version history</h2>
+<p class="settings-hint">Every save is kept. Compare any two versions, or revert to one with a tap; reverting saves a new version, nothing is lost.</p>
+<div class="setting-row setting-row--stack">
+<div class="compare-controls">
+<label>Compare <select id="compare-from" aria-label="Compare from version"></select></label>
+<label>with <select id="compare-to" aria-label="Compare to version"></select></label>
+</div>
+<div class="diff-output" id="diff-output"></div>
+</div>
+<div id="version-list"></div>
+</section>
+
+</main>
+<footer class="colophon"><p class="colophon-text">Kept on this device only. Your profile is never sent anywhere.</p></footer>
+<script type="module" src="js/profile-screen.js"></script>
+</body>
+</html>

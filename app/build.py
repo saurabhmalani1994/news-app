@@ -45,7 +45,12 @@ PAGE = """<!doctype html>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="masthead"><h1 class="wordmark">Almanac</h1></header>
+<header class="masthead">
+<h1 class="wordmark">Almanac</h1>
+<a class="masthead-action" href="profile.html" aria-label="Profile settings">
+<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"></circle><path d="M19.4 13.5a1.6 1.6 0 0 0 .3 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.3 1.6 1.6 0 0 0-1 1.47V19.5a2 2 0 1 1-4 0v-.09a1.6 1.6 0 0 0-1.05-1.47 1.6 1.6 0 0 0-1.77.3l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.6 1.6 0 0 0 .3-1.77 1.6 1.6 0 0 0-1.47-1H4.5a2 2 0 1 1 0-4h.09a1.6 1.6 0 0 0 1.47-1.05 1.6 1.6 0 0 0-.3-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.6 1.6 0 0 0 1.77.3H10.5a1.6 1.6 0 0 0 1-1.47V4.5a2 2 0 1 1 4 0v.09a1.6 1.6 0 0 0 1 1.47 1.6 1.6 0 0 0 1.77-.3l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.6 1.6 0 0 0-.3 1.77V10.5a1.6 1.6 0 0 0 1.47 1H19.5a2 2 0 1 1 0 4h-.09a1.6 1.6 0 0 0-1.01 1z"></path></svg>
+</a>
+</header>
 <main>
 <ol class="river river--top" id="headlines">
 {top}

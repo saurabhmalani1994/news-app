@@ -1,0 +1,333 @@
+/* Profile (S10): NYT You/Settings style grouped rows. Same tokens as style.css: dark
+   first, 20dp gutter, one hairline weight, no cards, shadows or rounded boxes,
+   whitespace does the separating. Chrome text is sans throughout (the serif is
+   reserved for story headlines, not settings), reusing the measured UI tokens rather
+   than inventing new pixel values: tab-label for a row's primary text, bottom-nav-label
+   for its quiet secondary line, meta for the small uppercase section labels. */
+
+.settings {
+  padding-bottom: 48px;
+}
+
+.settings-section {
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.settings-section:first-child {
+  border-top: none;
+}
+
+.settings-label {
+  margin: 0;
+  padding: 28px var(--space-gutter) 10px;
+  font-family: var(--type-meta-family);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
+  font-weight: var(--type-meta-weight);
+  letter-spacing: var(--type-meta-tracking);
+  text-transform: var(--type-meta-transform);
+  color: var(--color-meta);
+}
+
+.settings-hint {
+  margin: 0;
+  padding: 0 var(--space-gutter) 16px;
+  font-family: var(--type-bottom-nav-label-family);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-meta);
+}
+
+/* One row shape for every setting, the same rhythm as a story row: full touch target,
+   inset hairline above every row after the first in its section. */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: var(--touch-min);
+  padding: 12px var(--space-gutter);
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.settings-section > .setting-row:first-of-type,
+.settings-section > .setting-group:first-of-type > .setting-row {
+  border-top: none;
+}
+
+.setting-row--stack {
+  display: block;
+  padding-top: 14px;
+  padding-bottom: 18px;
+}
+
+.setting-row--tight {
+  padding-top: 4px;
+  padding-bottom: 14px;
+}
+
+.setting-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.setting-label {
+  font-family: var(--type-tab-label-family);
+  font-size: var(--type-tab-label-size);
+  font-weight: var(--type-tab-label-weight);
+  line-height: 20px;
+  color: var(--color-headline);
+}
+
+.setting-sublabel {
+  font-family: var(--type-bottom-nav-label-family);
+  font-size: var(--type-bottom-nav-label-size);
+  line-height: var(--type-bottom-nav-label-line-height);
+  color: var(--color-meta);
+}
+
+.setting-control {
+  flex: none;
+  accent-color: var(--color-headline);
+}
+
+input[type="checkbox"].setting-control {
+  width: 20px;
+  height: 20px;
+}
+
+input[type="range"].setting-control {
+  width: 128px;
+}
+
+input[type="number"].setting-half-life {
+  width: 56px;
+  padding: 4px 0;
+  background: transparent;
+  border: none;
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--type-tab-label-family);
+  font-size: 15px;
+  color: var(--color-headline);
+  text-align: right;
+}
+
+input[type="number"].setting-half-life:focus-visible {
+  outline: none;
+  border-bottom-color: var(--color-headline);
+}
+
+.setting-group {
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.setting-group .setting-row {
+  padding-left: calc(var(--space-gutter) + 12px);
+}
+
+.setting-group .setting-row:first-child {
+  border-top: none;
+}
+
+/* Text inputs (adding a topic, nothing else) get a bottom rule only, never a boxed
+   field, matching the raw-editor and half-life number field. */
+.text-field {
+  width: 100%;
+  padding: 10px 0;
+  background: transparent;
+  border: none;
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--type-tab-label-family);
+  font-size: 15px;
+  color: var(--color-headline);
+}
+
+.text-field::placeholder {
+  color: var(--color-meta-tertiary);
+}
+
+.text-field:focus-visible {
+  outline: none;
+  border-bottom-color: var(--color-headline);
+}
+
+.add-topic-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  margin-bottom: 14px;
+}
+
+/* Buttons are quiet full-width rows (like .more-toggle) or plain inline text, never a
+   filled, colored or rounded control. */
+.btn-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: var(--touch-min);
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-top: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--type-tab-label-family);
+  font-size: var(--type-tab-label-size);
+  font-weight: 600;
+  color: var(--color-headline);
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.btn-row:active {
+  background: var(--color-pressed);
+}
+
+.btn-row:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.btn-quiet {
+  padding: 6px 0;
+  background: none;
+  border: none;
+  font-family: var(--type-bottom-nav-label-family);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-meta);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.btn-quiet:active {
+  color: var(--color-headline);
+}
+
+.form-errors {
+  margin: 10px var(--space-gutter) 0;
+  padding: 12px 14px;
+  border-left: 2px solid var(--color-headline);
+  font-family: var(--type-bottom-nav-label-family);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-headline);
+}
+
+.form-errors:empty {
+  display: none;
+}
+
+.form-errors ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.form-note {
+  margin: 10px var(--space-gutter) 0;
+  font-family: var(--type-bottom-nav-label-family);
+  font-size: 13px;
+  color: var(--color-meta);
+}
+
+.raw-editor {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 220px;
+  margin-top: 6px;
+  padding: 12px var(--space-gutter);
+  background: var(--color-nav-surface);
+  border: none;
+  color: var(--color-headline);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  line-height: 19px;
+  resize: vertical;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.raw-editor:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.compare-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-family: var(--type-bottom-nav-label-family);
+  font-size: 13px;
+  color: var(--color-meta);
+}
+
+.compare-controls select {
+  padding: 6px 4px;
+  background: transparent;
+  border: none;
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+  color: var(--color-headline);
+  font-family: var(--type-tab-label-family);
+  font-size: 14px;
+}
+
+.diff-output {
+  margin-top: 14px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 20px;
+}
+
+.diff-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diff-line--added {
+  color: var(--color-headline);
+}
+
+.diff-line--removed {
+  color: var(--color-meta);
+  text-decoration: line-through;
+}
+
+.diff-empty {
+  font-family: var(--type-bottom-nav-label-family);
+  font-size: 13px;
+  color: var(--color-meta-tertiary);
+}
+
+.version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: var(--touch-min);
+  padding: 10px var(--space-gutter);
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.version-row:first-child {
+  border-top: none;
+}
+
+.version-label {
+  font-family: var(--type-tab-label-family);
+  font-size: 15px;
+  color: var(--color-headline);
+}
+
+.version-current {
+  color: var(--color-meta);
+  font-weight: 400;
+}
+
+.version-time {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--type-bottom-nav-label-family);
+  font-size: var(--type-bottom-nav-label-size);
+  color: var(--color-meta);
+}
