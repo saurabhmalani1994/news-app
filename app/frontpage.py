@@ -132,37 +132,69 @@ RANK_CLUSTER_FIELDS = ("id", "article_ids", "near_duplicates", "independent_sour
 def rank_input(pool):
     """The compact pool the ranker reads: only the fields it scores on, sorted by id.
     The build ranks exactly this, and the page embeds exactly this for the device, so
-    both sides rank byte-identical input."""
+    both sides rank byte-identical input. S13: each cluster also names its `lead`, the
+    article its card shows (the lead rule never depends on rank, D1), because the lean
+    quota and the other-side slot read the lean of the outlet a card shows."""
     def pick(item, fields):
         return {k: item[k] for k in fields if k in item}
+    leads = {s.id: s.lead["id"] for s in build_stories(pool)}
+    clusters = []
+    for cluster in pool.get("clusters", []):
+        record = pick(cluster, RANK_CLUSTER_FIELDS)
+        if cluster["id"] in leads:
+            record["lead"] = leads[cluster["id"]]
+        clusters.append(record)
     return {
         "generated_at": pool.get("generated_at"),
         "articles": sorted((pick(a, RANK_ARTICLE_FIELDS) for a in pool["articles"]), key=lambda a: a["id"]),
-        "clusters": sorted((pick(c, RANK_CLUSTER_FIELDS) for c in pool.get("clusters", [])), key=lambda c: c["id"]),
+        "clusters": sorted(clusters, key=lambda c: c["id"]),
     }
+
+
+def _source_field(pool, field, sources_path):
+    try:
+        sources = json.loads(Path(sources_path).read_text(encoding="utf-8")).get("sources", [])
+    except (OSError, ValueError):
+        return {}
+    present = {s.get("id") for s in pool.get("sources", [])} | {a.get("source_id") for a in pool["articles"]}
+    return {s["id"]: s[field] for s in sorted(sources, key=lambda s: str(s.get("id")))
+            if s.get("id") in present and isinstance(s.get(field), str)}
 
 
 def source_buckets(pool, sources_path=SOURCES_JSON):
     """{source_id: bucket} for the pool's sources, from sources.json (S27 section tabs).
     Sorted by id so the page embeds it byte for byte the same whatever the input order;
     an absent or unreadable file leaves every section to its topic tags alone."""
-    try:
-        sources = json.loads(Path(sources_path).read_text(encoding="utf-8")).get("sources", [])
-    except (OSError, ValueError):
-        return {}
-    present = {s.get("id") for s in pool.get("sources", [])} | {a.get("source_id") for a in pool["articles"]}
-    return {s["id"]: s["bucket"] for s in sorted(sources, key=lambda s: str(s.get("id")))
-            if s.get("id") in present and isinstance(s.get("bucket"), str)}
+    return _source_field(pool, "bucket", sources_path)
+
+
+def source_leans(pool, sources_path=SOURCES_JSON):
+    """{source_id: lean bucket} for the pool's sources, from sources.json (S13 lean quota
+    and other-side slot; lean is repo owned, R10). Absent file: no lean, no quota."""
+    return _source_field(pool, "lean", sources_path)
+
+
+def source_names(pool):
+    """{source_id: name} from the pool's own source records, sorted by id, so a pass can
+    name an outlet in a story's explanation."""
+    return {s["id"]: s.get("name", "") for s in sorted(pool.get("sources", []), key=lambda s: str(s.get("id")))
+            if s.get("id")}
+
+
+def pass_input(pool):
+    """What the S13 passes read beside the compact pool: buckets, leans and names."""
+    return {"buckets": source_buckets(pool), "leans": source_leans(pool), "names": source_names(pool)}
 
 
 def run_ranker(pool):
-    """{key, ranked, sections}: the default profile's ranking-field key, every story best
-    first with its score and explanation (app/static/js/ranker.js under Node), and S27's
-    section tabs, each its ids in that order (app/static/js/sections.js)."""
+    """{key, ranked, removed, sections}: the default profile's ranking-field key; Today's
+    stories in page order after the S13 passes, each with its score, explanation, pass
+    entries and any other-side link (app/static/js/passes.js under Node); what mute and
+    dedup removed; and S27's section tabs, each its ids after its own passes."""
     node = shutil.which("node")
     if node is None:
         raise RuntimeError("the S11 ranker needs Node on PATH (preinstalled on GitHub's Ubuntu runners)")
-    payload = json.dumps({"pool": rank_input(pool), "now": pool.get("generated_at"), "buckets": source_buckets(pool)})
+    payload = json.dumps({"pool": rank_input(pool), "now": pool.get("generated_at"), **pass_input(pool)})
     done = subprocess.run([node, str(RANK_CLI)], input=payload.encode("utf-8"), capture_output=True, check=False)
     if done.returncode:
         raise RuntimeError("ranker failed: " + done.stderr.decode("utf-8", "replace")[-2000:])
@@ -170,12 +202,14 @@ def run_ranker(pool):
 
 
 def ranked_stories(pool, ranking=None):
-    """Stories in the ranker's order. The ranker groups the pool the same way
-    build_stories does; a mismatch is a bug, so it fails loudly."""
+    """Stories in the ranker's page order. The ranker groups the pool the same way
+    build_stories does, and every story is either on the page or named as removed by a
+    pass (S13); anything else is a bug, so it fails loudly."""
     ranking = ranking or run_ranker(pool)
     stories = {s.id: s for s in build_stories(pool)}
     order = [r["id"] for r in ranking["ranked"]]
-    if sorted(order) != sorted(stories):
+    removed = [r["id"] for r in ranking.get("removed", [])]
+    if len(set(order)) != len(order) or sorted(order + removed) != sorted(stories):
         raise RuntimeError("ranker and build_stories disagree on the story set")
     return [stories[i] for i in order]
 

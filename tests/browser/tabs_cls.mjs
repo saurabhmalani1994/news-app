@@ -1,8 +1,9 @@
 // S27 browser proof, run by hand (needs Chrome, so not in the node --test glob):
 //   node tests/browser/tabs_cls.mjs <built dist dir> [<screenshot dir>]
 // Serves the built page in headless Chrome at 360x780 CSS px, DPR 3, and checks:
-// every section panel lists the ranked pool filtered by the one section table, in
-// ranked order (ranker.js and sections.js run here on the page's own embedded input);
+// every section panel lists the ranked pool filtered by the one section table, then
+// that tab's own post-passes (S13: passes.js rankPages, run here on the page's own
+// embedded input), with each tab's other-side link where the passes put it;
 // tapping tabs (real input events) and swiping the pager (a synthesized touch gesture)
 // shift nothing, counting every layout-shift entry, even those after input; each
 // section keeps its own scroll position; every tab and nav label is a single text node;
@@ -13,8 +14,8 @@ import { join, extname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
 
-import { rank } from "../../app/static/js/ranker.js";
-import { SECTIONS, sectionIds } from "../../app/static/js/sections.js";
+import { rankPages } from "../../app/static/js/passes.js";
+import { SECTIONS } from "../../app/static/js/sections.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 
 const [distArg, shotsArg] = process.argv.slice(2);
@@ -87,16 +88,20 @@ const check = (name, pass, detail) => { results[name] = { pass, ...detail }; ok 
 // 1. Lists: each panel equals the ranked pool filtered by the table, in ranked order.
 await load("dark");
 const input = await json(`JSON.parse(document.getElementById("rank-input").content.textContent)`);
-const ranked = rank(input.pool, buildDefaultProfile(input.now), input.now);
+const pages = rankPages(input.pool, buildDefaultProfile(input.now), input.now, { buckets: input.buckets, leans: input.leans, names: input.names });
 const lists = await json(`Object.fromEntries([...document.querySelectorAll(".panel")].map((p) => [p.dataset.section, [...p.querySelectorAll("li.story[data-sid]")].map((li) => li.dataset.sid)]))`);
+const others = await json(`Object.fromEntries([...document.querySelectorAll(".panel")].map((p) => [p.dataset.section, [...p.querySelectorAll("li.story[data-sid] .other-side")].map((a) => [a.closest("li").dataset.sid, a.dataset.aid])]))`);
 const counts = {};
 let listsOk = true;
 for (const section of SECTIONS) {
-  const want = sectionIds(ranked, section, input.buckets || {});
+  const page = section.all ? pages.today : pages.sections.find((p) => p.id === section.id).stories;
+  const want = page.map((s) => s.id);
+  const wantOthers = page.filter((s) => s.other_side).map((s) => [s.id, s.other_side.article_id]);
   counts[section.label] = lists[section.id]?.length ?? null;
   if (section.slot) { listsOk &&= (lists[section.id] || []).length === 0; continue; }
-  listsOk &&= JSON.stringify(lists[section.id]) === JSON.stringify(want);
+  listsOk &&= JSON.stringify(lists[section.id]) === JSON.stringify(want) && JSON.stringify(others[section.id]) === JSON.stringify(wantOthers);
 }
+results.otherSide = others;
 const heroes = await json(`[...document.querySelectorAll(".panel")].filter((p) => !p.hidden).map((p) => [p.dataset.section, p.querySelectorAll(".story--hero").length, p.querySelectorAll(".story--secondary").length, p.querySelectorAll(".story--river").length])`);
 check("lists", listsOk, { counts, tiers: heroes });
 await shot("final-dark.png");

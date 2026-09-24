@@ -65,3 +65,34 @@ export function retier(lists, order, rows, deks, images) {
     }
   });
 }
+
+// S13: the other-side link a pass attached to a row (passes.js), drawn as the build
+// draws it (app/build.py OTHER): its own link after the card's, label then headline,
+// every string as text (R26), an href only for an http(s) url. `record` is the story's
+// other_side ({article_id, source_id, lean}) or null, which clears the row.
+const WEB = /^https?:\/\/[^\s]+$/i;
+
+export function placeOtherSide(li, record, input) {
+  if (!li) return;
+  li.querySelector(".other-side")?.remove();
+  const link = record && (input.links || {})[record.article_id];
+  if (!link) return;
+  const [url, title] = link;
+  const web = WEB.test(url || "");
+  const node = document.createElement(web ? "a" : "span");
+  node.className = "other-side";
+  node.dataset.aid = record.article_id;
+  if (web) {
+    node.setAttribute("href", url);
+    node.setAttribute("target", "_blank");
+    node.setAttribute("rel", "noopener noreferrer");
+  }
+  const label = document.createElement("span");
+  label.className = "other-side-label";
+  label.textContent = `Other side \u00b7 ${record.lean} \u00b7 ${(input.names || {})[record.source_id] || record.source_id}`;
+  const headline = document.createElement("span");
+  headline.className = "other-side-title";
+  headline.textContent = title;
+  node.append(label, headline);
+  li.append(node);
+}

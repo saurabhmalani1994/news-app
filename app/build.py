@@ -20,8 +20,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from app.dek import fit_dek
-from app.frontpage import (CHARS_PER_LINE, DEK_LINES, clean_dek, front_page, rank_input, run_ranker,
-                           source_buckets)
+from app.frontpage import (CHARS_PER_LINE, DEK_LINES, clean_dek, front_page, pass_input, rank_input,
+                           run_ranker)
 from app.images import THUMB_PX, hero_box, hero_media, image_url, media_for, thumb_ok
 from app.typography import smart_quotes
 
@@ -174,8 +174,18 @@ REST = """<details class="more-rest">
 STORY = (
     '<li class="story story--{tier}" data-sid="{sid}">{open}'
     '<span class="story-body">{media}<span class="headline{headline_mod}">{title}</span>{dek}'
-    '<span class="meta">{meta}</span></span>{close}</li>'
+    '<span class="meta">{meta}</span></span>{close}{other}</li>'
 )
+# S13 other-side slot: one attached link under a many-outlet card, to the same story as
+# an outlet of the lean least seen on this page tells it (app/static/js/passes.js says
+# which and why). Its own link beside the card's, never inside it. tiers.js draws the
+# same markup on the device. Built only for clusters of OTHER_SIDE_MIN_SOURCES or more
+# independent sources, the design's floor, so the page carries link data for no others.
+OTHER_SIDE_MIN_SOURCES = 3  # passes.js OTHER_SIDE_MIN_SOURCES
+OTHER = ('<{tag} class="other-side" data-aid="{aid}"{href}>'
+         '<span class="other-side-label">Other side {dot} {lean} {dot} {source}</span>'
+         '<span class="other-side-title">{title}</span></{tag}>')
+OTHER_HREF = ' href="{url}" target="_blank" rel="noopener noreferrer"'
 # S39 photos (app.images decides which). The url is an attribute value, escaped; alt is
 # empty because the headline beside it carries the meaning. Only the hero loads eagerly.
 # D2: the hero box follows the photo's stated shape (app.images.hero_box), so the frame
@@ -269,7 +279,35 @@ def _members(story, by_id):
     return [by_id[i] for i in story.article_ids if i in by_id]
 
 
-def _render_story(story, tier, source_names, now, by_id):
+def other_side_links(pool, stories):
+    """{article_id: [url, title]} for every article of a story with enough independent
+    outlets for an other-side link: the url only if http(s), the title typeset as the
+    build sets it. The device draws an other-side link from this alone."""
+    by_id = {a["id"]: a for a in pool["articles"]}
+    links = {}
+    for story in stories:
+        if story.independent_sources < OTHER_SIDE_MIN_SOURCES:
+            continue
+        for aid in story.article_ids:
+            article = by_id[aid]
+            links[aid] = [_safe_url(article.get("url")) or "", smart_quotes(article.get("title", ""))]
+    return dict(sorted(links.items()))
+
+
+def _other_side(record, links, source_names, leans):
+    """The attached other-side link for a row, or '' (see OTHER)."""
+    if not record or record["article_id"] not in links:
+        return ""
+    url, title = links[record["article_id"]]
+    return OTHER.format(
+        tag="a" if url else "span", aid=escape(record["article_id"], quote=True),
+        href=OTHER_HREF.format(url=escape(url, quote=True)) if url else "", dot=MIDDOT,
+        lean=escape(record.get("lean") or leans.get(record["source_id"], ""), quote=False),
+        source=escape(source_names.get(record["source_id"], record["source_id"]), quote=False),
+        title=escape(title, quote=False))
+
+
+def _render_story(story, tier, source_names, now, by_id, other=""):
     article = story.lead
     title = escape(smart_quotes(article["title"]), quote=False)
     dek = ""
@@ -286,7 +324,7 @@ def _render_story(story, tier, source_names, now, by_id):
         close = "</a>"
     return STORY.format(
         tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
-        title=title, dek=dek, meta=_meta(story, source_names, now),
+        title=title, dek=dek, meta=_meta(story, source_names, now), other=other,
         media=_media(tier, hero_media(_members(story, by_id), article, source_names) if tier == "hero" else None,
                      article.get("image")),
     )
@@ -316,11 +354,12 @@ def _image_records(stories, by_id, source_names):
     return records
 
 
-def _rank_input_json(pool, stories, by_id, source_names):
+def _rank_input_json(pool, stories, by_id, source_names, links):
     """The device's ranking input as template text. Only &, < and > are escaped, so no
-    feed string can close the template or open a tag (R26); JSON quotes stay readable."""
+    feed string can close the template or open a tag (R26); JSON quotes stay readable.
+    S13: buckets, leans and names for the passes, and the other-side link data."""
     data = {"now": pool.get("generated_at"), "pool": rank_input(pool), "deks": _dek_pairs(stories),
-            "images": _image_records(stories, by_id, source_names), "buckets": source_buckets(pool)}
+            "images": _image_records(stories, by_id, source_names), **pass_input(pool), "links": links}
     return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
 
 
@@ -330,15 +369,20 @@ def render(pool, ranking=None):
     by_id = {a["id"]: a for a in pool["articles"]}
     ranking = ranking or run_ranker(pool)
     tiers = front_page(pool, ranking)
+    shown_stories = [s for name in tiers for s in tiers[name]]
+    links = other_side_links(pool, shown_stories)
+    leans = pass_input(pool)["leans"]
+    others = {r["id"]: _other_side(r.get("other_side"), links, source_names, leans) for r in ranking["ranked"]}
+
+    def row(story, tier):
+        return _render_story(story, tier, source_names, now, by_id, others.get(story.id, ""))
 
     def rows(names):
-        return "\n".join(
-            _render_story(story, tier, source_names, now, by_id) for tier in names for story in tiers[tier]
-        )
+        return "\n".join(row(story, tier) for tier in names for story in tiers[tier])
 
     tail = tiers["text_only"]
-    shown = "\n".join(_render_story(s, "text_only", source_names, now, by_id) for s in tail[:MORE_COUNT])
-    rest = "\n".join(_render_story(s, "text_only", source_names, now, by_id) for s in tail[MORE_COUNT:])
+    shown = "\n".join(row(s, "text_only") for s in tail[:MORE_COUNT])
+    rest = "\n".join(row(s, "text_only") for s in tail[MORE_COUNT:])
     more = ""
     if shown:
         more = MORE.format(
@@ -357,7 +401,7 @@ def render(pool, ranking=None):
         views=views,
         nav=bottom_nav("home"),
         rank_key=escape(ranking["key"], quote=True),
-        rank_input=_rank_input_json(pool, [s for name in tiers for s in tiers[name]], by_id, source_names),
+        rank_input=_rank_input_json(pool, shown_stories, by_id, source_names, links),
         preloads=preloads,
         top=rows(("hero", "secondary", "river")),
         more=more,

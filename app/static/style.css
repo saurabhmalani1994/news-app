@@ -310,6 +310,56 @@ body {
   white-space: pre;
 }
 
+/* S13 other-side link: the same story as an outlet of the lean least seen on this page
+   tells it. It sits inside its card's row, under the card's meta, as its own full-width
+   touch target: the label in the meta voice, then that outlet's headline in the
+   text-only serif at regular weight, so it reads as attached, not as a new story. The
+   card's 22px foot becomes 18px of air above it, so it does not read as a second meta
+   line; it keeps the same foot below. */
+.other-side {
+  display: block;
+  min-height: var(--touch-min);
+  margin-top: -4px;
+  padding: 0 var(--space-gutter) 22px;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.other-side:active {
+  background: var(--color-pressed);
+}
+
+.other-side:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.other-side-label {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--type-meta-family);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
+  font-weight: var(--type-meta-weight);
+  letter-spacing: var(--type-meta-tracking);
+  text-transform: var(--type-meta-transform);
+  color: var(--color-meta);
+}
+
+.other-side-title {
+  display: block;
+  margin-top: 8px;
+  font-family: var(--type-text-only-headline-family);
+  font-size: var(--type-text-only-headline-size);
+  line-height: var(--type-text-only-headline-line-height);
+  font-weight: var(--type-dek-weight);
+  color: var(--color-headline);
+  text-wrap: pretty;
+}
+
 /* A module edge: full-bleed hairline, then a quiet sans label over the text-only tier,
    set like a section tab label (sentence case, not the shouting meta caps). */
 .module {

@@ -9,9 +9,14 @@
 // rank-gate re-rank), each panel is filled with clones of Today's rows, filtered by the
 // one section table (sections.js) and re-tiered by the shared routine (tiers.js): the
 // same ranked pool, the same tiers and hero rules, no second copy in the page.
-import { storiesFromPool } from "./ranker.js";
-import { SECTIONS, inSection } from "./sections.js";
-import { retier } from "./tiers.js";
+//
+// S13: a section's order is its own page from the post-passes (passes.js): the same
+// list filtered, then that tab's lean quota and other-side slot, for the profile the
+// page is showing (the stored one when rank-gate re-ranked, else the default).
+import { rankPages } from "./passes.js";
+import { buildDefaultProfile } from "./profile/default-profile.js";
+import { SECTIONS } from "./sections.js";
+import { retier, placeOtherSide } from "./tiers.js";
 
 const root = document.documentElement;
 const pager = document.getElementById("pager");
@@ -65,17 +70,20 @@ function buildSections() {
   if (built) return;
   built = true;
   const input = JSON.parse(document.getElementById("rank-input").content.textContent);
-  const stories = new Map(storiesFromPool(input.pool).map((s) => [s.id, s]));
+  const profile = window.almanacProfile || buildDefaultProfile(input.now);
+  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names });
   const todayRows = [...document.querySelectorAll("#section-today li.story[data-sid]")];
-  const order = todayRows.map((li) => li.dataset.sid);
   const byId = new Map(todayRows.map((li) => [li.dataset.sid, li]));
   for (const section of SECTIONS) {
     if (section.all || section.slot) continue;
     const panel = document.getElementById(`section-${section.id}`);
     if (!panel || panel.childElementCount) continue;
-    const ids = order.filter((id) => stories.has(id) && inSection(stories.get(id), section, input.buckets || {}));
+    const page = pages.sections.find((p) => p.id === section.id);
+    const stories = page.stories.filter((s) => byId.has(s.id));
+    const ids = stories.map((s) => s.id);
     const rows = new Map(ids.map((id) => [id, byId.get(id).cloneNode(true)]));
     fillPanel(panel, section, ids, rows, input);
+    for (const story of stories) placeOtherSide(rows.get(story.id), story.other_side || null, input);
   }
   root.dataset.sections = "ready";
 }
