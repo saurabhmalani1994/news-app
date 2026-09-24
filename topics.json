@@ -3,11 +3,11 @@
   "hard_news": ["world", "politics", "economy", "science", "conflict"],
   "topics": [
     "ai", "asia", "biotech", "conflict", "economy", "politics",
-    "science", "singapore", "world"
+    "science", "singapore", "us_politics", "world"
   ],
   "bucket_topics": {
-    "general": ["world"],
-    "us_politics": ["politics"],
+    "general": [],
+    "us_politics": ["politics", "us_politics"],
     "singapore": ["singapore"],
     "israel_gaza": ["conflict", "world"],
     "sudan": ["conflict", "world"],
@@ -20,6 +20,10 @@
       "election", "senate", "congress", "president", "parliament", "minister",
       "campaign", "governor", "lawmaker", "legislation", "impeach", "ballot",
       "midterm", "coalition government", "prime minister"
+    ],
+    "us_politics": [
+      "congress", "senate", "white house", "supreme court", "capitol hill",
+      "house of representatives", "electoral college", "gop"
     ],
     "economy": [
       "inflation", "gdp", "tariff", "central bank", "recession",
@@ -35,7 +39,34 @@
       "invasion", "bombing", "killed", "clashes", "militant", "offensive"
     ],
     "world": [
-      "united nations", "summit", "treaty", "embassy", "refugee"
+      "united nations", "summit", "treaty", "embassy", "refugee",
+      "nato", "european union", "world health organization", "world bank",
+      "international monetary fund", "security council",
+      "china", "russia", "ukraine", "iran", "israel", "gaza", "palestine",
+      "north korea", "south korea", "japan", "france", "germany", "britain",
+      "united kingdom", "india", "pakistan", "mexico", "brazil", "sudan",
+      "syria", "afghanistan", "australia", "canada", "taiwan", "vietnam",
+      "indonesia", "myanmar", "venezuela", "nigeria", "egypt", "saudi arabia",
+      "turkey", "italy", "spain", "poland", "netherlands"
+    ]
+  },
+  "us_election_signals": {
+    "note": "R16/world-tag fix: a US state name plus an election-context word, both present in the same title+dek, adds us_politics even for articles from a bucket other than us_politics (a general-bucket outlet covering a state race).",
+    "states": [
+      "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+      "connecticut", "delaware", "florida", "hawaii", "idaho", "illinois",
+      "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine",
+      "maryland", "massachusetts", "michigan", "minnesota", "mississippi",
+      "missouri", "montana", "nebraska", "nevada", "new hampshire",
+      "new jersey", "new mexico", "new york", "north carolina",
+      "north dakota", "ohio", "oklahoma", "oregon", "pennsylvania",
+      "rhode island", "south carolina", "south dakota", "tennessee",
+      "texas", "utah", "vermont", "virginia", "washington",
+      "west virginia", "wisconsin", "wyoming"
+    ],
+    "context_words": [
+      "election", "governor", "primary", "ballot", "midterm", "candidate",
+      "runs for", "senate race", "house race", "reelection"
     ]
   }
 }
