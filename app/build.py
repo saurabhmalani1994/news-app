@@ -61,6 +61,7 @@ PAGE = """<!doctype html>
 <script type="module" src="js/coverage-view.js"></script>
 <script type="module" src="js/history/observe.js"></script>
 <script type="module" src="js/live-actions.js"></script>
+<script type="module" src="js/saved-screen.js"></script>
 <script src="js/sw-register.js" defer></script>
 </head>
 <body class="app">
@@ -255,9 +256,25 @@ VIEW = """<section class="screen screen--view" id="screen-{id}" data-screen="{id
 VIEWS = (
     ("following", "Following", "Nothing followed yet",
      "Standing stories and the names you follow will each get a page here, with a timeline and how every outlet covered it."),
-    ("saved", "Saved", "Nothing saved yet",
-     "Stories you save will wait here, and the ones with full text stay readable offline."),
 )
+
+# S26: the Saved screen. The device fills #saved-list from S24's savesStore
+# (js/saved-screen.js), the same card the river uses (STORY below, reused verbatim), so
+# the build only lays out static chrome here: nothing to hydrate, nothing that can ever
+# mismatch. #saved-segment is a deliberately empty, hidden seam: S34 adds a History
+# segment to this same screen later (a segmented control switching #saved-list between
+# saves and history entries) and fills it there, not here.
+SAVED_VIEW = """<section class="screen screen--view" id="screen-saved" data-screen="saved" aria-labelledby="saved-title">
+<div class="view view--saved">
+<h1 class="view-title" id="saved-title">Saved</h1>
+<div class="saved-segment" id="saved-segment" hidden></div>
+<div class="empty" id="saved-empty">
+<p class="empty-head">Nothing saved yet</p>
+<p class="empty-text">Stories you save will wait here, and the ones with full text stay readable offline.</p>
+</div>
+<ol class="river river--top saved-list" id="saved-list" hidden></ol>
+</div>
+</section>"""
 
 
 def _chrome(sections):
@@ -273,7 +290,7 @@ def _chrome(sections):
                                hidden=hidden))
         if index:
             panels.append(PANEL.format(id=escape(section["id"], quote=True), hidden=hidden))
-    views = "\n".join(VIEW.format(id=v, title=t, head=h, text=x) for v, t, h, x in VIEWS)
+    views = "\n".join(VIEW.format(id=v, title=t, head=h, text=x) for v, t, h, x in VIEWS) + "\n" + SAVED_VIEW
     return "\n".join(tabs), "\n".join(panels), views
 
 

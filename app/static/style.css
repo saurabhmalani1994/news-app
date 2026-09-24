@@ -958,6 +958,18 @@ body {
   border-top-style: none;
 }
 
+/* S26: the Saved list reuses the river card verbatim, whose own .story-link already
+   carries the full 20dp gutter (--space-gutter). Cancelling .view's 16dp side padding
+   just for the list keeps a single 20dp inset instead of stacking both, so a saved row
+   lines up exactly like one on the river, per the design bar's one-gutter rule. */
+.view--saved .river {
+  margin: 24px -16px 0;
+}
+
+.saved-segment:not([hidden]) {
+  margin-bottom: 8px;
+}
+
 .empty-head {
   margin: 0;
   font-family: var(--type-river-headline-family);
@@ -1349,7 +1361,13 @@ body {
   position: relative;
 }
 
-.story-overflow {
+/* S26: the Saved screen's own overflow (Unsave, saved-screen.js) reuses this look
+   exactly but never the class "story-overflow" itself, since story-actions.js's global
+   click listener keys off that class alone and would open its own, wrong, seven-item
+   menu on a Saved row. ".saved-overflow" gets the identical rules below without ever
+   matching that selector. */
+.story-overflow,
+.saved-overflow {
   position: absolute;
   top: 2px;
   right: calc(var(--space-gutter) - (var(--touch-min) - 22px) / 2);
@@ -1367,11 +1385,13 @@ body {
   transition: background-color var(--motion-duration) var(--motion-ease);
 }
 
-.story-overflow:active {
+.story-overflow:active,
+.saved-overflow:active {
   background: var(--color-pressed);
 }
 
-.story-overflow:focus-visible {
+.story-overflow:focus-visible,
+.saved-overflow:focus-visible {
   outline: 2px solid var(--color-headline);
   outline-offset: -2px;
 }
@@ -1381,14 +1401,16 @@ body {
 }
 
 .story--hero .story-overflow,
-.story--river .story-overflow {
+.story--river .story-overflow,
+.story--river .saved-overflow {
   top: 6px;
   color: #F8F8F8;
   background: rgba(18, 18, 18, 0.45);
 }
 
 .story--hero .story-overflow:active,
-.story--river .story-overflow:active {
+.story--river .story-overflow:active,
+.story--river .saved-overflow:active {
   background: rgba(18, 18, 18, 0.65);
 }
 
