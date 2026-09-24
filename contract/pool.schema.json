@@ -22,7 +22,8 @@
       "type": "array",
       "items": {"$ref": "#/$defs/cluster"}
     },
-    "counts": {"$ref": "#/$defs/counts"}
+    "counts": {"$ref": "#/$defs/counts"},
+    "source_health": {"$ref": "#/$defs/source_health_map"}
   },
   "$defs": {
     "utc_timestamp": {
@@ -39,6 +40,11 @@
       "type": "string",
       "pattern": "^https?://[^\\s]+$",
       "maxLength": 2048
+    },
+    "nullable_utc_timestamp": {
+      "description": "S06: same shape as utc_timestamp, or null before a source has ever reached that state.",
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
     },
     "source": {
       "type": "object",
@@ -136,8 +142,36 @@
         "parse_error": {"type": "integer", "minimum": 0}
       }
     },
+    "health_state": {
+      "description": "S06: same closed set as feed_states, one source's outcome this run.",
+      "type": "string",
+      "enum": ["ok", "empty", "http_error", "timeout", "parse_error"]
+    },
+    "source_health_entry": {
+      "description": "S06: one source's health, carried forward run to run. last_ok_at is the generated_at of the most recent run this source reached state ok; last_item_at is the newest published_at seen among that run's items, so a feed that answers ok with stale copy is visible even though last_ok_at keeps advancing. consecutive_empty and consecutive_error each count the current unbroken run of that outcome, ending at this run, and reset to 0 the moment a run does not match. items_fetched is this run's raw item count (0 unless state is ok). unhealthy is set once consecutive_error reaches 3 or consecutive_empty reaches 5 (fetcher/health.py).",
+      "type": "object",
+      "required": [
+        "state", "last_ok_at", "last_item_at", "consecutive_empty", "consecutive_error",
+        "items_fetched", "unhealthy"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "state": {"$ref": "#/$defs/health_state"},
+        "last_ok_at": {"$ref": "#/$defs/nullable_utc_timestamp"},
+        "last_item_at": {"$ref": "#/$defs/nullable_utc_timestamp"},
+        "consecutive_empty": {"type": "integer", "minimum": 0},
+        "consecutive_error": {"type": "integer", "minimum": 0},
+        "items_fetched": {"type": "integer", "minimum": 0},
+        "unhealthy": {"type": "boolean"}
+      }
+    },
+    "source_health_map": {
+      "description": "S06: per-source health keyed by source id. Optional: added by S05 fanout runs, same as feed_states; the S01 single-feed fetcher's pool predates it.",
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/source_health_entry"}
+    },
     "counts": {
-      "description": "Run ledger. drops maps a fixed reason key to count (S02); leniency maps each parser tolerance applied (R9) to count, keys open. feed_states is optional, added by S05 fanout runs: it maps each closed feed-level outcome to a count, and the sum equals the number of configured sources. fetched == published + sum(drops) is asserted on every run.",
+      "description": "Run ledger. drops maps a fixed reason key to count (S02); leniency maps each parser tolerance applied (R9) to count, keys open. feed_states is optional, added by S05 fanout runs: it maps each closed feed-level outcome to a count, and the sum equals the number of configured sources. fetched == published + sum(drops) is asserted on every run. previous_pool_status is optional, added by S06: it records whether the previous published pool (read back from the live site to carry source_health counters forward) was read ok, was absent, was unreachable, or predated this slice's schema.",
       "type": "object",
       "required": ["fetched", "published", "drops", "leniency"],
       "additionalProperties": false,
@@ -146,7 +180,8 @@
         "published": {"type": "integer", "minimum": 0},
         "drops": {"$ref": "#/$defs/drop_counts"},
         "leniency": {"$ref": "#/$defs/count_map"},
-        "feed_states": {"$ref": "#/$defs/feed_states"}
+        "feed_states": {"$ref": "#/$defs/feed_states"},
+        "previous_pool_status": {"type": "string", "enum": ["ok", "absent", "unreachable", "old_schema"]}
       }
     }
   }

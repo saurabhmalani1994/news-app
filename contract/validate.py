@@ -178,6 +178,14 @@ def check_integrity(pool):
             errors.append(
                 "$.counts.feed_states: total does not equal the number of sources"
             )
+    if "source_health" in pool:
+        health_ids = set(pool["source_health"])
+        missing = source_ids - health_ids
+        unknown = health_ids - source_ids
+        if missing:
+            errors.append(f"$.source_health: missing entries for {sorted(missing)!r}")
+        if unknown:
+            errors.append(f"$.source_health: entries for unknown sources {sorted(unknown)!r}")
     return errors
 
 
