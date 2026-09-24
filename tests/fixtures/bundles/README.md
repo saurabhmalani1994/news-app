@@ -6,6 +6,11 @@ private repo, testing only. No article bodies, no URLs, deks cut to 600 characte
 - `gold_2026-09-24.json`: fixture 1, the whole published pool of the run generated
   2026-09-24T14:33:56Z (415 articles, 50 S07 clusters), the pool section 1 judged by hand.
   321 stories (45 with 2+ articles, 41 across 2+ outlets), 260 events.
+- `gold_2026-09-24b.json`: fixture 2 (B1b), the first pre-cap dump: a local fetcher run
+  generated 2026-09-24T23:12:25Z (5,118 candidates, 296 S07 groups). The 7 largest groups
+  (the 20 largest held 241 articles) plus 50 singletons, seed 20260924, then 50 other
+  versions found in the dump: 250 articles, 84 stories (20 with 2+ articles, 17 across 2+
+  outlets), 62 events. Hard calls are in its `notes`, keyed by article id.
 - `floors.json`: per fixture, the scores the current clusterer must reach. CI runs it.
 - Scorer and tools: `fetcher/bundle_eval.py`. Tests: `tests/test_bundle_eval.py`.
 
@@ -14,7 +19,9 @@ counts; standalone analysis of a theme does not; a reaction from someone new (a 
 criticism, a vox pop) is its own story. `event`: S32's umbrella, such as the Trump-Xi
 summit or the Asian Games; a story with no wider umbrella is its own event. Ids
 `st-solo-*` and `ev-solo-*` mark one-article stories and events. The fixture validator
-rejects a story spanning more than 48 h.
+rejects a story spanning more than 48 h. Fixture 2 also settled these: a live page is
+labeled by its current title; a wire story's updates (LEAD, 2nd LD) are one story; analysis
+of the development itself counts, opinion columns and whole-event analysis do not.
 
 **Owner spot-check.** `spot_check.ids` in each fixture: 10% of the labels, half from
 articles that share a story and half from articles that stand alone, drawn with a fixed
@@ -43,6 +50,9 @@ added as it lands. Work outside the repo for steps 1 to 5; the raw dump is never
    storage quota was full ("Artifact storage quota has been hit", run 36070646825);
    GitHub recalculates usage every 6 to 12 hours. Retry later rather than raising a
    spending limit (the owner wants no charges beyond the free plan).
+   Local route, used for fixture 2 while the quota was full (about a minute, writes
+   nothing into the repo when every path points at the scratch folder):
+   `python -m fetcher.fanout --out <scratch>/dist/pool.json --sources sources.json --previous-pool-url "" --state-path <scratch>/state.json --dump-candidates <scratch>/candidates.json`
 3. Download within 7 days (the artifact's retention):
    `gh run download <run id> --name candidates --dir <scratch>`
    gives `<scratch>/candidates.json`: every pre-cap candidate (5,117 and 2.6MB on 2026-09-24) with id,
@@ -51,6 +61,7 @@ added as it lands. Work outside the repo for steps 1 to 5; the raw dump is never
 4. Sample the 20 largest candidate groups plus 50 random singletons:
    `python -m fetcher.bundle_eval sample <scratch>/candidates.json --out <scratch>/gold_<YYYY-MM-DD>.json --seed <YYYYMMDD>`
    Aim for 150 to 200 articles. If the groups alone pass 150, lower `--groups`; note it.
+   A second dump on the same UTC date takes a letter: `gold_<YYYY-MM-DD>b.json`.
 5. Label every article's `story` and `event` by the rule above. Then search the whole
    dump for each sampled story's other versions (names, places, numbers, the way section 1
    did) and add them with labels, copying the entry from the dump without `url` and

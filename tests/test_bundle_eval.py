@@ -31,6 +31,7 @@ from fetcher.fanout import build_pool_fanout
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLES = ROOT / "tests/fixtures/bundles"
 FIXTURE_1 = BUNDLES / "gold_2026-09-24.json"
+FIXTURE_2 = BUNDLES / "gold_2026-09-24b.json"
 FLOORS = json.loads((BUNDLES / "floors.json").read_text(encoding="utf-8"))
 GOLD = sorted(BUNDLES.glob("gold_*.json"))
 
@@ -166,6 +167,43 @@ def test_spot_check_list_is_ten_percent_and_replays_from_its_seed():
     story = {a["id"]: a["story"] for a in fx["articles"]}
     grouped = sum(1 for i in spot["ids"] if size[story[i]] > 1)
     assert grouped == 21  # half checks a grouping call, half a stand-alone call
+
+
+def test_fixture_2_is_a_pre_cap_dump_sampled_by_section_2():
+    # B1b: 7 largest candidate groups (the 20 largest held 241 articles, README step 4)
+    # plus 50 seeded singletons, then other versions of sampled stories from the dump.
+    fx = load_fixture(FIXTURE_2)
+    arts, sample = fx["articles"], fx["sample"]
+    assert fx["pool_generated_at"] == "2026-09-24T23:12:25Z"
+    assert fx["s07_cluster_scope"].startswith("pre-cap candidate groups")
+    assert (sample["seed"], sample["largest_groups"], sample["singletons"]) == (20260924, 7, 50)
+    added = set(sample["added_ids"])
+    sampled = [a for a in arts if a["id"] not in added]
+    assert (len(arts), len(sampled), len(added)) == (250, 200, 50)
+    grouped = [a for a in sampled if a["s07_cluster"]]
+    assert len(grouped) == 150 and len({a["s07_cluster"] for a in grouped}) == 7
+    stories = {}
+    for a in arts:
+        stories.setdefault(a["story"], []).append(a)
+    assert len(stories) == 84 and len({a["event"] for a in arts}) == 62
+    assert sum(1 for m in stories.values() if len({a["source_id"] for a in m}) > 1) == 17
+    # README step 5 adds only other versions of stories the sample already holds.
+    sampled_stories = {a["story"] for a in sampled}
+    assert {a["story"] for a in arts if a["id"] in added} <= sampled_stories
+
+
+@pytest.mark.parametrize("path", GOLD, ids=[p.name for p in GOLD])
+def test_every_spot_check_list_is_ten_percent_and_replays_from_its_seed(path):
+    fx = load_fixture(path)
+    spot = fx["spot_check"]
+    assert spot["ids"] == spot_check_sample(fx["articles"], spot["seed"])
+    assert len(spot["ids"]) == round(len(fx["articles"]) * 0.10)
+
+
+@pytest.mark.parametrize("path", GOLD, ids=[p.name for p in GOLD])
+def test_labeling_notes_name_articles_in_their_fixture(path):
+    fx = load_fixture(path)
+    assert set(fx.get("notes", {})) <= {a["id"] for a in fx["articles"]}
 
 
 # The measured baseline and the CI floor

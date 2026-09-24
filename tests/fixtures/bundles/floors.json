@@ -7,5 +7,13 @@
   "bcubed_precision": 0.9633,
   "bcubed_recall": 0.8676,
   "bcubed_f1": 0.913
+ },
+ "gold_2026-09-24b.json": {
+  "pair_precision": 0.9142,
+  "pair_recall": 0.1809,
+  "purity": 0.7741,
+  "bcubed_precision": 0.9333,
+  "bcubed_recall": 0.5006,
+  "bcubed_f1": 0.6516
  }
 }
