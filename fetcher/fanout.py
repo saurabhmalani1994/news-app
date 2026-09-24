@@ -32,6 +32,11 @@ F6: that carry-forward state (S06 health, S32 event holds) is read from a small
 state.json actions/cache restores locally, before the network read fetcher.health
 still falls back to when the cache is absent or corrupt. See fetcher/state.py.
 
+B1: --dump-candidates PATH (or DUMP_CANDIDATES_PATH) also writes every candidate the
+clusterer saw, before the per-source cap, to its own file for gold-set labeling
+(fetcher/bundle_eval.py, tests/fixtures/bundles/README.md). It never enters pool.json,
+and a path inside the deployed directory is refused. Off unless asked.
+
 Usage: python -m fetcher.fanout --out dist/pool.json --sources sources.json
 """
 import argparse
@@ -84,6 +89,7 @@ DEFAULT_RETRIES = 1
 PER_SOURCE_CAP = 5
 CLUSTER_EXTRA_CAP = 3
 MAX_WORKERS = 32
+DUMP_DEK_CHARS = 600  # B1: enough dek for a labeler and any clusterer; never a body
 
 # F3: a source may name an explicit fetch route in sources.json when its direct
 # feed_url is blocked from GitHub Actions' network but reachable another way. "via"
@@ -283,7 +289,7 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
 def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP,
                       cluster_extra_cap=CLUSTER_EXTRA_CAP, timings=None, topics_doc=None,
                       previous_health=None, previous_pool_status="absent", bodies_out=None,
-                      previous_events=None):
+                      previous_events=None, candidates_out=None):
     """Turn fetch results for every source into one pool dict. Pure: no network, no clock.
 
     timings, if a dict is passed, receives the clustering wall time in seconds.
@@ -302,6 +308,10 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     S32: previous_events is fetcher.events.parse_previous_events' state from the
     previous pool, or None for a clean start; it carries the Live slot's hold across
     runs (fetcher/events.py has the state machine).
+
+    B1: candidates_out, if a dict is passed, receives {"dump": candidate_dump(...)}, the
+    whole pre-cap candidate list, so main() can write it to its own file. The returned
+    pool never carries it.
     """
     if topics_doc is None:
         topics_doc = load_topics()
@@ -411,6 +421,9 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                                     source_lean, source_syndication)
 
     generated_at = _utc(now)
+    if candidates_out is not None:
+        candidates_out["dump"] = candidate_dump(candidates, all_clusters,
+                                                {a["id"] for a in articles}, generated_at)
     source_health = compute_source_health(sources, run_states, previous_health, generated_at)
     events = build_events(articles, clusters, sources, now, hard_news_topics(topics_doc),
                           previous_events)
@@ -446,6 +459,38 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
         "source_health": source_health,
         "events": events,
     }
+
+
+def candidate_dump(candidates, all_clusters, published_ids, generated_at):
+    """B1: every candidate the clusterer saw, before the per-source cap, with the fields a
+    gold-set labeler needs. s07_cluster names the candidate's whole-run S07 group, by its
+    earliest member (so it can differ from the published cluster id, which is seeded by
+    the earliest published member); null means S07 left it alone."""
+    by_id = {a["id"]: a for a in candidates}
+    group = {}
+    for cl in all_clusters:
+        seed = min(cl["article_ids"], key=lambda i: (by_id[i]["published_at"], i))
+        for i in cl["article_ids"]:
+            group[i] = f"c_{seed}"
+    return {
+        "generated_at": generated_at,
+        "counts": {
+            "candidates": len(candidates),
+            "clustered": len(group),
+            "groups": len(all_clusters),
+            "published": sum(1 for a in candidates if a["id"] in published_ids),
+        },
+        "candidates": [{
+            "id": a["id"], "source_id": a["source_id"], "url": a["url"], "title": a["title"],
+            "dek": a.get("dek", "")[:DUMP_DEK_CHARS], "published_at": a["published_at"],
+            "s07_cluster": group.get(a["id"]), "published": a["id"] in published_ids,
+        } for a in candidates],
+    }
+
+
+def _inside(path, directory):
+    p, d = Path(path).resolve(), Path(directory).resolve()
+    return p == d or d in p.parents
 
 
 def _published_clusters(all_clusters, published, by_id, source_lean=None, source_syndication=None):
@@ -498,7 +543,17 @@ def main(argv=None):
     # read at all (fetcher/state.py). STATE_PATH mirrors the PREVIOUS_POOL_URL
     # pattern so a local run can point elsewhere without a code change.
     ap.add_argument("--state-path", default=os.environ.get("STATE_PATH", DEFAULT_STATE_PATH))
+    # B1: off unless a path is given. publish.yml sets DUMP_CANDIDATES_PATH only on a
+    # workflow_dispatch run with its dump_candidates input true.
+    ap.add_argument("--dump-candidates", default=os.environ.get("DUMP_CANDIDATES_PATH", ""))
     args = ap.parse_args(argv)
+
+    dump_path = Path(args.dump_candidates) if args.dump_candidates else None
+    if dump_path is not None and _inside(dump_path, Path(args.out).parent):
+        # Everything beside pool.json deploys; the candidate list must never ship.
+        print(f"REFUSED: candidate dump {dump_path} is inside the deployed directory "
+              f"{Path(args.out).parent}", file=sys.stderr)
+        return 1
 
     try:
         sources = load_sources(args.sources)
@@ -526,10 +581,11 @@ def main(argv=None):
     previous_events, previous_events_status = parse_previous_events(previous_bytes)
     timings = {}
     bodies_out = {}
+    candidates_out = {} if dump_path is not None else None
     pool = build_pool_fanout(
         sources, fetch_results, datetime.now(timezone.utc), per_source_cap=args.per_source_cap,
         timings=timings, previous_health=previous_health, previous_pool_status=previous_pool_status,
-        bodies_out=bodies_out, previous_events=previous_events,
+        bodies_out=bodies_out, previous_events=previous_events, candidates_out=candidates_out,
     )
     errors = validate(pool)
     if errors:
@@ -543,6 +599,13 @@ def main(argv=None):
     # F6: only ever written from a pool that already passed validate() above, so a
     # bad run can never hand the next run bad state either.
     write_state(pool, args.state_path)
+    if dump_path is not None:
+        dump = dumps(candidates_out["dump"]).encode("utf-8")
+        dump_path.parent.mkdir(parents=True, exist_ok=True)
+        dump_path.write_bytes(dump)
+        dc = candidates_out["dump"]["counts"]
+        print(f"candidate_dump={dump_path} candidates={dc['candidates']} "
+              f"clustered={dc['clustered']} groups={dc['groups']} bytes={len(dump)}")
     c = pool["counts"]
     lean_counts = Counter(s["lean"] for s in sources if s.get("lean"))
     syn_groups = {s.get("syndication_group") or s["id"] for s in sources}

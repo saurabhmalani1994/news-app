@@ -7,8 +7,16 @@ name: publish
 # the owner 2026-09-24, from the measured run time (about 40s publish, 1 billed minute).
 # A push that touches only docs/ does not deploy: nothing under docs/ reaches the page,
 # and a docs push used to cancel the queued run of a code push (one pending per group).
+# B1: a manual run can also upload the pre-cap candidate list for gold-set labeling
+# (tests/fixtures/bundles/README.md). Only a workflow_dispatch with dump_candidates true
+# does; the hourly schedule and pushes never make an artifact, so storage stays free.
 on:
   workflow_dispatch:
+    inputs:
+      dump_candidates:
+        description: "B1: also upload the pre-cap candidate list as a 7-day artifact"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths-ignore:
@@ -71,7 +79,19 @@ jobs:
           # corrupt, to carry its consecutive-empty/error counters forward. Never
           # hard-coded in Python; this workflow env var is the only place it lives.
           PREVIOUS_POOL_URL: ${{ vars.PREVIOUS_POOL_URL || 'https://almanac-dt5.pages.dev/pool.json' }}
+          # B1: empty (no dump) unless this is a dispatch that asked for one. Outside dist/,
+          # which deploys; the fetcher refuses a dump path inside it.
+          DUMP_CANDIDATES_PATH: ${{ (github.event_name == 'workflow_dispatch' && inputs.dump_candidates) && 'candidates/candidates.json' || '' }}
         run: python3 -m fetcher.fanout --out dist/pool.json --sources sources.json
+
+      - name: Upload candidate dump (B1, dispatch with dump_candidates only)
+        if: github.event_name == 'workflow_dispatch' && inputs.dump_candidates
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidates
+          path: candidates/candidates.json
+          retention-days: 7
+          if-no-files-found: error
 
       # F6: saved right after Fetch, unconditionally, so this run's state reaches
       # the next run even if a later step (build, deploy) fails.
