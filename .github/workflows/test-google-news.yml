@@ -5,6 +5,12 @@ name: test-google-news
 # once its result is recorded in sources.json.
 on:
   workflow_dispatch:
+  # Belt and suspenders for a brand new workflow_dispatch-only workflow: GitHub Actions
+  # can take a short while to register a freshly pushed workflow for on-demand dispatch,
+  # so a push that touches this file also runs it directly (same pattern cf-check.yml
+  # already uses).
+  push:
+    paths: ['.github/workflows/test-google-news.yml']
 
 permissions:
   contents: read
