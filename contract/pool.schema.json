@@ -23,7 +23,12 @@
       "items": {"$ref": "#/$defs/cluster"}
     },
     "counts": {"$ref": "#/$defs/counts"},
-    "source_health": {"$ref": "#/$defs/source_health_map"}
+    "source_health": {"$ref": "#/$defs/source_health_map"},
+    "events": {
+      "description": "S31: the Live tab's event list (R22). Optional: added by S32 fanout runs, same as source_health; older pools predate it. The fetcher emits an empty array until S32 fills it.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/event"}
+    }
   },
   "$defs": {
     "utc_timestamp": {
@@ -135,6 +140,25 @@
           "minItems": 1,
           "items": {"$ref": "#/$defs/lean_bucket"}
         }
+      }
+    },
+    "event": {
+      "description": "S31: one entry in the Live tab's event list (R22), computed in the cloud by S32. An event groups clusters sharing a key entity within 48 hours. cluster_ids names those clusters; every cluster belongs to at most one event, the same closed-shape rule as an article belonging to at most one cluster. hype is the R22 score, distinct clusters in the event times independent outlets covering it in the last 24h, so it is a non-negative count with no stated ceiling. eligible mirrors R16 must-know eligibility (hard news topic tags, independent sources spanning at least two lean buckets); live is the actual Live tab placement and can only be true when eligible is also true, since R22 says a celebrity story can never go live regardless of hype. hold_state is the R22 hysteresis bookkeeping across runs, an incumbent holds at least 12h even if it would no longer qualify on this run's numbers alone: none for an event that is not being held (never live, or currently live purely on its own merits), holding for one kept live past what eligible/hype alone would earn it this run, released for one that was held and whose hold period has since ended.",
+      "type": "object",
+      "required": ["id", "label", "cluster_ids", "hype", "eligible", "live", "hold_state"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "label": {"type": "string", "minLength": 1, "maxLength": 200},
+        "cluster_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/id"}
+        },
+        "hype": {"type": "integer", "minimum": 0},
+        "eligible": {"type": "boolean"},
+        "live": {"type": "boolean"},
+        "hold_state": {"enum": ["none", "holding", "released"]}
       }
     },
     "count_map": {
