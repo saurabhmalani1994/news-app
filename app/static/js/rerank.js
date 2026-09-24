@@ -3,8 +3,9 @@
 // hidden, so the reader first sees the final order. Ranks the page's own compact pool
 // (the build ranked the very same input) at the pool's generated_at, re-tiers the
 // existing rows in place and sets every feed string as text only (R26). S39: a row's
-// photo follows its tier by the build's own rule (app/images.py): a hero-worthy photo
-// in the hero, a thumbnail in the river, none elsewhere; only an https url reaches src.
+// photo follows its tier by the build's own rule (app/images.py): the story's chosen
+// hero photo in the hero, the lead's thumbnail in the river, none elsewhere; only an
+// https url reaches src.
 import { rank } from "./ranker.js";
 
 const TIERS = [["hero", 1], ["secondary", 2], ["river", 12], ["text-only", 20], ["text-only", Infinity]];
@@ -13,26 +14,31 @@ const HEADLINE = { hero: "headline headline--hero", secondary: "headline headlin
 const HTTPS = /^https:\/\/[^\s]+$/i;
 
 function media(tier, record) {
-  if (!record || !HTTPS.test(record[0])) return [];
-  const kind = tier === "hero" && record[1] ? "hero" : tier === "river" && record[2] ? "thumb" : null;
-  if (!kind) return [];
+  // record: {hero: [url, width, height, credit], thumb: url} (app/images.py media_for).
+  // D2: the hero's photo may come from another outlet in the story, and its box is the
+  // build's clamped shape, two integers set as --box so the frame is sized before load.
+  const hero = tier === "hero" && record?.hero;
+  const url = hero ? hero[0] : tier === "river" ? record?.thumb : null;
+  if (!url || !HTTPS.test(url)) return [];
+  const [width, height] = hero ? hero.slice(1, 3) : [88, 88];
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) return [];
   const frame = document.createElement("span");
-  frame.className = `story-media story-media--${kind}`;
+  frame.className = `story-media story-media--${hero ? "hero" : "thumb"}`;
+  if (hero) frame.style.setProperty("--box", `${width} / ${height}`);
   const img = document.createElement("img");
-  const px = kind === "hero" ? "360" : "88";
   img.className = "story-img";
-  img.setAttribute("width", px);
-  img.setAttribute("height", px);
+  img.setAttribute("width", String(width));
+  img.setAttribute("height", String(height));
   img.setAttribute("alt", "");
-  img.setAttribute(kind === "hero" ? "fetchpriority" : "loading", kind === "hero" ? "high" : "lazy");
+  img.setAttribute(hero ? "fetchpriority" : "loading", hero ? "high" : "lazy");
   img.setAttribute("decoding", "async");
   img.setAttribute("referrerpolicy", "no-referrer");
-  img.setAttribute("src", record[0]);
+  img.setAttribute("src", url);
   frame.append(img);
-  if (kind !== "hero" || !record[3]) return [frame];
+  if (!hero || !hero[3]) return [frame];
   const credit = document.createElement("span");
   credit.className = "story-credit";
-  credit.textContent = record[3];
+  credit.textContent = hero[3];
   return [frame, credit];
 }
 

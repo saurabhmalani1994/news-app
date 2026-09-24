@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 
 from app.dek import fit_dek
 from app.frontpage import CHARS_PER_LINE, DEK_LINES, clean_dek, front_page, rank_input, run_ranker
-from app.images import HERO_PX, THUMB_PX, credit_text, hero_worthy, image_url, media_for, thumb_ok
+from app.images import THUMB_PX, hero_box, hero_media, image_url, media_for, thumb_ok
 from app.typography import smart_quotes
 
 ROOT = Path(__file__).resolve().parent
@@ -96,8 +96,11 @@ STORY = (
 )
 # S39 photos (app.images decides which). The url is an attribute value, escaped; alt is
 # empty because the headline beside it carries the meaning. Only the hero loads eagerly.
-IMG = ('<span class="story-media story-media--{kind}"><img class="story-img" src="{src}" '
-       'width="{px}" height="{px}" alt="" {load} decoding="async" referrerpolicy="no-referrer"></span>')
+# D2: the hero box follows the photo's stated shape (app.images.hero_box), so the frame
+# carries its ratio as --box, two integers the build computed, never a feed string.
+IMG = ('<span class="story-media story-media--{kind}"{box}><img class="story-img" src="{src}" '
+       'width="{width}" height="{height}" alt="" {load} decoding="async" referrerpolicy="no-referrer"></span>')
+BOX = ' style="--box: {width} / {height}"'
 LOAD = {"hero": 'fetchpriority="high"', "thumb": 'loading="lazy"'}
 CREDIT = '<span class="story-credit">{credit}</span>'
 
@@ -162,22 +165,29 @@ def _meta(story, source_names, now):
     return "".join(parts)
 
 
-def _media(tier, image):
-    """The photo markup for a row of this tier, or '' for the text-only variant."""
-    if tier == "hero" and hero_worthy(image):
-        kind, px = "hero", HERO_PX
-    elif tier == "river" and thumb_ok(image):
-        kind, px = "thumb", THUMB_PX
-    else:
-        return ""
-    html = IMG.format(kind=kind, src=escape(image_url(image), quote=True), px=px, load=LOAD[kind])
-    credit = credit_text(image) if kind == "hero" else ""
-    if credit:
-        html += CREDIT.format(credit=escape(credit, quote=False))
-    return html
+def _media(tier, hero, thumb_image):
+    """The photo markup for a row of this tier, or '' for the text-only variant. `hero`
+    is app.images.hero_media's (image, credit) or None; a thumbnail is the lead's own."""
+    if tier == "hero" and hero is not None:
+        image, credit = hero
+        width, height = hero_box(image)
+        box = BOX.format(width=width, height=height)
+        html = IMG.format(kind="hero", box=box, src=escape(image_url(image), quote=True),
+                          width=width, height=height, load=LOAD["hero"])
+        if credit:
+            html += CREDIT.format(credit=escape(credit, quote=False))
+        return html
+    if tier == "river" and thumb_ok(thumb_image):
+        return IMG.format(kind="thumb", box="", src=escape(image_url(thumb_image), quote=True),
+                          width=THUMB_PX, height=THUMB_PX, load=LOAD["thumb"])
+    return ""
 
 
-def _render_story(story, tier, source_names, now):
+def _members(story, by_id):
+    return [by_id[i] for i in story.article_ids if i in by_id]
+
+
+def _render_story(story, tier, source_names, now, by_id):
     article = story.lead
     title = escape(smart_quotes(article["title"]), quote=False)
     dek = ""
@@ -194,7 +204,9 @@ def _render_story(story, tier, source_names, now):
         close = "</a>"
     return STORY.format(
         tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
-        title=title, dek=dek, meta=_meta(story, source_names, now), media=_media(tier, article.get("image")),
+        title=title, dek=dek, meta=_meta(story, source_names, now),
+        media=_media(tier, hero_media(_members(story, by_id), article, source_names) if tier == "hero" else None,
+                     article.get("image")),
     )
 
 
@@ -210,39 +222,41 @@ def _dek_pairs(stories):
     return pairs
 
 
-def _image_records(stories):
+def _image_records(stories, by_id, source_names):
     """Each story's photo record (app.images.media_for), so a device re-rank can give a
     promoted row its photo box and take it from a demoted one, by the build's own rule."""
     records = {}
     for story in stories:
-        record = media_for(story.lead.get("image"))
+        hero = hero_media(_members(story, by_id), story.lead, source_names)
+        record = media_for(hero, story.lead.get("image"))
         if record:
             records[story.id] = record
     return records
 
 
-def _rank_input_json(pool, stories):
+def _rank_input_json(pool, stories, by_id, source_names):
     """The device's ranking input as template text. Only &, < and > are escaped, so no
     feed string can close the template or open a tag (R26); JSON quotes stay readable."""
     data = {"now": pool.get("generated_at"), "pool": rank_input(pool), "deks": _dek_pairs(stories),
-            "images": _image_records(stories)}
+            "images": _image_records(stories, by_id, source_names)}
     return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
 
 
 def render(pool, ranking=None):
     now = _parse_time(pool.get("generated_at"))
     source_names = {s["id"]: s.get("name", "") for s in pool.get("sources", [])}
+    by_id = {a["id"]: a for a in pool["articles"]}
     ranking = ranking or run_ranker(pool)
     tiers = front_page(pool, ranking)
 
     def rows(names):
         return "\n".join(
-            _render_story(story, tier, source_names, now) for tier in names for story in tiers[tier]
+            _render_story(story, tier, source_names, now, by_id) for tier in names for story in tiers[tier]
         )
 
     tail = tiers["text_only"]
-    shown = "\n".join(_render_story(s, "text_only", source_names, now) for s in tail[:MORE_COUNT])
-    rest = "\n".join(_render_story(s, "text_only", source_names, now) for s in tail[MORE_COUNT:])
+    shown = "\n".join(_render_story(s, "text_only", source_names, now, by_id) for s in tail[:MORE_COUNT])
+    rest = "\n".join(_render_story(s, "text_only", source_names, now, by_id) for s in tail[MORE_COUNT:])
     more = ""
     if shown:
         more = MORE.format(
@@ -256,7 +270,7 @@ def render(pool, ranking=None):
     updated = now.strftime("%d %b %H:%M UTC") if now else ""
     return PAGE.format(
         rank_key=escape(ranking["key"], quote=True),
-        rank_input=_rank_input_json(pool, [s for name in tiers for s in tiers[name]]),
+        rank_input=_rank_input_json(pool, [s for name in tiers for s in tiers[name]], by_id, source_names),
         preloads=preloads,
         top=rows(("hero", "secondary", "river")),
         more=more,
