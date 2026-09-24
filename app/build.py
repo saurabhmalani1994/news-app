@@ -24,7 +24,7 @@ from app.csp import headers_file
 from app.health import render as render_health
 from app.dek import fit_dek
 from app.frontpage import (CHARS_PER_LINE, DEK_LINES, clean_dek, front_page, pass_input, rank_input,
-                           run_ranker)
+                           run_ranker, source_ownership)
 from app.images import THUMB_PX, credit_text, hero_box, hero_media, hero_worthy, image_url, media_for, thumb_ok
 from app.serviceworker import write_service_worker
 from app.typography import smart_quotes
@@ -58,6 +58,7 @@ PAGE = """<!doctype html>
 <script type="module" src="js/tabs.js"></script>
 <script type="module" src="js/reader.js"></script>
 <script type="module" src="js/story-actions.js"></script>
+<script type="module" src="js/coverage-view.js"></script>
 <script src="js/sw-register.js" defer></script>
 </head>
 <body class="app">
@@ -198,6 +199,46 @@ def reader_photos(stories):
     return dict(sorted(photos.items()))
 
 
+# S14: the coverage view, on any cluster with 2 or more independent sources (DESIGN-v1
+# section 6, carried into DESIGN-v1.1 section 5 unchanged: real headlines side by side,
+# never an AI summary, R13).
+
+def coverage_outlet_count(article_ids, by_id):
+    """Distinct outlets that carried the story in any form, syndicated copies included
+    (unlike independent_sources, which folds one wire-copy group down to one voice)."""
+    return len({by_id[aid]["source_id"] for aid in article_ids if aid in by_id})
+
+
+def coverage_summary_text(cluster, by_id):
+    """'N outlets, M independent, across K leans', plain numbers only (no AI text, R13):
+    the sheet's own header (js/coverage.js summarize()) shows the same three numbers
+    from the same cluster fields, so the button's accessible name matches what opening
+    it shows."""
+    outlets = coverage_outlet_count(cluster.get("article_ids", []), by_id)
+    independent = cluster.get("independent_sources", 0)
+    leans = len(cluster.get("lean_buckets", []))
+    lean_word = "lean" if leans == 1 else "leans"
+    return f"{outlets} outlets, {independent} independent, across {leans} {lean_word}"
+
+
+def coverage_articles(pool):
+    """{article_id: {url, has_body}} for every article belonging to a cluster of 2 or
+    more independent sources, kept apart from rank_input's compact fields (S14) so the
+    ranker's own input never changes shape: url and has_body already exist in the pool
+    (R12), just not carried into the ranker's compact view. Sorted by id for a
+    byte-stable page."""
+    by_id = {a["id"]: a for a in pool.get("articles", [])}
+    ids = {aid for c in pool.get("clusters", []) if c.get("independent_sources", 0) > 1
+           for aid in c.get("article_ids", [])}
+    out = {}
+    for aid in sorted(ids):
+        article = by_id.get(aid)
+        if not article:
+            continue
+        out[aid] = {"url": _safe_url(article.get("url")) or "", "has_body": body_id(article) is not None}
+    return out
+
+
 # Following (S30) and Saved (S26) are later slices; until then each is a calm view with
 # its title and one quiet line about what will live there, set like NYT's You tab.
 VIEW = """<section class="screen screen--view" id="screen-{id}" data-screen="{id}" aria-labelledby="{id}-title">
@@ -283,13 +324,26 @@ STORY_OVERFLOW = (
     '<path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"></path>'
     "</svg></button>"
 )
+# S14: the coverage view trigger. It never changes what the meta line shows (still
+# reads as quiet meta, R34): it is an invisible sibling button laid over the meta
+# line's own rendered position with a negative top margin sized to the tier's own fixed
+# padding-bottom plus the meta line-height (both design tokens, never content-length
+# dependent), so it lines up under "N sources" without moving anything and without ever
+# nesting a button inside the row's own <a> (same rule as STORY_OVERFLOW above: a tap on
+# it must never also navigate). min-height brings the target to 48dp; style.css raises
+# it a little further into the row's own whitespace above the meta line to get there
+# without pushing the next row down (the design bar's steady rhythm, R34). Built only
+# for clusters of 2 or more independent sources, the same floor DESIGN-v1 sets for the
+# coverage view itself.
+STORY_COVERAGE = ('<button class="story-coverage" type="button" data-sid="{sid}" '
+                   'aria-haspopup="dialog" aria-label="See coverage: {label}"></button>')
 # One row shape for every tier; the tier only changes classes, whether a dek shows and
 # whether a photo shows. The photo goes first inside .story-body; its box is sized by
 # width, height and aspect-ratio before a byte arrives (style.css), so text never moves.
 STORY = (
     '<li class="story story--{tier}" data-sid="{sid}">{open}'
     '<span class="story-body">{media}<span class="headline{headline_mod}">{title}</span>{dek}'
-    '<span class="meta">{meta}</span></span>{close}' + STORY_OVERFLOW + "{other}</li>"
+    '<span class="meta">{meta}</span></span>{close}' + STORY_OVERFLOW + "{coverage}{other}</li>"
 )
 # S13 other-side slot: one attached link under a many-outlet card, to the same story as
 # an outlet of the lean least seen on this page tells it (app/static/js/passes.js says
@@ -422,7 +476,7 @@ def _other_side(record, links, source_names, leans):
         title=escape(title, quote=False))
 
 
-def _render_story(story, tier, source_names, now, by_id, other=""):
+def _render_story(story, tier, source_names, now, by_id, other="", coverage=""):
     article = story.lead
     title = escape(smart_quotes(article["title"]), quote=False)
     dek = ""
@@ -441,7 +495,7 @@ def _render_story(story, tier, source_names, now, by_id, other=""):
         close = "</a>"
     return STORY.format(
         tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
-        title=title, dek=dek, meta=_meta(story, source_names, now), other=other,
+        title=title, dek=dek, meta=_meta(story, source_names, now), other=other, coverage=coverage,
         media=_media(tier, hero_media(_members(story, by_id), article, source_names) if tier == "hero" else None,
                      article.get("image")),
     )
@@ -474,10 +528,14 @@ def _image_records(stories, by_id, source_names):
 def _rank_input_json(pool, stories, by_id, source_names, links):
     """The device's ranking input as template text. Only &, < and > are escaped, so no
     feed string can close the template or open a tag (R26); JSON quotes stay readable.
-    S13: buckets, leans and names for the passes, and the other-side link data."""
+    S13: buckets, leans and names for the passes, and the other-side link data. S14:
+    ownership labels and the url/has_body pair the coverage view needs, kept apart from
+    the ranker's own compact article fields (rank_input) so that input never changes
+    shape."""
     data = {"now": pool.get("generated_at"), "pool": rank_input(pool), "deks": _dek_pairs(stories),
             "images": _image_records(stories, by_id, source_names), **pass_input(pool), "links": links,
-            "reader": reader_photos(stories)}
+            "reader": reader_photos(stories), "ownership": source_ownership(pool),
+            "coverage": coverage_articles(pool)}
     return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
 
 
@@ -485,15 +543,22 @@ def render(pool, ranking=None):
     now = _parse_time(pool.get("generated_at"))
     source_names = {s["id"]: s.get("name", "") for s in pool.get("sources", [])}
     by_id = {a["id"]: a for a in pool["articles"]}
+    clusters_by_id = {c["id"]: c for c in pool.get("clusters", [])}
     ranking = ranking or run_ranker(pool)
     tiers = front_page(pool, ranking)
     shown_stories = [s for name in tiers for s in tiers[name]]
     links = other_side_links(pool, shown_stories)
     leans = pass_input(pool)["leans"]
     others = {r["id"]: _other_side(r.get("other_side"), links, source_names, leans) for r in ranking["ranked"]}
+    coverages = {
+        sid: STORY_COVERAGE.format(sid=escape(sid, quote=True),
+                                    label=escape(coverage_summary_text(cluster, by_id), quote=True))
+        for sid, cluster in clusters_by_id.items() if cluster.get("independent_sources", 0) > 1
+    }
 
     def row(story, tier):
-        return _render_story(story, tier, source_names, now, by_id, others.get(story.id, ""))
+        return _render_story(story, tier, source_names, now, by_id, others.get(story.id, ""),
+                              coverages.get(story.id, ""))
 
     def rows(names):
         return "\n".join(row(story, tier) for tier in names for story in tiers[tier])
