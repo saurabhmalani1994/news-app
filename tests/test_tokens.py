@@ -128,12 +128,14 @@ def test_text_only_headline_is_bold_at_dek_size():
     assert DARK_TOKENS["type-dek-weight"] == "400"
 
 
-def test_applied_page_is_a_single_text_only_tier():
+def test_applied_page_has_exactly_one_hero():
+    # S03 asserted a single text-only tier with no hero applied, because the hero was
+    # S04's decision. S04 made it: one hero, and every other headline a lower token.
     from tests.test_render import GOLDEN
 
     page = render(GOLDEN)
-    assert page.count('<span class="headline">') == len(GOLDEN["articles"])
-    assert "headline--hero" not in page  # S04 decides the hero, not this slice
+    assert page.count('<span class="headline headline--hero">') == 1
+    assert page.count('<span class="headline') == len(GOLDEN["articles"])
 
 
 # The proof, part 2: AA contrast in both themes.
