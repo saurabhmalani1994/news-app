@@ -18,7 +18,8 @@
     "sudan": ["conflict", "world"],
     "ai": ["ai"],
     "biotech": ["biotech", "science"],
-    "asia": ["world"]
+    "asia": ["world"],
+    "climate_food": ["foodtech", "climate_tech"]
   },
   "keyword_topics": {
     "politics": [
@@ -52,13 +53,19 @@
       "alternative protein", "plant-based", "cultivated meat", "cultured meat",
       "precision fermentation", "foodtech", "food tech", "vertical farming",
       "lab-grown meat", "novel food", "regenerative agriculture", "agtech",
-      "food security", "biomanufactured food"
+      "food security", "biomanufactured food", "cell-based meat",
+      "cell-cultured meat", "meat alternative", "dairy alternative",
+      "mycoprotein", "biomass fermentation", "indoor farming", "smart farming",
+      "gene-edited crop"
     ],
     "climate_tech": [
       "climate tech", "climate technology", "carbon capture", "decarbonization",
       "decarbonize", "renewable energy", "clean energy", "solar power",
       "wind power", "battery storage", "electric vehicle", "ev charging",
-      "green hydrogen", "climate finance", "net zero", "carbon removal"
+      "green hydrogen", "climate finance", "net zero", "carbon removal",
+      "direct air capture", "carbon credit", "carbon offset", "energy storage",
+      "grid storage", "geothermal energy", "offshore wind", "heat pump",
+      "sustainable aviation fuel", "climate startup"
     ],
     "world": [
       "united nations", "summit", "treaty", "embassy", "refugee",

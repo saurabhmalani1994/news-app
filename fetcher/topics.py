@@ -37,6 +37,16 @@ outlet: `singapore` is set exactly when fetcher.geo gives the article `sg`, and 
 exactly when it gives `asia` (topics.json `geo_topics`). The singapore and asia buckets
 no longer add them, so a Singapore outlet's piece on the White House is not a Singapore
 story for ranking affinity, R16 or the tabs. The asia bucket still adds `world` (F1).
+
+**climate_food bucket fix (F7).** The climate_food bucket (Green Queen, Food Dive,
+Canary Media, CTVC, Biofuels Digest and the rest of sources.json's food tech/climate
+tech outlets) had no bucket_topics entry, so its own articles carried neither the
+foodtech nor the climate_tech tag unless the keyword lists happened to match, which
+is why both tags measured thin before this fix even though the sources were live.
+bucket_topics now gives the bucket both tags directly, the same pattern biotech
+already used for its own bucket. The foodtech and climate_tech keyword lists were
+also widened (cell-based meat, mycoprotein, direct air capture, heat pump and more)
+so a relevant story from a general outlet still gets tagged.
 """
 import json
 from pathlib import Path
