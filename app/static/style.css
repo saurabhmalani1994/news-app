@@ -425,6 +425,155 @@ body {
   text-wrap: pretty;
 }
 
+/* S14: the coverage view trigger. An invisible sibling button, never nested inside the
+   card's own <a> (same rule as .story-overflow), laid over the meta line's own rendered
+   spot with a negative top margin sized from two fixed tokens (a tier's own
+   story-body padding-bottom, the meta line's own height), never from content length, so
+   it lines up under "N sources" without moving a single visible pixel. The visible
+   "N sources" text stays exactly as it was; this only adds a real, focusable, 48dp tap
+   target quietly on top of it. min-height brings it to 48dp, the same accepted floor
+   .other-side above already adds to a multi-source card's own height. */
+.story-coverage {
+  display: block;
+  width: 100%;
+  min-height: var(--touch-min);
+  margin-top: calc(-1 * (22px + var(--type-meta-line-height)));
+  padding: 0;
+  border-style: none;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.story--text-only .story-coverage {
+  margin-top: calc(-1 * (19px + var(--type-meta-line-height)));
+}
+
+.story-coverage:active {
+  background: var(--color-pressed);
+}
+
+.story-coverage:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+/* S14: the coverage sheet's own content (js/coverage-view.js), opened from the trigger
+   above. A flat, scrollable list, the same quiet voice as the story actions sheet: no
+   AI text anywhere (R13), plain numbers only in the summary line. */
+.coverage-summary {
+  margin: 0;
+  padding: 2px var(--space-gutter) 18px;
+  font-family: var(--type-meta-family);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--color-meta);
+}
+
+.coverage-group {
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.coverage-group-label {
+  margin: 0;
+  padding: 16px var(--space-gutter) 4px;
+  font-family: var(--type-tab-label-family);
+  font-size: var(--type-tab-label-size);
+  line-height: var(--type-tab-label-line-height);
+  font-weight: var(--type-tab-label-weight);
+  letter-spacing: var(--type-tab-label-tracking);
+  color: var(--color-headline);
+}
+
+.coverage-row {
+  display: block;
+  min-height: var(--touch-min);
+  padding: 8px var(--space-gutter);
+  color: inherit;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.coverage-row:active {
+  background: var(--color-pressed);
+}
+
+.coverage-row:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.coverage-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.coverage-outlet {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--type-meta-family);
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--color-headline);
+}
+
+.coverage-ownership {
+  flex: none;
+  padding: 1px 6px;
+  border: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--type-meta-family);
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-meta);
+}
+
+.coverage-time {
+  flex: none;
+  margin-left: auto;
+  font-family: var(--type-meta-family);
+  font-size: var(--type-meta-size);
+  font-weight: var(--type-meta-weight);
+  letter-spacing: var(--type-meta-tracking);
+  text-transform: var(--type-meta-transform);
+  color: var(--color-meta-tertiary);
+}
+
+.coverage-headline {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--type-text-only-headline-family);
+  font-size: var(--type-text-only-headline-size);
+  line-height: var(--type-text-only-headline-line-height);
+  color: var(--color-headline);
+  text-wrap: pretty;
+}
+
+.coverage-also {
+  margin: 0;
+  padding: 0 var(--space-gutter) 12px;
+  font-family: var(--type-meta-family);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-meta-tertiary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story-coverage,
+  .coverage-row {
+    transition: none;
+  }
+}
+
 /* A module edge: full-bleed hairline, then a quiet sans label over the text-only tier,
    set like a section tab label (sentence case, not the shouting meta caps). */
 .module {
