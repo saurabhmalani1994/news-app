@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "hard_news": ["world", "politics", "economy", "science", "conflict"],
+  "topics": [
+    "ai", "asia", "biotech", "conflict", "economy", "politics",
+    "science", "singapore", "world"
+  ],
+  "bucket_topics": {
+    "general": ["world"],
+    "us_politics": ["politics"],
+    "singapore": ["singapore"],
+    "israel_gaza": ["conflict", "world"],
+    "sudan": ["conflict", "world"],
+    "ai": ["ai"],
+    "biotech": ["biotech", "science"],
+    "asia": ["asia", "world"]
+  },
+  "keyword_topics": {
+    "politics": [
+      "election", "senate", "congress", "president", "parliament", "minister",
+      "campaign", "governor", "lawmaker", "legislation", "impeach", "ballot",
+      "midterm", "coalition government", "prime minister"
+    ],
+    "economy": [
+      "inflation", "gdp", "tariff", "central bank", "recession",
+      "interest rate", "unemployment", "stock market", "trade deal", "earnings report",
+      "jobs report", "budget deficit"
+    ],
+    "science": [
+      "study finds", "researchers", "scientists", "nasa", "climate change",
+      "discovery", "physics", "biology", "spacecraft", "vaccine", "genome"
+    ],
+    "conflict": [
+      "war", "attack", "airstrike", "military", "ceasefire", "troops",
+      "invasion", "bombing", "killed", "clashes", "militant", "offensive"
+    ],
+    "world": [
+      "united nations", "summit", "treaty", "embassy", "refugee"
+    ]
+  }
+}
