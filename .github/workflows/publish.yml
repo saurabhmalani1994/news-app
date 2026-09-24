@@ -47,13 +47,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # F6: state.json (S06 source health, S32 event holds) restored ahead of the
+      # fetch, so the fetcher never needs the live pool.json read once Cloudflare
+      # Access is on. The save key is unique per run/attempt and the restore uses
+      # only the prefix, so the most recently saved state always wins; scheduled,
+      # push and workflow_dispatch runs all run on main and so share one cache.
+      - name: Restore run-to-run state (F6)
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/state.json
+          key: state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            state-
+
       - name: Fetch
         env:
-          # S06: where the fetcher reads the previous run's source_health block back
-          # from, to carry its consecutive-empty/error counters forward. Never
+          # S06: where the fetcher falls back to reading the previous run's
+          # source_health block from when the state.json cache above is absent or
+          # corrupt, to carry its consecutive-empty/error counters forward. Never
           # hard-coded in Python; this workflow env var is the only place it lives.
           PREVIOUS_POOL_URL: ${{ vars.PREVIOUS_POOL_URL || 'https://almanac-dt5.pages.dev/pool.json' }}
         run: python3 -m fetcher.fanout --out dist/pool.json --sources sources.json
+
+      # F6: saved right after Fetch, unconditionally, so this run's state reaches
+      # the next run even if a later step (build, deploy) fails.
+      - name: Save run-to-run state (F6)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/state.json
+          key: state-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Validate pool (stdlib)
         run: python3 -m contract.validate dist/pool.json
