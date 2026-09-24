@@ -1,10 +1,13 @@
 """S39 proof, render side: pool photos become a hero image and river thumbnails with
 reserved boxes, the text-only variant everywhere else, and never any other HTML.
 
-- every rendered img has width, height and a 1 / 1 aspect-ratio box (style.css);
+- every rendered img has width, height and an aspect-ratio box (style.css): 1 / 1 for a
+  thumbnail, the hero's stated shape clamped to [1:1, 4:3] (D2);
 - non-https or missing images render exactly the text-only row;
 - tier order and counts are the same as the render with every image stripped;
-- the hero gets a photo only when its stated width is hero-worthy (app.images);
+- the hero gets a photo only when a stated width is hero-worthy (app.images), and (D2)
+  takes it from the best-shaped, widest non-video photo in its cluster without changing
+  the lead or its headline, crediting another outlet's photo by name;
 - urls and credits are escaped attribute values and text, never markup (R26).
 The CLS half of the proof is tests/browser/images_cls.mjs (headless Chrome).
 """
@@ -17,7 +20,8 @@ from pathlib import Path
 
 from app.build import render
 from app.frontpage import front_page
-from app.images import HERO_MIN_WIDTH, credit_text, hero_worthy, image_url, media_for, thumb_ok
+from app.images import (HERO_MIN_WIDTH, credit_text, hero_box, hero_media, hero_pick, hero_worthy, image_url,
+                        likely_video_or_graphic, media_for, thumb_ok)
 
 ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = json.loads((ROOT / "tests/fixtures/golden_pool.json").read_text(encoding="utf-8"))
@@ -59,28 +63,34 @@ class _Rows(HTMLParser):
 
     def __init__(self):
         super().__init__()
-        self.rows, self._credit = [], False
+        self.rows, self._credit, self._headline = [], False, False
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
         classes = (a.get("class") or "").split()
         if tag == "li" and "story" in classes:
             tier = next(c[len("story--"):] for c in classes if c.startswith("story--"))
-            self.rows.append({"sid": a["data-sid"], "tier": tier, "imgs": [], "frames": [], "credit": None})
+            self.rows.append({"sid": a["data-sid"], "tier": tier, "imgs": [], "frames": [], "credit": None,
+                              "box": None, "headline": ""})
+        elif tag == "span" and "headline" in classes:
+            self._headline = True
         elif tag == "img":
             self.rows[-1]["imgs"].append(a)
         elif tag == "span" and "story-media" in classes:
             self.rows[-1]["frames"].append(a["class"])
+            self.rows[-1]["box"] = a.get("style")
         elif tag == "span" and "story-credit" in classes:
             self._credit, self.rows[-1]["credit"] = True, ""
 
     def handle_endtag(self, tag):
         if tag == "span":
-            self._credit = False
+            self._credit = self._headline = False
 
     def handle_data(self, data):
         if self._credit:
             self.rows[-1]["credit"] += data
+        if self._headline:
+            self.rows[-1]["headline"] += data
 
 
 def _rows(page):
@@ -98,18 +108,25 @@ def test_every_rendered_image_has_width_height_and_aspect_ratio_box():
     imgs = [(row["tier"], img, row["frames"]) for row in _rows(page) for img in row["imgs"]]
     assert imgs, "expected photos on the page"
     for tier, img, frames in imgs:
-        size = "360" if tier == "hero" else "88"
-        assert img["width"] == size and img["height"] == size
+        # PHOTO states 1200x675 (16:9): the hero box is 4:3, never narrower (D2).
+        size = ("360", "270") if tier == "hero" else ("88", "88")
+        assert (img["width"], img["height"]) == size
         assert img["class"] == "story-img" and len(frames) == 1
         assert img["alt"] == "" and img["decoding"] == "async" and img["referrerpolicy"] == "no-referrer"
         if tier == "hero":
             assert img["fetchpriority"] == "high" and "loading" not in img
         else:
             assert img["loading"] == "lazy" and "fetchpriority" not in img
-    # The frame and the img both carry the square box, the img fills it, cover crops.
+    # The frame and the img both carry the box (square, or in the hero the --box the
+    # build set), the img fills it, cover crops with the D2 crop focus.
     for selector in (".story-media", ".story-img"):
         assert "aspect-ratio: 1 / 1" in _css_rule(selector)
+    assert "aspect-ratio: var(--box, 1 / 1)" in _css_rule(".story--hero .story-img")
     assert "object-fit: cover" in _css_rule(".story-img")
+    assert "object-position: 50% 30%" in _css_rule(".story-img")
+    rows = _rows(page)
+    assert rows[0]["box"] == "--box: 360 / 270"
+    assert all(row["box"] is None for row in rows[1:])
     assert "var(--color-image-placeholder)" in _css_rule(".story-media")
     river = _css_rule(".story--river .story-media")
     assert "width: 88px" in river and "height: 88px" in river
@@ -231,6 +248,154 @@ def test_page_embeds_image_records_for_a_device_rerank():
     images = data["images"]
     assert pool["articles"][0]["id"] not in images
     assert len(images) == len(pool["articles"]) - 1
-    assert all(record == [PHOTO["url"], 1, 1, ""] for record in images.values())
-    assert media_for({"url": PHOTO["url"], "width": 240, "height": 135}) == [PHOTO["url"], 0, 1, ""]
-    assert media_for({"url": PHOTO["url"], "width": 40, "height": 40}) is None
+    assert all(record == {"hero": [PHOTO["url"], 360, 270, ""], "thumb": PHOTO["url"]} for record in images.values())
+    small = {"url": PHOTO["url"], "width": 240, "height": 135}
+    assert media_for(None, small) == {"thumb": PHOTO["url"]}
+    assert media_for((PHOTO, "Photo via NPR"), None) == {"hero": [PHOTO["url"], 360, 270, "Photo via NPR"]}
+    assert media_for(None, {"url": PHOTO["url"], "width": 40, "height": 40}) is None
+
+
+# D2: the hero box follows the photo's stated shape, clamped to [1:1, 4:3].
+BOXES = [
+    ((1080, 1080), 360),  # NYT's own square
+    ((800, 1200), 360),   # portrait: the NYT square, never taller
+    ((1200, 1000), 300),  # 1.2 sits inside the clamp: its own shape, uncropped
+    ((1024, 768), 270),   # 4:3 exactly
+    ((1024, 683), 270),   # 3:2 is cropped to 4:3
+    ((1600, 900), 270),   # 16:9 is cropped to 4:3, never narrower
+    ((1200, None), 360),  # height unstated: the NYT square
+]
+
+
+def test_hero_box_follows_the_stated_ratio_within_the_clamp():
+    pool = _big_pool()
+    hero_id = front_page(pool)["hero"][0].id
+    for (width, height), box_height in BOXES:
+        image = {"url": PHOTO["url"], "width": width}
+        if height:
+            image["height"] = height
+        assert hero_box(image) == (360, box_height), image
+        ratio = 360 / box_height
+        assert 1 <= ratio <= 4 / 3
+        if height and 1 <= width / height <= 4 / 3:
+            assert abs(ratio - width / height) < 0.01  # inside the clamp: the photo's own ratio
+        p = copy.deepcopy(pool)
+        next(a for a in p["articles"] if a["id"] == hero_id)["image"] = image
+        hero = _rows(render(p))[0]
+        assert hero["box"] == f"--box: 360 / {box_height}"
+        assert (hero["imgs"][0]["width"], hero["imgs"][0]["height"]) == ("360", str(box_height))
+
+
+OUTLETS = {"reuters": "Reuters", "pbs": "PBS News", "mint": "Mint", "hkfp": "Hong Kong Free Press",
+           "axios": "Axios", "wire": "Wire"}
+
+
+def _cluster_pool(images):
+    """The golden hero article fronting a cluster with one article per other outlet, no
+    deks on the others so the lead stays the golden hero. `images` maps outlet id to that
+    article's image; the lead's own image goes under the key "lead"."""
+    pool = copy.deepcopy(_big_pool(2))
+    lead_id = front_page(pool)["hero"][0].lead["id"]
+    lead = next(a for a in pool["articles"] if a["id"] == lead_id)
+    pool["sources"] += [{"id": sid, "name": name, "feed_url": f"https://{sid}.example/rss"}
+                        for sid, name in OUTLETS.items()]
+    members = []
+    for n, sid in enumerate(OUTLETS):
+        a = copy.deepcopy(lead)
+        a.update(id=f"d2-{n}", source_id=sid, title=f"Other outlet {n} on the same story", dek="")
+        a["url"] = f"https://{sid}.example/story"
+        members.append(a)
+    pool["articles"] += members
+    pool["clusters"] = [{"id": "c_d2", "method": "cosine_entity", "article_ids": [lead_id] + [a["id"] for a in members],
+                         "near_duplicates": [], "independent_sources": len(members) + 1, "lean_buckets": ["center"]}]
+    for a in [lead] + members:
+        key = "lead" if a is lead else a["source_id"]
+        if key in images:
+            a["image"] = images[key]
+    return pool, lead_id
+
+
+CLUSTER_IMAGES = {
+    # The lead's own: a 16:9 YouTube frame re-hosted, the S39 failure.
+    "lead": {"url": "https://img.example/1600x900/maxresdefault_1790227284392.jpg", "width": 1600, "height": 900},
+    "pbs": {"url": "https://img.example/press-1024x683.jpg", "width": 1024, "height": 683},  # 3:2, the answer
+    "reuters": {"url": "https://img.example/r-900x600.jpg", "width": 900, "height": 600},  # 3:2, narrower
+    "hkfp": {"url": "https://img.example/xi-1024x576.jpg", "width": 1024, "height": 576},  # 16:9, crops 25%
+    "axios": {"url": "https://img.example/a.jpg", "width": 1280, "height": 720},  # exact video frame
+    "mint": {"url": "https://i.ytimg.com/vi/x/photo.jpg", "width": 3000, "height": 2000},  # video host
+    "wire": {"url": "https://img.example/w.jpg", "width": 2400},  # no stated height: shape unknown
+}
+
+
+def test_hero_takes_the_widest_well_shaped_cluster_photo_and_credits_its_outlet():
+    pool, lead_id = _cluster_pool(CLUSTER_IMAGES)
+    plain = _stripped(pool)
+    tiers, plain_tiers = front_page(pool), front_page(plain)
+    hero = tiers["hero"][0]
+    assert hero.id == "c_d2" and hero.lead["id"] == lead_id
+    # Headline and lead unchanged: the same story fronts the page with the same lead,
+    # and every row's order, tier and headline match the render with no images at all.
+    assert plain_tiers["hero"][0].lead["id"] == lead_id
+    rows, plain_rows = _rows(render(pool)), _rows(render(plain))
+    assert [(r["sid"], r["tier"], r["headline"]) for r in rows] == \
+        [(r["sid"], r["tier"], r["headline"]) for r in plain_rows]
+    assert rows[0]["headline"] and "Other outlet" not in rows[0]["headline"]
+    # The photo is PBS's 3:2 1024 wide one, boxed at 4:3, credited to PBS by name.
+    by_id = {a["id"]: a for a in pool["articles"]}
+    assert hero_pick([by_id[i] for i in hero.article_ids], hero.lead)["source_id"] == "pbs"
+    assert rows[0]["imgs"][0]["src"] == CLUSTER_IMAGES["pbs"]["url"]
+    assert rows[0]["box"] == "--box: 360 / 270" and rows[0]["credit"] == "Photo via PBS News"
+    # Take the winner away each time: the narrower 3:2, then the 16:9 photo, then the
+    # unknown shape, then the video and graphic stills, the lead's maxresdefault among
+    # them, only when nothing else is left.
+    order = []
+    left = dict(CLUSTER_IMAGES)
+    while True:
+        p, _ = _cluster_pool(left)
+        story = front_page(p)["hero"][0]
+        by_id = {a["id"]: a for a in p["articles"]}
+        pick = hero_pick([by_id[i] for i in story.article_ids], story.lead)
+        if pick is None:
+            break
+        key = "lead" if pick["id"] == lead_id else pick["source_id"]
+        order.append(key)
+        left.pop(key)
+    assert order == ["pbs", "reuters", "hkfp", "wire", "mint", "lead", "axios"]
+
+
+def test_hero_keeps_the_leads_own_photo_when_it_is_already_sharp_and_well_shaped():
+    own = {"url": "https://img.example/own.jpg", "width": 1200, "height": 800, "credit": "Photo: Jane Doe/AP"}
+    wider = {"url": "https://img.example/wide.jpg", "width": 3000, "height": 2000}
+    pool, _ = _cluster_pool({"lead": own, "pbs": wider})
+    row = _rows(render(pool))[0]
+    assert row["imgs"][0]["src"] == own["url"] and row["credit"] == "Photo: Jane Doe/AP"
+    # A small own photo gives way to a sharper borrowed one.
+    small = dict(own, width=640, height=427)
+    pool, _ = _cluster_pool({"lead": small, "pbs": wider})
+    row = _rows(render(pool))[0]
+    assert row["imgs"][0]["src"] == wider["url"] and row["credit"] == "Photo via PBS News"
+
+
+def test_borrowed_hero_photo_needs_a_named_outlet():
+    lead = {"id": "a", "source_id": "npr", "image": None}
+    other = {"id": "b", "source_id": "ghost", "image": {"url": "https://img.example/g.jpg", "width": 1200, "height": 800}}
+    assert hero_media([lead, other], lead, {"npr": "NPR"}) is None
+    assert hero_media([lead, other], lead, {"npr": "NPR", "ghost": "Ghost News"})[1] == "Photo via Ghost News"
+
+
+def test_likely_video_or_graphic_reads_stated_size_host_and_path_words_only():
+    flagged = [
+        {"url": "https://www.livemint.com/lm-img/img/2026/09/24/1600x900/maxresdefault_17902_uyPC.jpg", "width": 1600},
+        {"url": "https://i.ytimg.com/vi/abc/hq720.jpg"},
+        {"url": "https://img.example/a.jpg", "width": 1280, "height": 720},
+        {"url": "https://img.example/news/graphics/2026/map.png", "width": 1200, "height": 800},
+        {"url": "https://video.example.com/still.jpg"},
+    ]
+    clean = [
+        {"url": "https://img.example/a.jpg", "width": 1200, "height": 800},
+        {"url": "https://img.example/videographer-portrait.jpg"},
+        {"url": "https://img.example/a.jpg?type=video"},
+        {"url": "http://i.ytimg.com/vi/abc/hq720.jpg"},
+    ]
+    assert all(likely_video_or_graphic(i) for i in flagged)
+    assert not any(likely_video_or_graphic(i) for i in clean)
