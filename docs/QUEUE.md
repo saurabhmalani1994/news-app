@@ -43,6 +43,8 @@ so the contract, the ledger, the publish step and the fetch step exist before th
 | S35 persistence-export | app | PARKED | sonnet | storage.persist on first run, one-file export and import of profile, saved and history, per R24 | S10, S15, S26 |
 | S36 backup-repo | app | PARKED | opus | automatic backup to the separate private repo per R25: scoped token entered by the owner, open/background/save triggers, monthly history shards, restore flow, visible failure state. Opus because it holds a secret | S35, S37 |
 | S37 sanitizer-csp | app | PARKED | opus | allowlist HTML sanitizer for bodies, text-only rendering for every other field, strict CSP in `_headers`, tested with hostile fixtures (script tags, event handlers, javascript: links, srcdoc iframes), per R26 | S04 |
+| S38 feed-images | fetcher | READY | sonnet | image URL, size hint and credit per article from the feed's own media:content, media:thumbnail or enclosure only, https only, no page scraping, per R34 | S05 |
+| S39 image-render | app | PARKED | opus | hero image and river thumbnails per nyt-measured.md with reserved aspect-ratio boxes, lazy loading, no layout shift, graceful text-only fallback, per R34 | S38, S04 |
 
 Security ordering, R26: S37 must land before S25 reader, S20 ai-calls and S36 backup-repo.
 Text-only rendering of titles and deks is required from S01 onward, not deferred to S37.
