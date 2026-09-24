@@ -69,6 +69,16 @@
       "maxItems": 12,
       "items": {"$ref": "#/$defs/standing_story"}
     },
+    "live_overrides": {
+      "description": "S33 Live tab overrides (R22), optional: an absent field takes app/static/js/live.js's LIVE_OVERRIDES_DEFAULTS (nothing pinned or blocked). Owner only: the S19 AI gate reserves this whole path, the same as standing_stories and trust. pinned_event_id keeps one event live regardless of its own live/hold_state, as long as the pool still emits it; blocked_event_ids and blocked_labels keep an event off the tab for good, by id and by a later re-detected event of the same label.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pinned_event_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 80},
+        "blocked_event_ids": {"type": "array", "maxItems": 40, "items": {"type": "string", "minLength": 1, "maxLength": 80}},
+        "blocked_labels": {"type": "array", "maxItems": 40, "items": {"type": "string", "minLength": 1, "maxLength": 200}}
+      }
+    },
     "seen_penalty": {
       "description": "R17: two weighted signals. opened takes the full penalty, shown (on screen 2s+, scrolled past) a smaller incremental one.",
       "type": "object",
