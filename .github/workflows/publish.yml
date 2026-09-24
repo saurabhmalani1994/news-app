@@ -2,14 +2,15 @@ name: publish
 
 # Fetch every feed in sources.json, validate the pool, build the page, deploy to
 # Cloudflare Pages by direct upload (R1, R30). The publish job runs standard library
-# Python only; the
-# pip install lives in the test job, which a future schedule trigger skips, so the
-# cron path never installs Python packages. No schedule yet: cadence is set from the
-# measured run time.
+# Python only; the pip install lives in the test job, which the schedule trigger
+# skips, so the cron path never installs Python packages. Hourly at :17, approved by
+# the owner 2026-09-24, from the measured run time (about 40s publish, 1 billed minute).
 on:
   workflow_dispatch:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 * * * *"
 
 permissions:
   contents: read
