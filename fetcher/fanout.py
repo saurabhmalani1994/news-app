@@ -43,10 +43,11 @@ from pathlib import Path
 from contract.validate import validate
 from fetcher.bodies import collect_bodies, extract_body_html, write_bodies
 from fetcher.cluster import cluster_items, method_for
+from fetcher.events import build_events, parse_previous_events
 from fetcher.images import extract_image, filter_placeholder_logos, tally_found
 from fetcher.taxonomy import validate_sources_taxonomy
-from fetcher.topics import load_topics, tag_article
-from fetcher.health import compute_source_health, fetch_previous_health
+from fetcher.topics import hard_news_topics, load_topics, tag_article
+from fetcher.health import compute_source_health, fetch_previous_pool, parse_previous_health
 from fetcher.fetch import (
     DEK_MAX,
     TITLE_MAX,
@@ -196,7 +197,8 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
 
 def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP,
                       cluster_extra_cap=CLUSTER_EXTRA_CAP, timings=None, topics_doc=None,
-                      previous_health=None, previous_pool_status="absent", bodies_out=None):
+                      previous_health=None, previous_pool_status="absent", bodies_out=None,
+                      previous_events=None):
     """Turn fetch results for every source into one pool dict. Pure: no network, no clock.
 
     timings, if a dict is passed, receives the clustering wall time in seconds.
@@ -211,6 +213,10 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     for the run's full_text_ok articles, so main() can write bodies/<id>.json without
     this function doing any filesystem I/O itself. Every published article that got a
     body also gets has_body=True set on its own dict here.
+
+    S32: previous_events is fetcher.events.parse_previous_events' state from the
+    previous pool, or None for a clean start; it carries the Live slot's hold across
+    runs (fetcher/events.py has the state machine).
     """
     if topics_doc is None:
         topics_doc = load_topics()
@@ -319,6 +325,8 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
 
     generated_at = _utc(now)
     source_health = compute_source_health(sources, run_states, previous_health, generated_at)
+    events = build_events(articles, clusters, sources, now, hard_news_topics(topics_doc),
+                          previous_events)
 
     counts = {
         "fetched": fetched_total,
@@ -344,7 +352,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
         "clusters": clusters,
         "counts": counts,
         "source_health": source_health,
-        "events": [],  # S31: filled by S32
+        "events": events,
     }
 
 
@@ -404,13 +412,17 @@ def main(argv=None):
 
     t0 = time.monotonic()
     fetch_results = fetch_all(sources, timeout=args.timeout, retries=args.retries)
-    previous_health, previous_pool_status = fetch_previous_health(args.previous_pool_url)
+    previous_bytes, previous_pool_status = fetch_previous_pool(args.previous_pool_url)
+    previous_health = {}
+    if previous_bytes is not None:
+        previous_health, previous_pool_status = parse_previous_health(previous_bytes)
+    previous_events, previous_events_status = parse_previous_events(previous_bytes)
     timings = {}
     bodies_out = {}
     pool = build_pool_fanout(
         sources, fetch_results, datetime.now(timezone.utc), per_source_cap=args.per_source_cap,
         timings=timings, previous_health=previous_health, previous_pool_status=previous_pool_status,
-        bodies_out=bodies_out,
+        bodies_out=bodies_out, previous_events=previous_events,
     )
     errors = validate(pool)
     if errors:
@@ -477,6 +489,15 @@ def main(argv=None):
         f"bodies_written={c['bodies']['written']} bodies_skipped_teaser={c['bodies']['skipped_teaser']} "
         f"bodies_skipped_cap={c['bodies']['skipped_cap']} bodies_bytes={c['bodies']['bytes']} "
         f"has_body_articles={with_body}/{c['published']}"
+    )
+    ev = pool["events"]
+    live = [e for e in ev if e["live"]]
+    print(
+        f"previous_events_status={previous_events_status} events={len(ev)} "
+        f"eligible={sum(e['eligible'] for e in ev)} live={len(live)} "
+        f"live_events={json.dumps([[e['id'], e['label'], e['hype'], e['hold_state'], e['live_since']] for e in live], ensure_ascii=False)} "
+        f"held={sum(e['hold_state'] == 'holding' for e in ev)} "
+        f"released={sum(e['hold_state'] == 'released' for e in ev)}"
     )
     return 0
 

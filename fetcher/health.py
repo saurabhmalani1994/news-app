@@ -43,6 +43,22 @@ HEALTH_ENTRY_FIELDS = (
 PREVIOUS_POOL_STATUSES = ("ok", "absent", "unreachable", "old_schema")
 
 
+def fetch_previous_pool(url, timeout=FETCH_TIMEOUT):
+    """Return (bytes_or_None, status) for the previously published pool.json. status
+    is "ok" when bytes came back, else absent or unreachable. Never raises. S32 reads
+    the same bytes for event hold state (fetcher.events), so the pool is fetched once."""
+    if not url:
+        return None, "absent"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read(MAX_BYTES + 1), "ok"
+    except urllib.error.HTTPError as exc:
+        return None, "absent" if exc.code == 404 else "unreachable"
+    except (urllib.error.URLError, socket.timeout, TimeoutError, OSError):
+        return None, "unreachable"
+
+
 def fetch_previous_health(url, timeout=FETCH_TIMEOUT):
     """Return (entries, status) for the previous run's published source_health.
 
@@ -50,16 +66,9 @@ def fetch_previous_health(url, timeout=FETCH_TIMEOUT):
     one of PREVIOUS_POOL_STATUSES. Never raises: every failure mode degrades to a
     tolerated status instead, so a bad or absent previous pool can never fail the run.
     """
-    if not url:
-        return {}, "absent"
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = resp.read(MAX_BYTES + 1)
-    except urllib.error.HTTPError as exc:
-        return {}, "absent" if exc.code == 404 else "unreachable"
-    except (urllib.error.URLError, socket.timeout, TimeoutError, OSError):
-        return {}, "unreachable"
+    data, status = fetch_previous_pool(url, timeout)
+    if data is None:
+        return {}, status
     return parse_previous_health(data)
 
 
