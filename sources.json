@@ -946,6 +946,57 @@
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (20 items, newest same-day, description up to 269 chars). TechCrunch vertical, same publisher/rating as techcrunch_ai already in sources.json (center, non-political trade press).",
       "syndication_group": "techcrunch",
       "full_text_ok": false
+    },
+    {
+      "id": "utility_dive",
+      "name": "Utility Dive",
+      "feed_url": "https://www.utilitydive.com/feeds/news/",
+      "bucket": "climate_food",
+      "lean": "center",
+      "lean_basis": "F7 2026-09-24: live-verified with fetcher.fanout (RSS 2.0, 10 items, newest same-day, description up to 214 chars sampled). Industry Dive's utility/grid trade press, sister publication to food_dive already in sources.json (center, non-political trade press). Sector outlets publish less often than general news, so the bar here is at least 5 items and newest under 14 days, not daily volume.",
+      "syndication_group": "industry_dive",
+      "full_text_ok": false
+    },
+    {
+      "id": "pv_magazine",
+      "name": "pv magazine",
+      "feed_url": "https://www.pv-magazine.com/feed/",
+      "bucket": "climate_food",
+      "lean": "center",
+      "lean_basis": "F7 2026-09-24: live-verified with fetcher.fanout (RSS 2.0, 10 items, newest same-day, description up to 431 chars sampled). Solar/renewables trade press, no partisan lean documented. Sector outlets publish less often than general news, so the bar here is at least 5 items and newest under 14 days, not daily volume.",
+      "syndication_group": "pv_magazine",
+      "full_text_ok": false
+    },
+    {
+      "id": "dw_english",
+      "name": "DW",
+      "feed_url": "https://rss.dw.com/atom/rss-en-all",
+      "bucket": "europe",
+      "lean": "non-us",
+      "lean_basis": "F7 2026-09-24: live-verified with fetcher.fanout (Atom, 15+ items sampled, newest same-day, summary up to ~250 chars, published/updated present). German international public broadcaster; same non-us/state-funded treatment as france24_france, another state-owned international broadcaster already in sources.json.",
+      "ownership": "state-funded",
+      "syndication_group": "dw",
+      "full_text_ok": false
+    },
+    {
+      "id": "the_atlantic",
+      "name": "The Atlantic",
+      "feed_url": "https://www.theatlantic.com/feed/all/",
+      "bucket": "general",
+      "lean": "center-left",
+      "lean_basis": "US general/politics/culture magazine, consistent with NYT and Guardian's center-left rating already in sources.json; no dedicated research/sources-landscape.md row found for it. F7 2026-09-24: live-verified with fetcher.fanout (Atom, 25 items, newest same-day, content field carries full article prose, 6,000-30,000 chars stripped across 5 sampled items).",
+      "syndication_group": "the_atlantic",
+      "full_text_ok": true
+    },
+    {
+      "id": "the_conversation",
+      "name": "The Conversation",
+      "feed_url": "https://theconversation.com/global/articles.atom",
+      "bucket": "general",
+      "lean": "center",
+      "lean_basis": "F7 2026-09-24: live-verified with fetcher.fanout (Atom, 46 items, newest same-day, content field carries full CC BY-SA licensed article prose, 6,000-9,000+ chars stripped across 5 sampled items). Nonprofit academic-newsroom explainer journalism written by named academics, no partisan rating documented; Creative Commons license makes full text appropriate per S22 (DESIGN-v1.1 R12).",
+      "syndication_group": "the_conversation",
+      "full_text_ok": true
     }
   ]
 }
