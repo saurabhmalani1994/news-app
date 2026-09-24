@@ -25,6 +25,10 @@ S06: every configured source also gets a health entry (fetcher.health), carrying
 consecutive-empty and consecutive-error run counters forward from the previously
 published pool. See fetcher/health.py for where that state lives and why.
 
+F6: that carry-forward state (S06 health, S32 event holds) is read from a small
+state.json actions/cache restores locally, before the network read fetcher.health
+still falls back to when the cache is absent or corrupt. See fetcher/state.py.
+
 Usage: python -m fetcher.fanout --out dist/pool.json --sources sources.json
 """
 import argparse
@@ -50,6 +54,7 @@ from fetcher.taxonomy import validate_sources_taxonomy
 from fetcher.geo import tag_geo
 from fetcher.topics import hard_news_topics, load_topics, tag_article
 from fetcher.health import compute_source_health, fetch_previous_pool, parse_previous_health
+from fetcher.state import DEFAULT_STATE_PATH, load_state, write_state
 from fetcher.fetch import (
     DEK_MAX,
     TITLE_MAX,
@@ -470,6 +475,10 @@ def main(argv=None):
     # (see .github/workflows/publish.yml); a local run with it unset simply starts
     # every source's health counters at zero, recorded as previous_pool_status=absent.
     ap.add_argument("--previous-pool-url", default=os.environ.get("PREVIOUS_POOL_URL", ""))
+    # F6: state.json actions/cache restores locally is tried before that network
+    # read at all (fetcher/state.py). STATE_PATH mirrors the PREVIOUS_POOL_URL
+    # pattern so a local run can point elsewhere without a code change.
+    ap.add_argument("--state-path", default=os.environ.get("STATE_PATH", DEFAULT_STATE_PATH))
     args = ap.parse_args(argv)
 
     try:
@@ -480,10 +489,21 @@ def main(argv=None):
 
     t0 = time.monotonic()
     fetch_results = fetch_all(sources, timeout=args.timeout, retries=args.retries)
-    previous_bytes, previous_pool_status = fetch_previous_pool(args.previous_pool_url)
+
+    # F6: state.json restored by actions/cache is tried first; only when it is
+    # absent or corrupt does this run fall back to the live pool.json read S06 has
+    # always used, and only when that also comes up empty (or is not a valid pool,
+    # e.g. an Access login page) does every counter start fresh. See fetcher/state.py.
+    state_bytes, state_local_status = load_state(args.state_path)
+    if state_bytes is not None:
+        previous_bytes, previous_pool_status = state_bytes, "cache"
+    else:
+        previous_bytes, previous_pool_status = fetch_previous_pool(args.previous_pool_url)
     previous_health = {}
     if previous_bytes is not None:
-        previous_health, previous_pool_status = parse_previous_health(previous_bytes)
+        previous_health, parsed_status = parse_previous_health(previous_bytes)
+        if previous_pool_status != "cache":
+            previous_pool_status = parsed_status
     previous_events, previous_events_status = parse_previous_events(previous_bytes)
     timings = {}
     bodies_out = {}
@@ -501,6 +521,9 @@ def main(argv=None):
     body = dumps(pool).encode("utf-8")
     out.write_bytes(body)
     write_bodies(bodies_out.get("bodies", {}), out.parent / "bodies")
+    # F6: only ever written from a pool that already passed validate() above, so a
+    # bad run can never hand the next run bad state either.
+    write_state(pool, args.state_path)
     c = pool["counts"]
     lean_counts = Counter(s["lean"] for s in sources if s.get("lean"))
     syn_groups = {s.get("syndication_group") or s["id"] for s in sources}
@@ -523,7 +546,7 @@ def main(argv=None):
     )
     unhealthy = sorted(sid for sid, h in pool["source_health"].items() if h["unhealthy"])
     print(
-        f"previous_pool_status={c['previous_pool_status']} "
+        f"state_local={state_local_status} previous_pool_status={c['previous_pool_status']} "
         f"unhealthy_sources={len(unhealthy)}/{len(sources)} {json.dumps(unhealthy)}"
     )
     routed = sorted(s["id"] for s in sources if _route_for(s) != "direct")
