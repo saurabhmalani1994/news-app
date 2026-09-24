@@ -11,6 +11,7 @@ then recency. S11 replaces `interim_order` and nothing else in this module.
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.dek import strip_wire_junk
 from app.typography import fold_quotes
 
 # Tier sizes, by position in the order. Hero is the single top story; secondary are
@@ -39,9 +40,10 @@ def _epoch(ts):
 
 
 def clean_dek(article):
-    """The dek to show, or '' when there is none worth showing: blank, or a repeat of
-    the headline (some feeds send the title again as the description)."""
-    dek = " ".join((article.get("dek") or "").split())
+    """The dek to show, or '' when there is none worth showing: blank once its wire
+    dateline and CMS trailer are gone (app.dek), or a repeat of the headline (some
+    feeds send the title again as the description)."""
+    dek = strip_wire_junk(article.get("dek"))
     title = " ".join(article.get("title", "").split())
     if not dek or fold_quotes(dek).lower().startswith(fold_quotes(title).lower()):
         return ""

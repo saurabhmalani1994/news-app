@@ -19,6 +19,7 @@ from html import escape
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from app.dek import fit_dek
 from app.frontpage import clean_dek, front_page
 from app.typography import smart_quotes
 
@@ -74,7 +75,12 @@ STORY = (
 DEK = '<span class="dek">{dek}</span>'
 HEADLINE_MOD = {"hero": " headline--hero", "secondary": " headline--river", "river": " headline--river",
                 "text_only": ""}
-DEK_TIERS = ("hero", "secondary")
+# Dek line limits per tier (style.css clamps at the same counts). A dek ends on the last
+# whole sentence inside the limit; CHARS_PER_LINE is a conservative fill of a 320px
+# measure at the dek's 16.5px Newsreader, so a fitted dek never meets the clamp.
+DEK_LINES = {"hero": 4, "secondary": 3}
+CHARS_PER_LINE = 38
+DEK_TIERS = tuple(DEK_LINES)
 
 
 def _parse_time(value):
@@ -136,7 +142,7 @@ def _render_story(story, tier, source_names, now):
     title = escape(smart_quotes(article["title"]), quote=False)
     dek = ""
     if tier in DEK_TIERS:
-        text = clean_dek(article)
+        text = fit_dek(clean_dek(article), DEK_LINES[tier] * CHARS_PER_LINE)
         if text:
             dek = DEK.format(dek=escape(smart_quotes(text), quote=False))
     url = _safe_url(article.get("url"))
