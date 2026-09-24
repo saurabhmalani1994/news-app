@@ -390,6 +390,33 @@ a.setting-row:focus-visible {
   outline-offset: -2px;
 }
 
+/* U4: "Add interest" (the list's own last row) and the add-interest sheet's own rows
+   are <button>s, not <a>s, so the platform's own button chrome (a full border, a
+   background, its own font) needs the same reset a.setting-row gets for free. Quiet on
+   purpose (R34): no color, no fill, same row as every interest above it. */
+button.setting-row {
+  width: 100%;
+  margin: 0;
+  background: none;
+  border: none;
+  border-top: var(--divider-weight) solid var(--color-divider);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+button.setting-row:active {
+  background: var(--color-pressed);
+}
+
+button.setting-row:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
 /* U2: the redesigned You page and its sub-views (js/profile-screen.js). Same rows, same
    single hairline, same sans chrome; only a few new shapes: a right-hand value with a
    chevron on a row that opens something, an on/off switch, the level control (four

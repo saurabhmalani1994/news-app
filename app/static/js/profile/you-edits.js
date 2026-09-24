@@ -3,6 +3,11 @@
 // plain draft (ProfileStore.save stamps and validates it), or null when there is nothing
 // to change, so a tap that changes nothing never writes a version. No DOM, no storage:
 // Node tests import this unchanged (tests/js/you-edits.test.js).
+//
+// U4: adding and removing an interest. STARTER_TOPICS (default-profile.js) is the one
+// source of the six starter buckets' own settings, reused here so re-adding one of them
+// restores its shipped defaults rather than a flattened generic value.
+import { STARTER_TOPICS } from "./default-profile.js";
 
 // --- Interest levels: plain words over the 0 to 1 affinity weight. ---
 //
@@ -97,6 +102,75 @@ export function withBoostRemoved(profile, boostId) {
   const boosts = profile.boosts || [];
   if (!boosts.some((b) => b.id === boostId)) return null;
   return { ...profile, boosts: boosts.filter((b) => b.id !== boostId) };
+}
+
+// --- U4: the interest catalog, and adding or removing one. ---
+//
+// The ids offered are exactly the ones the pipeline can actually match a story to:
+// the closed topic-tag set fetcher/topics.py tags articles with (topics.json's own
+// "topics" list), with ranker.js's TAG_TO_TOPIC remap folded in so the tag and the
+// interest id it lands on are never offered as two different things (the "biotech" tag
+// lands on the "industrial_biotech" bucket, so that is what is offered, not "biotech"
+// itself). "politics" and "us_politics" are both offered since the pipeline tags them
+// separately (a UK election is "politics" but never "us_politics"). must_know is not a
+// tag at all: it is the ranker's own guaranteed-floor bucket (ranker.js MUST_KNOW,
+// matched by mustKnowEligible(), not by a story's topic tags), offered on its own
+// since it is still an interest the pipeline can and does match.
+//
+// There is no general custom-keyword interest here on purpose: the ranker only matches
+// a topic through this closed tag set (or must_know's own eligibility check), never a
+// free-text keyword with a level and a half-life. A keyword can only ever attach as a
+// flat boost to an existing topic (actions/mute-boost.js, from a story's own menu), or
+// as a separate standing story (S28, its own section on this page); neither is a top
+// level interest, so no "Follow '<text>'" option is offered here.
+export const INTEREST_CATALOG = Object.freeze([
+  { id: "singapore", label: "Singapore", group: "Regions" },
+  { id: "asia", label: "Asia", group: "Regions" },
+  { id: "world", label: "World", group: "Regions" },
+  { id: "ai", label: "AI", group: "Sectors" },
+  { id: "industrial_biotech", label: "Industrial Biotech", group: "Sectors" },
+  { id: "climate_tech", label: "Climate Tech", group: "Sectors" },
+  { id: "foodtech", label: "Foodtech", group: "Sectors" },
+  { id: "us_politics", label: "US Politics", group: "Subjects" },
+  { id: "politics", label: "Politics", group: "Subjects" },
+  { id: "economy", label: "Economy", group: "Subjects" },
+  { id: "science", label: "Science", group: "Subjects" },
+  { id: "conflict", label: "Conflict", group: "Subjects" },
+  { id: "must_know", label: "Must-know", group: "Guaranteed" },
+]);
+
+/** The catalog entries not already in the profile, catalog order (grouped). */
+export function availableInterests(profile) {
+  const have = profile.topics || {};
+  return INTEREST_CATALOG.filter((entry) => !Object.hasOwn(have, entry.id));
+}
+
+/** Adds a catalog interest at a sensible default level. Null when `id` is not in the
+ * catalog (an unknown id) or is already one of the profile's interests (a duplicate).
+ * A starter bucket (STARTER_TOPICS) restores its own shipped weight and half-life, so
+ * removing and re-adding one is not lossy; any other catalog entry gets the same
+ * Normal-level default this page's own Advanced section has always used. */
+export function withTopicAdded(profile, id) {
+  const entry = INTEREST_CATALOG.find((e) => e.id === id);
+  if (!entry) return null;
+  if (Object.hasOwn(profile.topics || {}, id)) return null;
+  const setting = STARTER_TOPICS[id] ? { ...STARTER_TOPICS[id] } : { label: entry.label, affinity: 0.6, half_life_hours: 24, enabled: true };
+  return { ...profile, topics: { ...profile.topics, [id]: setting } };
+}
+
+/** Removes an interest outright: not in the profile is refused (null), and the
+ * profile.schema.json floor of at least one topic is refused the same way, so the
+ * store's own validation is never the one to catch it. Its mute (if any) and any boost
+ * that targeted it go too, so nothing orphaned is left for checkIntegrity to trip on;
+ * Undo (store.revert) restores the exact prior version regardless, boosts included. */
+export function withTopicRemoved(profile, id) {
+  const topics = profile.topics || {};
+  if (!Object.hasOwn(topics, id) || Object.keys(topics).length <= 1) return null;
+  const nextTopics = { ...topics };
+  delete nextTopics[id];
+  const mutedTopics = (profile.mutes?.topics || []).filter((t) => t !== id);
+  const boosts = (profile.boosts || []).filter((b) => !(b.match_type === "topic" && b.match_value === id));
+  return { ...profile, topics: nextTopics, mutes: { ...profile.mutes, topics: mutedTopics }, boosts };
 }
 
 // --- Standing stories (S28): one field of one story, by id. ---
