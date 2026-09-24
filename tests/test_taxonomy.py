@@ -75,9 +75,17 @@ def test_tagging_is_deterministic():
 
 
 def test_tagging_combines_bucket_and_keyword_matches():
-    tags = tag_article("singapore", "Central bank holds rates, inflation eases", "", TOPICS)
-    assert "singapore" in tags  # bucket base tag
+    tags = tag_article("asia", "Central bank holds rates, inflation eases", "", TOPICS)
+    assert "world" in tags      # bucket base tag (the asia bucket keeps world, F1)
     assert "economy" in tags    # keyword match
+
+
+def test_singapore_bucket_alone_no_longer_tags_singapore():
+    # G1 changed the S08 rule this test used to pin: the outlet is never a geography
+    # signal on its own, so a Singapore outlet's text with no Singapore signal is not
+    # tagged singapore; the same text naming MAS (a local-only signal) is.
+    assert "singapore" not in tag_article("singapore", "Central bank holds rates, inflation eases", "", TOPICS)
+    assert "singapore" in tag_article("singapore", "MAS holds rates, inflation eases", "", TOPICS)
 
 
 def test_every_bucket_used_in_sources_json_resolves_to_at_least_one_tag():

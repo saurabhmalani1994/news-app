@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "note": "G1: geography tags from an article's own title and the first dek_chars of its dek (fetcher/geo.py), so a passing mention deep in a body-length dek does not move a story. terms match case-insensitively on word boundaries, with an optional plural s or es; cased terms match exactly as written (acronyms, surnames). weak and weak_cased terms count only for an article whose source bucket is in weak_buckets: the outlet is a tie-break for a local-only signal, never a signal on its own. strip phrases (outlet names) and each region's exclude phrases are removed before matching. The Middle East is not Asia: it is in world only. Central Asia is not in asia either; Afghanistan is, as South Asia. Congress alone is not a US signal (India's Congress party); us is not read by any tab today.",
+  "dek_chars": 300,
+  "geo_tags": ["asia", "sg", "us", "world"],
+  "implies": {"sg": ["asia"], "asia": ["world"]},
+  "strip": [
+    "straits times", "business times", "channel newsasia", "mothership.sg", "independent singapore",
+    "asia times", "japan times", "korea herald", "korea times", "bangkok post", "malay mail",
+    "hong kong free press", "south china morning post", "focus taiwan", "times of india",
+    "indian express", "hindustan times", "economic times", "the hindu", "nikkei asia",
+    "radio free asia", "voice of america", "new york times", "washington post",
+    "wall street journal", "los angeles times", "america's got talent"
+  ],
+  "regions": {
+    "sg": {
+      "terms": [
+        "singapore", "singaporean", "s'pore", "republic of singapore", "ang mo kio", "bedok",
+        "bishan", "bukit batok", "bukit merah", "bukit panjang", "bukit timah", "bukit gombak",
+        "choa chu kang", "clementi", "geylang", "hougang", "jurong", "kallang", "pasir ris",
+        "punggol", "sengkang", "serangoon", "tampines", "toa payoh", "yishun", "sembawang",
+        "marine parade", "tanjong pagar", "tanjong katong", "katong", "joo chiat", "paya lebar",
+        "tiong bahru", "aljunied", "potong pasir", "marsiling", "boon lay", "kranji",
+        "lim chu kang", "mandai", "seletar", "pasir panjang", "holland village", "buona vista",
+        "kampong glam", "dhoby ghaut", "bras basah", "raffles place", "orchard road", "marina bay",
+        "marina bay sands", "gardens by the bay", "east coast park", "sentosa", "changi", "tuas",
+        "pulau ubin", "pulau tekong", "jurong island", "sungei buloh", "tanglin", "bidadari",
+        "simei", "pan-island expressway", "ayer rajah", "nee soon", "people's action party",
+        "workers' party of singapore", "progress singapore party", "housing and development board",
+        "central provident fund", "land transport authority", "monetary authority of singapore",
+        "health promotion board", "mindef", "nparks", "national parks board", "temasek", "scdf",
+        "cpib", "smrt", "sbs transit", "ntuc", "fairprice", "sheng siong", "singtel", "starhub",
+        "ocbc", "uob", "comfortdelgro", "mediacorp", "nanyang", "nanyang technological university",
+        "national university of singapore", "gxs", "cdc vouchers", "bto flat", "bto flats",
+        "merlion", "national day rally", "pioneer generation", "merdeka generation", "majulah",
+        "skillsfuture", "medishield", "medisave", "medifund", "comcare", "activesg",
+        "resorts world sentosa", "rainforest wild", "jewel changi", "lawrence wong",
+        "lee hsien loong", "lee kuan yew", "goh chok tong", "tharman", "tharman shanmugaratnam",
+        "heng swee keat", "gan kim yong", "vivian balakrishnan", "k shanmugam", "shanmugam",
+        "chan chun sing", "ong ye kung", "desmond lee", "josephine teo", "grace fu",
+        "indranee rajah", "chee hong tat", "edwin tong", "masagos zulkifli", "masagos",
+        "tan see leng", "jeffrey siow", "david neo", "rahayu mahzam", "janil puthucheary",
+        "sylvia lim", "faisal manap", "seah kian peng", "sim ann", "maliki osman", "zaqy mohamad",
+        "murali pillai", "low yen ling", "tan kiat how", "gan siow huang", "koh poh koon",
+        "faishal ibrahim", "tan cheng bock", "leong mun wai", "kenneth jeyaretnam",
+        "chee soon juan", "lim tean", "ho ching", "dinesh vasu dash", "goh hanyan"
+      ],
+      "cased": [
+        "HDB", "CPF", "PAP", "NUS", "SGX", "BTO", "IRAS", "S$"
+      ],
+      "weak": [
+        "workers' party", "woodlands", "queenstown", "novena", "chinatown", "little india", "bugis",
+        "esplanade", "harbourfront", "jalan besar", "macpherson", "tengah", "national day parade",
+        "institute of banking and finance", "housing estate", "hdb flat", "hawker centre",
+        "hawker centres", "housing board", "ministry of manpower", "pritam singh"
+      ],
+      "weak_cased": [
+        "MRT", "LRT", "LTA", "MOE", "MOH", "MOM", "MHA", "MFA", "MND", "MSF", "MAS", "SAF", "SPF",
+        "ICA", "URA", "NEA", "PUB", "NTU", "SMU", "SIA", "DBS", "GIC", "COE", "ERP", "NDP", "GST",
+        "IBF", "PIE", "CTE", "AYE", "ECP", "KPE", "TPE", "SLE", "BKE", "KJE", "MCE", "WP", "Istana",
+        "Scoot", "SPH", "GE2025", "PSP"
+      ],
+      "weak_buckets": [
+        "singapore"
+      ],
+      "exclude": []
+    },
+    "asia": {
+      "terms": [
+        "asia", "asian", "south-east asia", "southeast asia", "asia-pacific", "indo-pacific",
+        "asean", "china", "chinese", "beijing", "shanghai", "shenzhen", "guangzhou", "guangdong",
+        "fujian", "sichuan", "wuhan", "chongqing", "hangzhou", "tianjin", "yunnan", "hainan",
+        "tibet", "tibetan", "xinjiang", "uyghur", "uighur", "hong kong", "macau", "macao", "taiwan",
+        "taiwanese", "taipei", "kinmen", "japan", "japanese", "tokyo", "osaka", "kyoto", "yokohama",
+        "nagoya", "hokkaido", "okinawa", "fukushima", "hiroshima", "nagasaki", "korea", "korean",
+        "seoul", "pyongyang", "busan", "incheon", "gyeongju", "jeju", "mongolia", "mongolian",
+        "ulaanbaatar", "malaysia", "malaysian", "kuala lumpur", "putrajaya", "johor", "penang",
+        "selangor", "sabah", "sarawak", "malacca", "melaka", "indonesia", "indonesian", "jakarta",
+        "bali", "sumatra", "borneo", "sulawesi", "aceh", "surabaya", "bandung", "nusantara",
+        "thailand", "thai", "bangkok", "phuket", "chiang mai", "pattaya", "vietnam", "vietnamese",
+        "hanoi", "ho chi minh city", "saigon", "da nang", "philippines", "philippine", "filipino",
+        "manila", "mindanao", "luzon", "cebu", "davao", "bangsamoro", "cambodia", "cambodian",
+        "phnom penh", "siem reap", "laos", "lao", "vientiane", "myanmar", "burma", "burmese",
+        "yangon", "mandalay", "naypyitaw", "naypyidaw", "rakhine", "rohingya", "tatmadaw", "brunei",
+        "timor-leste", "east timor", "dili", "mekong", "south china sea", "india", "indian",
+        "new delhi", "delhi", "mumbai", "kolkata", "chennai", "bengaluru", "bangalore", "hyderabad",
+        "ahmedabad", "gujarat", "kerala", "tamil nadu", "bihar", "uttar pradesh", "maharashtra",
+        "karnataka", "punjab", "assam", "manipur", "west bengal", "kashmir", "ladakh", "lok sabha",
+        "rajya sabha", "bollywood", "sensex", "rupee", "pakistan", "pakistani", "islamabad",
+        "karachi", "lahore", "rawalpindi", "peshawar", "balochistan", "khyber pakhtunkhwa",
+        "bangladesh", "bangladeshi", "dhaka", "chittagong", "sri lanka", "sri lankan", "colombo",
+        "nepal", "nepali", "nepalese", "kathmandu", "bhutan", "thimphu", "maldives", "afghanistan",
+        "afghan", "kabul", "kandahar", "taliban", "himalaya", "himalayas", "yuan", "renminbi",
+        "yen", "ringgit", "baht", "rupiah", "hang seng", "kospi", "kuomintang", "politburo",
+        "belt and road", "xi jinping", "li qiang", "wang yi", "narendra modi", "modi",
+        "rahul gandhi", "amit shah", "jaishankar", "takaichi", "ishiba", "kishida", "lee jae-myung",
+        "lee jae myung", "yoon suk yeol", "kim jong un", "kim jong-un", "anwar ibrahim", "prabowo",
+        "jokowi", "ferdinand marcos", "bongbong marcos", "duterte", "lai ching-te", "anutin",
+        "paetongtarn", "thaksin", "hun manet", "hun sen", "min aung hlaing", "aung san suu kyi",
+        "shehbaz sharif", "nawaz sharif", "imran khan", "asim munir", "muhammad yunus",
+        "sheikh hasina", "gyanesh kumar", "election commission of india", "crore", "lakh", "noida",
+        "gurugram", "gurgaon", "jantar mantar", "sebi", "irdai", "sumo", "₹", "tarique rahman",
+        "dalai lama", "jimmy lai", "dissanayake", "sushila karki", "east java", "central java",
+        "west java", "nifty 50"
+      ],
+      "cased": [
+        "Xi", "Rs", "BJP", "RBI", "LDP", "KMT", "CCP", "Nikkei", "To Lam"
+      ],
+      "weak": [],
+      "weak_cased": [
+        "Anwar", "PLA", "Marcos"
+      ],
+      "weak_buckets": [
+        "asia", "singapore"
+      ],
+      "exclude": [
+        "asian american", "asian-american", "chinese american", "chinese-american",
+        "japanese american", "japanese-american", "korean american", "korean-american",
+        "indian american", "indian-american", "filipino american", "filipino-american",
+        "vietnamese american", "vietnamese-american", "american indian", "indian tribe",
+        "indian tribes", "indian country", "indian ocean", "west indies", "papua new guinea"
+      ]
+    },
+    "us": {
+      "terms": [
+        "united states", "america", "american", "washington", "white house", "pentagon",
+        "capitol hill", "oval office", "air force one", "mar-a-lago", "congressional",
+        "congressman", "congresswoman", "republican", "federal reserve", "wall street",
+        "silicon valley", "hollywood", "medicaid", "obamacare", "justice department",
+        "state department", "homeland security", "first amendment", "dow jones", "nasdaq",
+        "s&p 500", "donald trump", "jd vance", "marco rubio", "hegseth", "bessent", "lutnick",
+        "karoline leavitt", "kash patel", "pam bondi", "tulsi gabbard", "kristi noem", "rfk jr",
+        "biden", "obama", "kamala harris", "newsom", "desantis", "mamdani", "schumer",
+        "hakeem jeffries", "mike johnson", "thune", "pelosi", "alabama", "alaska", "arizona",
+        "arkansas", "california", "colorado", "connecticut", "delaware", "florida", "hawaii",
+        "idaho", "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine",
+        "maryland", "massachusetts", "michigan", "minnesota", "mississippi", "missouri", "montana",
+        "nebraska", "nevada", "new hampshire", "new jersey", "new mexico", "new york",
+        "north carolina", "north dakota", "ohio", "oklahoma", "oregon", "pennsylvania",
+        "rhode island", "south carolina", "south dakota", "tennessee", "texas", "utah", "vermont",
+        "virginia", "west virginia", "wisconsin", "wyoming", "los angeles", "chicago", "houston",
+        "san francisco", "miami", "boston", "seattle", "atlanta", "dallas", "philadelphia",
+        "detroit", "denver", "las vegas", "new orleans", "minneapolis", "baltimore", "pittsburgh",
+        "nashville", "san diego", "brooklyn", "manhattan", "puerto rico", "us congress",
+        "congress passes", "house of representatives", "senate republicans", "senate democrats",
+        "house republicans", "house democrats"
+      ],
+      "cased": [
+        "US", "U.S.", "USA", "GOP", "Capitol", "Fed", "FBI", "CIA", "ICE", "DOJ", "FDA", "CDC",
+        "IRS", "NASA", "MAGA", "Vance", "Rubio", "Trump"
+      ],
+      "weak": [],
+      "weak_cased": [],
+      "weak_buckets": [],
+      "exclude": [
+        "latin america", "latin american", "south america", "south american", "central america",
+        "central american", "americas", "indian national congress", "congress party",
+        "national people's congress", "people's congress", "cdc vouchers", "world congress",
+        "washington consensus", "philippine congress"
+      ]
+    },
+    "world": {
+      "terms": [
+        "middle east", "israel", "israeli", "gaza", "west bank", "palestine", "palestinian",
+        "hamas", "hezbollah", "houthi", "iran", "iranian", "tehran", "iraq", "iraqi", "baghdad",
+        "syria", "syrian", "damascus", "lebanon", "lebanese", "beirut", "jordanian", "amman",
+        "saudi", "riyadh", "mecca", "yemen", "yemeni", "united arab emirates", "dubai", "abu dhabi",
+        "qatar", "qatari", "doha", "kuwait", "bahrain", "egypt", "egyptian", "cairo", "turkiye",
+        "ankara", "istanbul", "cyprus", "netanyahu", "khamenei", "erdogan", "europe", "european",
+        "european union", "brussels", "nato", "britain", "british", "england", "scotland", "wales",
+        "ireland", "irish", "london", "france", "french", "paris", "macron", "germany", "german",
+        "berlin", "italy", "italian", "rome", "meloni", "spain", "spanish", "madrid", "barcelona",
+        "portugal", "netherlands", "dutch", "belgium", "switzerland", "swiss", "geneva", "austria",
+        "vienna", "poland", "warsaw", "ukraine", "ukrainian", "kyiv", "kiev", "zelensky",
+        "zelenskyy", "russia", "russian", "moscow", "kremlin", "putin", "belarus", "hungary",
+        "orban", "greece", "greek", "sweden", "swedish", "norway", "norwegian", "denmark", "danish",
+        "finland", "iceland", "greenland", "czech", "romania", "bulgaria", "serbia", "croatia",
+        "kosovo", "baltic", "estonia", "latvia", "lithuania", "vatican", "starmer", "moldova",
+        "armenia", "azerbaijan", "tbilisi", "africa", "african", "sudan", "sudanese", "khartoum",
+        "darfur", "el fasher", "south sudan", "ethiopia", "somalia", "kenya", "nairobi", "nigeria",
+        "lagos", "ghana", "senegal", "mali", "niger", "burkina faso", "congo", "rwanda", "uganda",
+        "tanzania", "mozambique", "zimbabwe", "zambia", "south africa", "johannesburg", "cape town",
+        "morocco", "algeria", "tunisia", "libya", "sahel", "cameroon", "madagascar", "angola",
+        "eritrea", "djibouti", "canada", "canadian", "ottawa", "toronto", "mexico", "mexican",
+        "sheinbaum", "brazil", "brazilian", "lula", "argentina", "milei", "chile", "colombia",
+        "peru", "venezuela", "venezuelan", "maduro", "caracas", "cuba", "cuban", "haiti", "ecuador",
+        "bolivia", "paraguay", "uruguay", "panama", "guatemala", "honduras", "el salvador",
+        "bukele", "nicaragua", "costa rica", "dominican republic", "jamaica", "latin america",
+        "south america", "central america", "caribbean", "australia", "australian", "sydney",
+        "melbourne", "canberra", "albanese", "new zealand", "auckland", "fiji", "papua new guinea",
+        "solomon islands", "tonga", "samoa", "vanuatu", "united nations",
+        "world health organization", "world bank", "international monetary fund",
+        "world trade organization", "brics", "opec", "international criminal court", "unesco",
+        "unicef", "unhcr", "interpol"
+      ],
+      "cased": [
+        "UN", "EU", "UK", "WHO", "IMF", "WTO", "G7", "G20", "ICC", "ICJ", "Turkey", "Turkish",
+        "Polish", "Oman", "Pope", "RSF", "UAE", "U.N.", "U.K."
+      ],
+      "weak": [],
+      "weak_cased": [],
+      "weak_buckets": [],
+      "exclude": [
+        "new mexico", "new england", "new jersey", "african american", "african-american",
+        "national security council"
+      ]
+    }
+  }
+}

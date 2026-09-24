@@ -94,6 +94,11 @@
           "minItems": 1,
           "items": {"$ref": "#/$defs/topic"}
         },
+        "geo": {
+          "description": "G1: where the story is, from the article's own title and dek (fetcher/geo.py, geo.json), never from its outlet. sg implies asia, asia implies world. Empty when the text names no place. Optional so pools from before G1 stay valid.",
+          "type": "array",
+          "items": {"enum": ["asia", "sg", "us", "world"]}
+        },
         "image": {"$ref": "#/$defs/article_image"},
         "has_body": {
           "description": "S22: true only when bodies/<id>.json was written this run (R12). Optional and false-by-omission so pools from before this slice stay valid; the reader (S25) treats a missing has_body the same as false.",

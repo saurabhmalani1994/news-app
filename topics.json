@@ -5,15 +5,20 @@
     "ai", "asia", "biotech", "conflict", "economy", "politics",
     "science", "singapore", "us_politics", "world"
   ],
+  "geo_topics": {
+    "note": "G1: singapore and asia are never bucket tags. Each is set exactly when the article's own text gives the geo tag named here (fetcher/geo.py, geo.json), so ranking affinity, R16 and the Singapore and Asia tabs read one signal.",
+    "sg": "singapore",
+    "asia": "asia"
+  },
   "bucket_topics": {
     "general": [],
     "us_politics": ["politics", "us_politics"],
-    "singapore": ["singapore"],
+    "singapore": [],
     "israel_gaza": ["conflict", "world"],
     "sudan": ["conflict", "world"],
     "ai": ["ai"],
     "biotech": ["biotech", "science"],
-    "asia": ["asia", "world"]
+    "asia": ["world"]
   },
   "keyword_topics": {
     "politics": [

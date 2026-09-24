@@ -65,9 +65,11 @@ def test_general_bucket_story_naming_a_foreign_country_gets_world():
 
 
 def test_asia_bucket_still_carries_world_unchanged():
-    # Non-US source buckets keep their existing bucket-level world tag (S08).
+    # Non-US source buckets keep their existing bucket-level world tag (S08). G1: asia
+    # itself now comes from the text only, so this signal-free headline is not asia.
     tags = tag_article("asia", "Factory output rises across the region", "", TOPICS)
-    assert "world" in tags and "asia" in tags
+    assert "world" in tags and "asia" not in tags
+    assert "asia" in tag_article("asia", "Factory output rises across Vietnam", "", TOPICS)
 
 
 # ---------------------------------------------------------------------------

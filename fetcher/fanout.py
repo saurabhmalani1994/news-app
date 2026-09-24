@@ -47,6 +47,7 @@ from fetcher.cluster import cluster_items, method_for
 from fetcher.events import build_events, parse_previous_events
 from fetcher.images import extract_image, filter_placeholder_logos, tally_found
 from fetcher.taxonomy import validate_sources_taxonomy
+from fetcher.geo import tag_geo
 from fetcher.topics import hard_news_topics, load_topics, tag_article
 from fetcher.health import compute_source_health, fetch_previous_pool, parse_previous_health
 from fetcher.fetch import (
@@ -232,7 +233,9 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
     if dek:
         article["dek"] = dek
     if topics_doc is not None:
-        article["topics"] = tag_article(source_bucket, title, dek, topics_doc)
+        # G1: geography from the article's own text; singapore and asia topics follow it.
+        article["geo"] = tag_geo(source_bucket, title, dek)
+        article["topics"] = tag_article(source_bucket, title, dek, topics_doc, geo=article["geo"])
     if image_rejected is not None:
         image, method = extract_image(item, image_rejected)
         if image is not None:

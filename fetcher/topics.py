@@ -31,10 +31,17 @@ already non-US (asia, israel_gaza, sudan carry world in bucket_topics, unchanged
 general-bucket article with none of those signals gets no world tag; that is
 intentional; it can still carry politics, economy, science or us_politics from its own
 keyword matches, and shows in Today regardless of topic tags.
+
+**singapore and asia (G1).** These two follow the article's own geography, never its
+outlet: `singapore` is set exactly when fetcher.geo gives the article `sg`, and `asia`
+exactly when it gives `asia` (topics.json `geo_topics`). The singapore and asia buckets
+no longer add them, so a Singapore outlet's piece on the White House is not a Singapore
+story for ranking affinity, R16 or the tabs. The asia bucket still adds `world` (F1).
 """
 import json
-import re
 from pathlib import Path
+
+from fetcher.geo import tag_geo
 
 TOPICS_PATH = Path(__file__).resolve().parent.parent / "topics.json"
 
@@ -56,7 +63,19 @@ def load_topics(path=TOPICS_PATH):
     for tag in doc["keyword_topics"]:
         if tag not in tags:
             raise TopicsError(f"keyword_topics names unknown tag {tag!r}")
+    for geo_tag, tag in _geo_topics(doc).items():
+        if tag not in tags:
+            raise TopicsError(f"geo_topics[{geo_tag!r}] names unknown tag {tag!r}")
+        for bucket, bucket_tags in doc["bucket_topics"].items():
+            if tag in bucket_tags:
+                raise TopicsError(f"bucket_topics[{bucket!r}] adds {tag!r}, which only the text may set")
+        if tag in doc["keyword_topics"]:
+            raise TopicsError(f"keyword_topics adds {tag!r}, which only geo_topics may set")
     return doc
+
+
+def _geo_topics(doc):
+    return {k: v for k, v in doc.get("geo_topics", {}).items() if k != "note"}
 
 
 def _keyword_hit(text, keywords):
@@ -74,13 +93,19 @@ def _us_election_signal(text, topics_doc):
             and _keyword_hit(text, signals.get("context_words", ())))
 
 
-def tag_article(bucket, title, dek, topics_doc):
+def tag_article(bucket, title, dek, topics_doc, geo=None):
     """Return a sorted, deduplicated list of topic tags for one article.
 
     Pure function of (bucket, title, dek, topics_doc): no clock, no network, no
-    randomness, so the same inputs always give the same tags.
+    randomness, so the same inputs always give the same tags. geo is the article's
+    fetcher.geo tags when the caller already has them; computed here otherwise.
     """
+    if geo is None:
+        geo = tag_geo(bucket, title, dek)
     tags = set(topics_doc["bucket_topics"].get(bucket, ()))
+    for geo_tag, tag in _geo_topics(topics_doc).items():
+        if geo_tag in geo:
+            tags.add(tag)
     text = f"{title} {dek or ''}".lower()
     for tag, keywords in topics_doc["keyword_topics"].items():
         if _keyword_hit(text, keywords):
