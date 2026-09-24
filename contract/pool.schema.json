@@ -80,15 +80,27 @@
       "type": "object",
       "additionalProperties": {"type": "integer", "minimum": 0}
     },
+    "drop_counts": {
+      "description": "S02: fixed reason keys, closed set. An unknown key is a contract change, not a silent addition.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "no_title": {"type": "integer", "minimum": 0},
+        "no_date": {"type": "integer", "minimum": 0},
+        "bad_url": {"type": "integer", "minimum": 0},
+        "duplicate_url": {"type": "integer", "minimum": 0},
+        "over_cap": {"type": "integer", "minimum": 0}
+      }
+    },
     "counts": {
-      "description": "Run ledger. drops maps reason to count; leniency maps each parser tolerance applied (R9) to count. S02 fixes the reason keys and asserts fetched == published + sum(drops).",
+      "description": "Run ledger. drops maps a fixed reason key to count (S02); leniency maps each parser tolerance applied (R9) to count, keys open. fetched == published + sum(drops) is asserted on every run.",
       "type": "object",
       "required": ["fetched", "published", "drops", "leniency"],
       "additionalProperties": false,
       "properties": {
         "fetched": {"type": "integer", "minimum": 0},
         "published": {"type": "integer", "minimum": 0},
-        "drops": {"$ref": "#/$defs/count_map"},
+        "drops": {"$ref": "#/$defs/drop_counts"},
         "leniency": {"$ref": "#/$defs/count_map"}
       }
     }
