@@ -50,6 +50,16 @@
         "feed_url": {"$ref": "#/$defs/http_url"}
       }
     },
+    "topic": {
+      "description": "S08: closed tag set from topics.json. hard_news there names the R16 hard-news subset (world, politics, economy, science, conflict).",
+      "type": "string",
+      "enum": ["ai", "asia", "biotech", "conflict", "economy", "politics", "science", "singapore", "world"]
+    },
+    "lean_bucket": {
+      "description": "S08: closed set from fetcher/taxonomy.py. Lean is a shared, repo-owned claim about a source (R10); trust is personal and lives on the device, never here.",
+      "type": "string",
+      "enum": ["center", "center-left", "center-right", "left", "non-us", "right", "state"]
+    },
     "article": {
       "type": "object",
       "required": ["id", "source_id", "url", "title", "published_at"],
@@ -60,13 +70,19 @@
         "url": {"$ref": "#/$defs/http_url"},
         "title": {"type": "string", "minLength": 1, "maxLength": 500},
         "dek": {"type": "string", "maxLength": 2000},
-        "published_at": {"$ref": "#/$defs/utc_timestamp"}
+        "published_at": {"$ref": "#/$defs/utc_timestamp"},
+        "topics": {
+          "description": "S08: every article the fanout pipeline publishes carries at least one tag; optional here only so the S01 single-feed fetcher's pool (which predates topics.json) stays valid.",
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/topic"}
+        }
       }
     },
     "cluster": {
-      "description": "S07: one story, computed locally (R8). article_ids lists published members only; every article belongs to at most one cluster. method names how the members were linked: minhash for syndicated near-duplicate copies, cosine_entity for independently written coverage (TF-IDF cosine plus a shared key entity inside the time window), or both. near_duplicates groups the ids that are copies of one piece of copy, kept and marked rather than dropped, so a later slice can count independent sources (R16).",
+      "description": "S07: one story, computed locally (R8). article_ids lists published members only; every article belongs to at most one cluster. method names how the members were linked: minhash for syndicated near-duplicate copies, cosine_entity for independently written coverage (TF-IDF cosine plus a shared key entity inside the time window), or both. near_duplicates groups the ids that are copies of one piece of copy, kept and marked rather than dropped, so a later slice can count independent sources (R16). S08: independent_sources counts distinct syndication groups among the cluster's sources, not distinct source_ids, so two outlets carrying the same wire copy count once (fixes the S07 deferral). lean_buckets is the set (no duplicates) of lean buckets those sources cover; R16 must-know eligibility needs at least two.",
       "type": "object",
-      "required": ["id", "method", "article_ids", "near_duplicates"],
+      "required": ["id", "method", "article_ids", "near_duplicates", "independent_sources", "lean_buckets"],
       "additionalProperties": false,
       "properties": {
         "id": {"$ref": "#/$defs/id"},
@@ -83,6 +99,12 @@
             "minItems": 2,
             "items": {"$ref": "#/$defs/id"}
           }
+        },
+        "independent_sources": {"type": "integer", "minimum": 1},
+        "lean_buckets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/lean_bucket"}
         }
       }
     },

@@ -160,6 +160,13 @@ def check_integrity(pool):
         expected = _cluster_method(units, bool(c["near_duplicates"]))
         if c["method"] != expected:
             errors.append(f"$.clusters[{i}].method: shape says {expected!r}, not {c['method']!r}")
+        if "lean_buckets" in c and len(set(c["lean_buckets"])) != len(c["lean_buckets"]):
+            errors.append(f"$.clusters[{i}].lean_buckets: duplicate entries, must be a set")
+        if "independent_sources" in c and c["independent_sources"] > len(members):
+            errors.append(
+                f"$.clusters[{i}].independent_sources: {c['independent_sources']} exceeds "
+                f"the cluster's {len(members)} articles"
+            )
     if pool["counts"]["published"] != len(article_ids):
         errors.append("$.counts.published: does not equal the number of articles")
     c = pool["counts"]
