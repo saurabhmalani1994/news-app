@@ -19,6 +19,12 @@ import { retier, placeOtherSide } from "./tiers.js";
 import { storyAttributes, domPlacement } from "./actions/context.js";
 import { savesStore, thumbsStore } from "./actions/store.js";
 import { toggleSave, undoSave } from "./actions/saves.js";
+// S26: pins a saved has_body story's cached body past the reader's normal 200-entry
+// eviction, and unpins on unsave; the same helper the Saved screen's own Unsave uses,
+// so a save made from any card and one made from the Saved screen agree.
+import { syncSavePin, syncUndoPin } from "./actions/save-pin.js";
+import { bodyCache } from "./reader/cache.js";
+import { loadBody } from "./reader/core.js";
 import { toggleThumb, undoThumb } from "./actions/thumbs.js";
 import { withSourceMuted, withTopicMuted, withTopicBoosted } from "./actions/mute-boost.js";
 import { anchoredRerender } from "./actions/scroll-anchor.js";
@@ -234,8 +240,12 @@ async function doWhy({ li, sid, facts }) {
 async function doSave({ sid, attrs, facts }) {
   const result = await toggleSave(savesStore, sid, { ...attrs, ...facts }, nowIso);
   closeSheet();
+  syncSavePin(result, { cache: bodyCache, fetchBody: loadBody }).catch(() => {});
   showToast(result.action === "added" ? "Saved" : "Removed from Saved", {
-    onAction: () => undoSave(savesStore, sid, result.action, result.previous),
+    onAction: () => {
+      undoSave(savesStore, sid, result.action, result.previous);
+      syncUndoPin(result.action, result.record, result.previous, { cache: bodyCache, fetchBody: loadBody }).catch(() => {});
+    },
   });
 }
 
