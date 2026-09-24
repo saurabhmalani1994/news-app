@@ -8,7 +8,10 @@ palette on the same roles, checked against WCAG AA by tests/test_tokens.py.
 
 Font sizes are fitted to the MEASURED cap heights (capDp) using the cap-height ratio of
 the font we actually ship, not the 0.70 ratio the research assumed. That keeps the
-visible size of each tier equal to the measurement. Line heights are the measured ones.
+visible size of each tier equal to the measurement. Line heights keep the MEASURED
+leading ratio (line pitch over NYT's inferred size) at the fitted size: Newsreader sits
+lower in its em than NYT's face, so the raw 23dp pitch under a 22.5px river headline
+set descenders on the next line's ascenders (D1).
 
 Fonts (all SIL OFL 1.1, self-hosted, Latin subset, hinting dropped):
   Newsreader Bold, instanced at wght 700 opsz 20 (headlines, wordmark)
@@ -115,6 +118,16 @@ def fitted_size(role, family):
     return round(cap / CAP_RATIO[family] * 2) / 2
 
 
+def fitted_line_height(role, family):
+    """Line height in whole px (so lines land on the 3x device grid): the measured
+    pitch-to-size ratio times the fitted size.
+    The text-only headline borrows the dek's pitch, as its size does."""
+    size = fitted_size(role, family)
+    if role is VALUES["type"]["textOnlyHeadline"]:
+        role = VALUES["type"]["dek"]
+    return int(size * role["lineHeightDp"] / role["sizeDp"] + 0.5)
+
+
 def _num(x):
     return f"{x:g}"
 
@@ -131,7 +144,7 @@ def _type_block():
         role = t[key]
         lines.append(f"  --type-{slug}-family: var(--font-{family});")
         lines.append(f"  --type-{slug}-size: {_num(fitted_size(role, family))}px;")
-        lines.append(f"  --type-{slug}-line-height: {role['lineHeightDp']}px;")
+        lines.append(f"  --type-{slug}-line-height: {_num(fitted_line_height(role, family))}px;")
         lines.append(f"  --type-{slug}-weight: {WEIGHT_NUM[role['weight']]};")
         lines.append(f"  --type-{slug}-tracking: {_num(role.get('trackingEm', 0))}em;")
         transform = "uppercase" if role.get("case") == "upper" else "none"
