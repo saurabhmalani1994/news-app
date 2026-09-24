@@ -193,6 +193,35 @@ def check_integrity(pool):
             errors.append(f"$.source_health: missing entries for {sorted(missing)!r}")
         if unknown:
             errors.append(f"$.source_health: entries for unknown sources {sorted(unknown)!r}")
+    if "events" in pool:
+        errors.extend(_check_events(pool["events"], cluster_ids))
+    return errors
+
+
+def _check_events(events, known_cluster_ids):
+    """S31: cross-references pool.schema.json's event shape cannot express (R22).
+    Every cluster_id must name a real cluster, a cluster belongs to at most one
+    event (the same closed-shape rule as an article and its cluster), and live can
+    only be true when eligible is also true, since R22 gates the Live tab on the
+    same must-know eligibility (R16): a celebrity story can never go live."""
+    errors = []
+    event_ids = set()
+    clustered = set()
+    for i, e in enumerate(events):
+        if e["id"] in event_ids:
+            errors.append(f"$.events[{i}].id: duplicate event id {e['id']!r}")
+        event_ids.add(e["id"])
+        members = set(e["cluster_ids"])
+        if len(members) != len(e["cluster_ids"]):
+            errors.append(f"$.events[{i}].cluster_ids: cluster listed twice")
+        for cid in e["cluster_ids"]:
+            if cid not in known_cluster_ids:
+                errors.append(f"$.events[{i}].cluster_ids: unknown cluster {cid!r}")
+        if members & clustered:
+            errors.append(f"$.events[{i}].cluster_ids: cluster already in another event")
+        clustered |= members
+        if e["live"] and not e["eligible"]:
+            errors.append(f"$.events[{i}]: live is true but eligible is false")
     return errors
 
 
