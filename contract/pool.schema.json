@@ -64,15 +64,25 @@
       }
     },
     "cluster": {
+      "description": "S07: one story, computed locally (R8). article_ids lists published members only; every article belongs to at most one cluster. method names how the members were linked: minhash for syndicated near-duplicate copies, cosine_entity for independently written coverage (TF-IDF cosine plus a shared key entity inside the time window), or both. near_duplicates groups the ids that are copies of one piece of copy, kept and marked rather than dropped, so a later slice can count independent sources (R16).",
       "type": "object",
-      "required": ["id", "article_ids"],
+      "required": ["id", "method", "article_ids", "near_duplicates"],
       "additionalProperties": false,
       "properties": {
         "id": {"$ref": "#/$defs/id"},
+        "method": {"enum": ["minhash", "cosine_entity", "minhash+cosine_entity"]},
         "article_ids": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 2,
           "items": {"$ref": "#/$defs/id"}
+        },
+        "near_duplicates": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "items": {"$ref": "#/$defs/id"}
+          }
         }
       }
     },

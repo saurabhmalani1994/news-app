@@ -16,7 +16,7 @@ SCHEMA_PATH = Path(__file__).with_name("pool.schema.json")
 ANNOTATIONS = {"$schema", "$id", "$defs", "$comment", "title", "description"}
 ASSERTIONS = {
     "$ref", "type", "const", "required", "properties", "additionalProperties",
-    "items", "minItems", "pattern", "minLength", "maxLength", "minimum",
+    "items", "minItems", "pattern", "minLength", "maxLength", "minimum", "enum",
 }
 
 
@@ -81,6 +81,8 @@ def _check(value, schema, root, path, errors):
             return
     if "const" in schema and not _same(value, schema["const"]):
         errors.append(f"{path}: must equal {schema['const']!r}")
+    if "enum" in schema and not any(_same(value, v) for v in schema["enum"]):
+        errors.append(f"{path}: must be one of {schema['enum']!r}")
 
     if isinstance(value, str):
         if "minLength" in schema and len(value) < schema["minLength"]:
@@ -113,6 +115,14 @@ def _check(value, schema, root, path, errors):
                 _check(item, schema["additionalProperties"], root, f"{path}.{key}", errors)
 
 
+def _cluster_method(units, has_near_dups):
+    # Units (a near-duplicate group, or a lone article) are joined only by cosine_entity;
+    # articles inside a near-duplicate group only by minhash. Mirrors fetcher.cluster.
+    if units > 1 and has_near_dups:
+        return "minhash+cosine_entity"
+    return "cosine_entity" if units > 1 else "minhash"
+
+
 def check_integrity(pool):
     """Cross-references JSON Schema cannot express. Run only on a schema-valid pool."""
     errors = []
@@ -124,10 +134,32 @@ def check_integrity(pool):
         if a["source_id"] not in source_ids:
             errors.append(f"$.articles[{i}].source_id: unknown source {a['source_id']!r}")
     known = set(article_ids)
+    clustered = set()
+    cluster_ids = set()
     for i, c in enumerate(pool["clusters"]):
+        if c["id"] in cluster_ids:
+            errors.append(f"$.clusters[{i}].id: duplicate cluster id {c['id']!r}")
+        cluster_ids.add(c["id"])
+        members = set(c["article_ids"])
         for aid in c["article_ids"]:
             if aid not in known:
                 errors.append(f"$.clusters[{i}]: unknown article {aid!r}")
+        if len(members) != len(c["article_ids"]):
+            errors.append(f"$.clusters[{i}]: article listed twice")
+        if members & clustered:
+            errors.append(f"$.clusters[{i}]: article already in another cluster")
+        clustered |= members
+        in_dups = set()
+        for g in c["near_duplicates"]:
+            if not set(g) <= members:
+                errors.append(f"$.clusters[{i}].near_duplicates: id not in article_ids")
+            if set(g) & in_dups or len(set(g)) != len(g):
+                errors.append(f"$.clusters[{i}].near_duplicates: id in two groups")
+            in_dups |= set(g)
+        units = len(c["near_duplicates"]) + len(members - in_dups)
+        expected = _cluster_method(units, bool(c["near_duplicates"]))
+        if c["method"] != expected:
+            errors.append(f"$.clusters[{i}].method: shape says {expected!r}, not {c['method']!r}")
     if pool["counts"]["published"] != len(article_ids):
         errors.append("$.counts.published: does not equal the number of articles")
     c = pool["counts"]
