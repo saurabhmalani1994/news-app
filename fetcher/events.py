@@ -7,8 +7,19 @@ GENERIC_FLOOR articles) are dropped as too generic to define an event. Clusters 
 shared by the most clusters (inside a 48h window, R22) forms an event from those
 clusters, they leave the pool of candidates, and the next entity goes. Greedy rather
 than union-find, so one "Israel" cluster that also names "Iran" cannot chain two
-unrelated events into one. An event needs at least MIN_EVENT_CLUSTERS clusters. Its
-label is the shared entity as the feeds capitalize it, plain text.
+unrelated events into one. An event needs at least MIN_EVENT_CLUSTERS clusters.
+
+Labels (review fix). The shared entity that groups an event is not always a good
+label on its own: "UN", "MS", "Council", "Chinese" are single weak tokens next to
+headlines that actually say "UN General Assembly", "Xi Jinping", "White House",
+"China". `_label` picks the most frequent multi-word proper phrase across the
+event's own headlines and deks over the bare entity, maps a demonym to its place,
+drops an ambiguous two-letter token unless it is a known acronym, and never settles
+on a label that is only a stopword or a generic role word like "Council" or
+"President", falling back to the raw entity only if nothing in the event clears
+that bar. Labeling never touches `entity`, cluster membership or article overlap,
+so it cannot change which id an event inherits (see Ids below). Labels stay plain
+text.
 
 Hype (R22) is distinct clusters times independent outlets over the last 24h: clusters
 with at least one article in the window, times distinct syndication groups among
@@ -41,7 +52,7 @@ import re
 from collections import Counter
 from datetime import datetime, timezone
 
-from fetcher.cluster import CASED_WORD_RE, item_entities
+from fetcher.cluster import CASED_WORD_RE, STOPWORDS, item_entities
 
 WINDOW_HOURS = 48
 HYPE_HOURS = 24
@@ -173,14 +184,101 @@ def group_clusters(clusters, articles, source_names=()):
         remaining -= set(best[2])
 
 
-def _label(entity, article_list):
-    """The phrase as the feeds capitalize it, most common form first. Plain text only."""
-    pattern = re.compile(r"(?<![^\W_])" + r" ".join(re.escape(w) for w in entity.split(" "))
+# Adjectival nationality words map to the place name, plain and simple, so an event
+# entity of "Chinese" reads as "China" rather than the demonym.
+DEMONYM_TO_PLACE = {
+    "chinese": "China", "russian": "Russia", "american": "United States",
+    "british": "Britain", "french": "France", "german": "Germany",
+    "japanese": "Japan", "korean": "Korea", "indian": "India", "iranian": "Iran",
+    "israeli": "Israel", "ukrainian": "Ukraine", "canadian": "Canada",
+    "mexican": "Mexico", "brazilian": "Brazil", "italian": "Italy",
+    "spanish": "Spain", "australian": "Australia", "pakistani": "Pakistan",
+    "saudi": "Saudi Arabia", "turkish": "Turkey", "egyptian": "Egypt",
+    "nigerian": "Nigeria", "sudanese": "Sudan", "syrian": "Syria",
+    "afghan": "Afghanistan", "vietnamese": "Vietnam", "indonesian": "Indonesia",
+    "filipino": "Philippines", "thai": "Thailand", "polish": "Poland",
+    "dutch": "Netherlands", "swedish": "Sweden", "norwegian": "Norway",
+    "danish": "Denmark", "swiss": "Switzerland", "irish": "Ireland",
+    "taiwanese": "Taiwan", "singaporean": "Singapore",
+}
+
+# A two-letter token ("MS", "NY") is ambiguous on its own; only these are common
+# enough acronyms to stand alone as a label.
+TWO_LETTER_ACRONYMS = frozenset({"US", "UK", "EU", "UN", "AI"})
+
+# Capitalized words that show up constantly in headlines but never identify a
+# specific event on their own ("Council", "President"): a label built from just one
+# of these is dropped in favor of the next candidate.
+GENERIC_LABEL_WORDS = frozenset("""
+council president minister government committee court department secretary
+chairman chairwoman spokesman spokeswoman leader chief official officials
+authorities report reports update updates breaking
+""".split())
+
+
+def _usable_single(word):
+    """A label candidate that is just one word: not a stopword, not a generic
+    role/institution word, and not an ambiguous two-letter token outside the known
+    acronym list. The two-letter check is for a token standing alone as the whole
+    label ("MS"); it does not disqualify that same word inside a longer phrase
+    ("MS Society" is fine even though bare "MS" is not)."""
+    if word in STOPWORDS or word in GENERIC_LABEL_WORDS:
+        return False
+    if len(word) == 2 and word.upper() not in TWO_LETTER_ACRONYMS:
+        return False
+    return True
+
+
+def _usable_phrase(words):
+    """A multi-word label candidate: unusable only if every one of its words is a
+    bare generic role word ("President Council"). Stopwords never reach here since
+    article_phrases only ever joins recognized entity words."""
+    return not all(w in GENERIC_LABEL_WORDS for w in words)
+
+
+def _best_phrase(article_list, source_names):
+    """The most frequent multi-word proper phrase shared across these headlines and
+    deks, or failing that the most frequent usable single word. None if nothing in
+    the article set clears the stopword/generic/two-letter-acronym bar.
+
+    Deterministic: ties break on phrase length then the phrase string itself, never
+    on set or dict iteration order, since Python string-set order is not stable
+    across runs.
+    """
+    phrases_by_article = article_phrases(article_list, source_names)
+    counts = Counter(p for phrases in phrases_by_article.values() for p in phrases)
+    multiword = [(c, p) for p, c in counts.items()
+                 if " " in p and c >= 2 and _usable_phrase(p.split(" "))]
+    if multiword:
+        return max(multiword, key=lambda cp: (cp[0], len(cp[1]), cp[1]))[1]
+    singleword = [(c, p) for p, c in counts.items() if " " not in p and _usable_single(p)]
+    if singleword:
+        return max(singleword, key=lambda cp: (cp[0], cp[1]))[1]
+    return None
+
+
+def _label(entity, article_list, source_names=()):
+    """The event's display label: the most frequent multi-word proper phrase shared
+    across its headlines and deks, as the feeds capitalize it; a demonym maps to its
+    place; a weak single token (a stopword, a generic role word like "Council", or
+    an unlisted two-letter acronym) is never chosen alone. Plain text only.
+
+    Falls back to the raw shared entity, the review-tightened algorithm's last
+    resort, only when no article in the event clears the bar above (rare: the
+    entity already passed _key_entities' per-cluster and pool-wide generic
+    filters). This is a labeling-only change: it never touches `entity`, cluster
+    ids or article membership, so relabeling cannot change an event's id.
+    """
+    candidate = _best_phrase(article_list, source_names) or entity
+    mapped = DEMONYM_TO_PLACE.get(candidate)
+    if mapped:
+        return mapped[:LABEL_MAX]
+    pattern = re.compile(r"(?<![^\W_])" + r" ".join(re.escape(w) for w in candidate.split(" "))
                          + r"(?![^\W_])", re.IGNORECASE)
     forms = Counter(m.group() for a in article_list for text in (a["title"], a.get("dek", ""))
                     for m in pattern.finditer(text))
     if not forms:
-        return entity[:LABEL_MAX]
+        return candidate[:LABEL_MAX]
     return max(forms.items(), key=lambda kv: (kv[1], kv[0]))[0][:LABEL_MAX]
 
 
@@ -262,8 +360,9 @@ def build_events(articles, clusters, sources, now, hard_news, previous=None):
     syndication = {s["id"]: s.get("syndication_group") or s["id"] for s in sources}
     cluster_by_id = {cl["id"]: cl for cl in clusters}
     cutoff = now_s - HYPE_HOURS * 3600
+    source_names = [s["name"] for s in sources]
     events = []
-    for entity, cids in group_clusters(clusters, articles, [s["name"] for s in sources]):
+    for entity, cids in group_clusters(clusters, articles, source_names):
         members = [by_id[a] for c in cids for a in cluster_by_id[c]["article_ids"]]
         recent = [a for a in members if _epoch(a["published_at"]) >= cutoff]
         recent_ids = {a["id"] for a in recent}
@@ -276,7 +375,7 @@ def build_events(articles, clusters, sources, now, hard_news, previous=None):
             "_entity": entity,
             "_cluster_ids": cids,
             "_articles": {a["id"] for a in members},
-            "label": _label(entity, members),
+            "label": _label(entity, members, source_names),
             "cluster_ids": cids,
             "hype": recent_clusters * len(outlets),
             "eligible": bool(topics & set(hard_news)) and len(groups) >= 2 and len(leans) >= 2,
