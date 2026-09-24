@@ -17,6 +17,14 @@ import { bodyCache } from "./reader/cache.js";
 import {
   BODY_ID, EMOJI_IMAGE, NOTES, TRAILER, formatPublished, imageStem, loadBody, readerChoice, sameText, smartQuotes, tinyImage,
 } from "./reader/core.js";
+// S24: thumbs at the end of the reader, the same record and toggle as the card's own
+// overflow sheet (story-actions.js), keyed the same way (storyIdForArticle) so a thumb
+// given here and one given from the card agree on which story it belongs to.
+import { storyAttributes, storyIdForArticle } from "./actions/context.js";
+import { thumbsStore } from "./actions/store.js";
+import { toggleThumb, undoThumb } from "./actions/thumbs.js";
+import { nowIso } from "./profile/time.js";
+import { showToast } from "./toast.js";
 
 const reader = document.getElementById("reader");
 const scroller = document.getElementById("reader-scroll");
@@ -87,6 +95,79 @@ function storyFacts(id, link) {
     photo: (data.reader || {})[id] || null,
     href: WEB.test(href) ? href : "",
   };
+}
+
+function thumbIcon(direction) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("class", "reader-thumb-icon");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "22");
+  svg.setAttribute("height", "22");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", direction === "up"
+    ? "M9 21h8.1c.8 0 1.5-.5 1.8-1.3l2.4-5.6c.1-.2.1-.4.1-.6v-1.8c0-1-.8-1.8-1.8-1.8h-5.1l.7-3.6.1-.5c0-.4-.2-.8-.4-1.1L13.1 3 8.3 7.8c-.3.3-.5.7-.5 1.1V19c0 1.1.9 2 2 2zM3 10h3v11H3z"
+    : "M15 3H6.9c-.8 0-1.5.5-1.8 1.3L2.7 9.9c-.1.2-.1.4-.1.6v1.8c0 1 .8 1.8 1.8 1.8h5.1l-.7 3.6-.1.5c0 .4.2.8.4 1.1l.8 1.7 4.8-4.8c.3-.3.5-.7.5-1.1V5c0-1.1-.9-2-2-2zM21 14h-3V3h3z");
+  svg.append(path);
+  return svg;
+}
+
+function thumbButton(direction, pressed) {
+  const button = el("button", "reader-thumb");
+  button.type = "button";
+  button.dataset.direction = direction;
+  button.setAttribute("aria-pressed", String(pressed));
+  button.setAttribute("aria-label", direction === "up" ? "Thumbs up" : "Thumbs down");
+  button.append(thumbIcon(direction));
+  return button;
+}
+
+/** The end-of-reader thumbs row (R19, DESIGN-v1.1 "Story actions"): the same toggle,
+ * the same IndexedDB record and the same "never touches profile.json" as the card's
+ * own overflow sheet. `id` is the article the reader opened; storyIdForArticle finds
+ * the cluster it fronts, if any, so this agrees with a thumb given from the card. */
+async function thumbsRow(id) {
+  const data = pageInput();
+  const sid = storyIdForArticle(data, id);
+  const attrs = storyAttributes(data, sid);
+  let existing = null;
+  try {
+    existing = await thumbsStore.get(sid);
+  } catch {
+    // no IndexedDB (a very old browser, or a private-mode block): thumbs just start unset
+  }
+  const row = el("div", "reader-thumbs");
+  row.setAttribute("role", "group");
+  row.setAttribute("aria-label", "Rate this story");
+  const up = thumbButton("up", existing?.direction === "up");
+  const down = thumbButton("down", existing?.direction === "down");
+  row.append(up, down);
+  row.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-direction]");
+    if (!button || row.dataset.busy) return;
+    row.dataset.busy = "1";
+    const direction = button.dataset.direction;
+    let result;
+    try {
+      result = await toggleThumb(thumbsStore, sid, direction, attrs, nowIso);
+    } catch {
+      delete row.dataset.busy;
+      return;
+    }
+    up.setAttribute("aria-pressed", String(result.action === "set" && direction === "up"));
+    down.setAttribute("aria-pressed", String(result.action === "set" && direction === "down"));
+    delete row.dataset.busy;
+    const message = result.action === "cleared" ? "Thumb removed" : direction === "up" ? "Marked helpful" : "Marked not helpful";
+    showToast(message, {
+      onAction: async () => {
+        await undoThumb(thumbsStore, sid, result.previous);
+        up.setAttribute("aria-pressed", String(result.previous?.direction === "up"));
+        down.setAttribute("aria-pressed", String(result.previous?.direction === "down"));
+      },
+    });
+  });
+  return row;
 }
 
 function linkOut(url, source) {
@@ -188,12 +269,15 @@ function fill(id, facts) {
   body.replaceChildren(skeleton());
   body.setAttribute("aria-busy", "true");
   article.querySelector(".reader-end")?.remove();
-  loadBody(id, { cache: bodyCache }).then((result) => {
+  article.querySelector(".reader-thumbs")?.remove();
+  loadBody(id, { cache: bodyCache }).then(async (result) => {
     if (mine !== token || current?.id !== id) return;
     body.removeAttribute("aria-busy");
     if (result.state !== "ready") {
       body.replaceChildren(showNote(result.state, facts, id, fill));
-      article.append(linkOut(facts.href, facts.source));
+      const end = linkOut(facts.href, facts.source);
+      const thumbs = await thumbsRow(id);
+      if (mine === token && current?.id === id) article.append(end, thumbs);
       if (result.state === "offline") addEventListener("online", () => { if (current?.id === id && mine === token) fill(id, facts); }, { once: true });
       return;
     }
@@ -211,7 +295,9 @@ function fill(id, facts) {
     const lede = fragment.querySelector("p");
     if (dek && lede && sameText(dek.textContent, lede.textContent)) lede.remove();
     body.replaceChildren(fragment);
-    article.append(linkOut(record.url || facts.href, record.source_name || facts.source));
+    const end = linkOut(record.url || facts.href, record.source_name || facts.source);
+    const thumbs = await thumbsRow(id);
+    if (mine === token && current?.id === id) article.append(end, thumbs);
     out.hidden = !(record.url || facts.href);
     if (record.url || facts.href) out.setAttribute("href", record.url || facts.href);
   });

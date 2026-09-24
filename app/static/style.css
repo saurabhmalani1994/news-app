@@ -1130,3 +1130,335 @@ body {
     animation: none;
   }
 }
+
+/* S24: the per-story overflow control. A quiet three-dot button, 48dp target, a
+   sibling of the row's own link (never nested inside it, so a tap on it can never also
+   navigate). Text elements carry a matching right-hand gutter (below) so the icon
+   never sits over a word; the hero photo and the river thumbnail are not narrowed the
+   same way, so over those two the glyph gets a soft scrim to stay legible on any
+   photo, in either theme. */
+.story {
+  position: relative;
+}
+
+.story-overflow {
+  position: absolute;
+  top: 2px;
+  right: calc(var(--space-gutter) - (var(--touch-min) - 22px) / 2);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-min);
+  height: var(--touch-min);
+  padding: 0;
+  border-style: none;
+  background: transparent;
+  color: var(--color-nav-inactive);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.story-overflow:active {
+  background: var(--color-pressed);
+}
+
+.story-overflow:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.story-overflow-icon {
+  fill: currentColor;
+}
+
+.story--hero .story-overflow,
+.story--river .story-overflow {
+  top: 6px;
+  color: #F8F8F8;
+  background: rgba(18, 18, 18, 0.45);
+}
+
+.story--hero .story-overflow:active,
+.story--river .story-overflow:active {
+  background: rgba(18, 18, 18, 0.65);
+}
+
+.headline,
+.dek,
+.meta {
+  padding-right: 40px;
+}
+
+/* S24: the reusable bottom sheet (js/sheet.js), an NYT-style overflow/share sheet.
+   Above the reader (z-index 2); the scrim dims everything below, the panel itself is
+   the same quiet nav surface the bottom nav and reader bar already use, with a system
+   bottom-sheet's own rounded top, not a "card" inside the page. */
+.sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+}
+
+.sheet-root[hidden] {
+  display: none;
+}
+
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity var(--motion-duration) var(--motion-ease);
+}
+
+.sheet-root.is-open .sheet-scrim {
+  opacity: 1;
+}
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 80vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: var(--divider-weight) solid var(--color-divider);
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  background: var(--color-nav-surface);
+  transform: translateY(100%);
+  transition: transform 220ms var(--motion-ease);
+}
+
+.sheet-root.is-open .sheet {
+  transform: translateY(0);
+}
+
+.sheet-drag {
+  position: sticky;
+  top: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  background: var(--color-nav-surface);
+  touch-action: none;
+}
+
+.sheet-grabber {
+  display: block;
+  width: 36px;
+  height: 3px;
+  margin: 10px auto 2px;
+  background: var(--color-divider);
+  grid-column: 1 / -1;
+}
+
+.sheet-label {
+  margin: 6px 0 6px var(--space-gutter);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-meta);
+}
+
+.sheet-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-min);
+  height: var(--touch-min);
+  margin-right: calc(var(--space-gutter) - (var(--touch-min) - 22px) / 2);
+  padding: 0;
+  border-style: none;
+  background: transparent;
+  color: var(--color-nav-inactive);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.sheet-close:active {
+  background: var(--color-pressed);
+}
+
+.sheet-close:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.sheet-close-icon {
+  fill: currentColor;
+}
+
+.sheet-body {
+  padding-bottom: 6px;
+}
+
+.sheet-item {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  min-height: var(--touch-min);
+  padding: 0 var(--space-gutter);
+  border-style: none;
+  background: transparent;
+  color: var(--color-headline);
+  text-decoration: none;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 500;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.sheet-item[hidden] {
+  display: none;
+}
+
+.sheet-item:active {
+  background: var(--color-pressed);
+}
+
+.sheet-item:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.sheet-item-icon {
+  flex: none;
+  fill: var(--color-meta);
+}
+
+.sheet-item[aria-pressed="true"] {
+  color: var(--color-headline);
+}
+
+.sheet-item[aria-pressed="true"] .sheet-item-icon {
+  fill: var(--color-headline);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-scrim,
+  .sheet,
+  .story-overflow {
+    transition: none;
+  }
+
+  .sheet {
+    transform: none;
+  }
+
+  .sheet-root:not(.is-open) .sheet {
+    display: none;
+  }
+}
+
+/* S24: the shared quiet confirmation with an optional Undo. Sits just above the
+   bottom nav, centered, the same nav surface again. */
+.toast {
+  position: fixed;
+  left: var(--space-gutter);
+  right: var(--space-gutter);
+  bottom: calc(var(--chrome-bottom-nav) + env(safe-area-inset-bottom) + 12px);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 8px 0 16px;
+  background: var(--color-nav-surface);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity var(--motion-duration) var(--motion-ease), transform var(--motion-duration) var(--motion-ease);
+}
+
+.toast[hidden] {
+  display: none;
+}
+
+.toast.is-open {
+  opacity: 1;
+  transform: none;
+}
+
+.toast-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 10px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-headline);
+}
+
+.toast-action {
+  flex: none;
+  min-height: 44px;
+  padding: 0 8px;
+  border-style: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-headline);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.toast-action[hidden] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    transition: none;
+  }
+}
+
+/* S24: thumbs at the end of the reader, the same quiet icon-button language as the
+   reader bar below it. */
+.reader-thumbs {
+  display: flex;
+  gap: 8px;
+  margin-top: 30px;
+}
+
+.reader-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-min);
+  height: var(--touch-min);
+  padding: 0;
+  border-style: none;
+  background: transparent;
+  color: var(--color-meta-tertiary);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease), color var(--motion-duration) var(--motion-ease);
+}
+
+.reader-thumb[aria-pressed="true"] {
+  color: var(--color-headline);
+  background: var(--color-pressed);
+}
+
+.reader-thumb:active {
+  background: var(--color-pressed);
+}
+
+.reader-thumb:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.reader-thumb-icon {
+  fill: currentColor;
+}

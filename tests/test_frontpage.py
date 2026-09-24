@@ -166,11 +166,13 @@ def test_cluster_meta_names_its_source_count_quietly():
 # text nodes and S37-sanitized body markup; reader.js is the app's own module.
 # S18: offline-gate.js/offline.js (the offline line) and sw-register.js (the service
 # worker) are the app's own external files too, no feed data.
+# S24: story-actions.js is the app's own module wiring the overflow sheet, no feed data.
 APP_TAGS = {"html", "head", "meta", "title", "link", "body", "header", "h1", "main", "ol", "li",
             "a", "span", "section", "h2", "footer", "p", "time", "svg", "circle", "path",
             "script", "template", "nav", "div", "button", "article"}
 APP_SCRIPTS = ['<script src="js/offline-gate.js">', '<script src="js/rank-gate.js">',
                '<script type="module" src="js/tabs.js">', '<script type="module" src="js/reader.js">',
+               '<script type="module" src="js/story-actions.js">',
                '<script src="js/sw-register.js" defer>', '<script src="js/offline.js">']
 
 

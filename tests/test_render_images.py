@@ -221,8 +221,9 @@ def test_hostile_image_url_is_an_escaped_attribute_value():
     assert re.findall(r"<script\b[^>]*>", page) == [
         '<script src="js/offline-gate.js">', '<script src="js/rank-gate.js">',
         '<script type="module" src="js/tabs.js">', '<script type="module" src="js/reader.js">',
+        '<script type="module" src="js/story-actions.js">',
         '<script src="js/sw-register.js" defer>', '<script src="js/offline.js">',
-    ]  # S11/S18 gates, S27 tabs, S25 reader, S18 offline+sw
+    ]  # S11/S18 gates, S27 tabs, S25 reader, S24 story-actions, S18 offline+sw
 
 
 def test_credit_is_text_under_the_hero_only():
