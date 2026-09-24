@@ -64,12 +64,17 @@ from fetcher.fetch import (
     FeedError,
     _assert_ledger_invariant,
     _clean,
+    _item_date_raw,
+    _item_dek_raw,
+    _item_link_raw,
+    _item_title_raw,
     _plain,
     _published_at,
     _text,
     _utc,
     dumps,
     fetch_feed,
+    iter_feed_items,
     parse_xml,
 )
 
@@ -194,9 +199,15 @@ def fetch_all(sources, fetch_fn=None, timeout=DEFAULT_TIMEOUT, retries=DEFAULT_R
 
 
 def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=None, topics_doc=None,
-                      image_rejected=None, is_google_news=False):
-    """Build one article dict from an <item>, or return None (the drop reason is
-    already counted). Mirrors fetcher.fetch.build_pool's per-item rules exactly.
+                      image_rejected=None, is_google_news=False, kind="rss"):
+    """Build one article dict from an item/entry element, or return None (the drop
+    reason is already counted). Mirrors fetcher.fetch.build_pool's per-item rules
+    exactly.
+
+    F7: kind is "rss", "atom" or "rdf" (fetcher.fetch.iter_feed_items), and every
+    field read below goes through that module's format-aware getters, so an Atom
+    entry or an RDF item is extracted with the same rules RSS 2.0 always used, just
+    reading the field that format actually carries.
 
     S08: when topics_doc is given, every returned article also carries a deterministic
     "topics" tag list, computed from source_bucket plus the article's own title and dek.
@@ -213,23 +224,27 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
     otherwise Google's redirect link is published unchanged (still a valid, working
     link for the reader).
     """
-    raw_title = _clean(_text(item, "title"))
+    raw_title = _clean(_item_title_raw(item, kind))
     title = _plain(raw_title)
     if title != raw_title:
         leniency["title_markup"] += 1
     if not title:
         drops["no_title"] += 1
         return None
-    url = _text(item, "link").strip()
+    url = _item_link_raw(item, kind).strip()
     if is_google_news:
         url = _google_news_real_url(item) or url
     if not url.startswith(("http://", "https://")):
-        guid = item.find("guid")
-        guid_url = _text(item, "guid").strip()
-        permalink = guid is None or guid.get("isPermaLink", "true") != "false"
-        if permalink and guid_url.startswith(("http://", "https://")):
-            url = guid_url
-            leniency["link_from_guid"] += 1
+        if kind == "rss":
+            guid = item.find("guid")
+            guid_url = _text(item, "guid").strip()
+            permalink = guid is None or guid.get("isPermaLink", "true") != "false"
+            if permalink and guid_url.startswith(("http://", "https://")):
+                url = guid_url
+                leniency["link_from_guid"] += 1
+            else:
+                drops["bad_url"] += 1
+                return None
         else:
             drops["bad_url"] += 1
             return None
@@ -239,7 +254,7 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
     if url in seen_urls:
         drops["duplicate_url"] += 1
         return None
-    published = _published_at(_text(item, "pubDate"), leniency)
+    published = _published_at(_item_date_raw(item, kind), leniency)
     if published is None:
         drops["no_date"] += 1
         return None
@@ -250,7 +265,7 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
         "title": title[:TITLE_MAX],
         "published_at": published,
     }
-    dek = _plain(_text(item, "description"))[:DEK_MAX]
+    dek = _plain(_item_dek_raw(item, kind))[:DEK_MAX]
     if dek:
         article["dek"] = dek
     if topics_doc is not None:
@@ -312,7 +327,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             feed_states["parse_error"] += 1
             run_states[sid] = ("parse_error", 0, None)
             continue
-        items = list(root.iter("item"))
+        items, kind = iter_feed_items(root)
         if not items:
             feed_states["empty"] += 1
             run_states[sid] = ("empty", 0, None)
@@ -326,14 +341,15 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             article = _extract_article(item, sid, frozenset(), leniency, drops,
                                         source_bucket=source.get("bucket"), topics_doc=topics_doc,
                                         image_rejected=image_rejected,
-                                        is_google_news=_route_for(source) == "google_news")
+                                        is_google_news=_route_for(source) == "google_news",
+                                        kind=kind)
             if article is not None:
                 kept.append(article)
                 # S22: only ever look at the feed's own item, and only for a source
                 # already claiming full_text_ok, so a body can never come from
                 # anywhere but the feed content of a source meant to have one.
                 if source.get("full_text_ok"):
-                    body_candidates[article["id"]] = extract_body_html(item)
+                    body_candidates[article["id"]] = extract_body_html(item, kind=kind)
         item_time = max((a["published_at"] for a in kept), default=None)
         run_states[sid] = ("ok", len(items), item_time)
 

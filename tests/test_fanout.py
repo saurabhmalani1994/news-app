@@ -178,6 +178,48 @@ def test_load_sources_rejects_missing_field(tmp_path):
         load_sources(bad)
 
 
+ATOM_SOURCE = (
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+    '<feed xmlns="http://www.w3.org/2005/Atom"><title>Atom Source</title>'
+    "<entry><id>tag:atom.example,2026:1</id><title>Atom item one</title>"
+    "<summary>An Atom entry summary.</summary>"
+    '<link rel="alternate" href="https://atom.example/one"/>'
+    "<published>2026-09-23T10:00:00Z</published></entry></feed>"
+).encode("utf-8")
+
+RDF_SOURCE = (
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+    '<rdf:RDF xmlns="http://purl.org/rss/1.0/" '
+    'xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" '
+    'xmlns:dc="http://purl.org/dc/elements/1.1/">'
+    '<channel rdf:about="https://rdf.example/"><title>RDF Source</title></channel>'
+    '<item rdf:about="https://rdf.example/one"><title>RDF item one</title>'
+    "<link>https://rdf.example/one</link>"
+    "<description>An RDF item description.</description>"
+    "<dc:date>2026-09-22T09:00:00Z</dc:date></item></rdf:RDF>"
+).encode("utf-8")
+
+
+def test_fanout_publishes_atom_and_rdf_sources_end_to_end():
+    # F7: fanout's own item loop (not just fetcher.fetch's single-feed one) must
+    # dispatch on feed_kind too, tag topics, and validate against the pool schema.
+    sources = [
+        _src("atom_src", "Atom Source", "https://atom.example/feed", bucket="biotech"),
+        _src("rdf_src", "RDF Source", "https://rdf.example/feed", bucket="climate_food"),
+    ]
+    results = {"atom_src": (ATOM_SOURCE, None), "rdf_src": (RDF_SOURCE, None)}
+    pool = build_pool_fanout(sources, results, NOW)
+    by_source = {a["source_id"]: a for a in pool["articles"]}
+    assert by_source["atom_src"]["title"] == "Atom item one"
+    assert by_source["atom_src"]["url"] == "https://atom.example/one"
+    assert by_source["atom_src"]["dek"] == "An Atom entry summary."
+    assert "topics" in by_source["atom_src"]
+    assert by_source["rdf_src"]["title"] == "RDF item one"
+    assert by_source["rdf_src"]["url"] == "https://rdf.example/one"
+    assert pool["counts"]["feed_states"]["ok"] == 2
+    assert validate(pool) == []
+
+
 def test_main_writes_valid_pool_offline(tmp_path, monkeypatch):
     import fetcher.fanout as fanout
 

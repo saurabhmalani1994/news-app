@@ -108,6 +108,10 @@ def _from_media_thumbnail(item, rejected):
     return candidates
 
 
+def _local(tag):
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
 def _from_enclosure(item, rejected):
     candidates = []
     for el in item.findall("enclosure"):
@@ -115,6 +119,18 @@ def _from_enclosure(item, rejected):
         if not mime.startswith("image/"):
             continue
         url = (el.get("url") or "").strip()
+        if not _validate(url, None, None, rejected):
+            continue
+        candidates.append({"url": url, "width": None, "height": None, "credit": ""})
+    # F7: Atom has no <enclosure> tag; the same relationship is a <link rel="enclosure">
+    # with an href instead of a url attribute (Atom spec section 4.2.7.2).
+    for el in item:
+        if _local(el.tag) != "link" or (el.get("rel") or "").strip().lower() != "enclosure":
+            continue
+        mime = (el.get("type") or "").strip().lower()
+        if not mime.startswith("image/"):
+            continue
+        url = (el.get("href") or "").strip()
         if not _validate(url, None, None, rejected):
             continue
         candidates.append({"url": url, "width": None, "height": None, "credit": ""})
@@ -149,15 +165,31 @@ def _first_img_src(html_text, rejected):
 def _from_content_img(item, rejected):
     # "the first <img src> inside the item's own description or content:encoded":
     # description is checked first since it is the field that comes first in the
-    # item; content:encoded, the fuller body, is the fallback.
+    # item; content:encoded, the fuller body, is the fallback. F7: an RDF item's
+    # description is namespaced and an Atom entry has neither tag, only <content>,
+    # so both are looked up by local name and <content> is tried last.
     description_el = item.find("description")
+    if description_el is None:
+        for child in item:
+            if _local(child.tag) == "description":
+                description_el = child
+                break
     description = "".join(description_el.itertext()) if description_el is not None else ""
     found = _first_img_src(description, rejected)
     if found:
         return found
     encoded_el = item.find(f"{{{CONTENT_NS}}}encoded")
     encoded = "".join(encoded_el.itertext()) if encoded_el is not None else ""
-    return _first_img_src(encoded, rejected)
+    found = _first_img_src(encoded, rejected)
+    if found:
+        return found
+    content_el = None
+    for child in item:
+        if _local(child.tag) == "content":
+            content_el = child
+            break
+    content = "".join(content_el.itertext()) if content_el is not None else ""
+    return _first_img_src(content, rejected)
 
 
 def _finalize(candidate):
