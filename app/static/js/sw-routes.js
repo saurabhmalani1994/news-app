@@ -10,7 +10,7 @@ export const STRATEGY = Object.freeze({
   PAGE: "page", // H1: a navigation to one of this app's pages: network-first, cached copy offline
   SHELL: "shell", // precached app shell: CSS, JS, fonts, manifest, icons (and pages, as data)
   POOL: "pool", // pool.json: network-first, cached copy as the offline fallback
-  IMAGE: "image", // article photos: cache-first, size-capped, expiring
+  IMAGE: "image", // this app's own images: cache-first, size-capped, expiring
   BYPASS: "bypass", // not intercepted: bodies/*, and anything else off this app's CSP
 });
 
@@ -24,7 +24,11 @@ export function strategyFor(request, origin) {
   if (sameOrigin && /(?:^|\/)bodies\//.test(url.pathname)) return STRATEGY.BYPASS;
   if (sameOrigin && /(?:^|\/)pool\.json$/.test(url.pathname)) return STRATEGY.POOL;
   if (sameOrigin && request.mode === "navigate") return STRATEGY.PAGE;
-  if (request.destination === "image") return STRATEGY.IMAGE;
+  // H2: article photos (cross-origin) are never intercepted. The worker runs under the
+  // site's own CSP, whose connect-src is 'self', so its fetch() of another origin's photo
+  // was refused and every photo on a page the worker controlled failed to load. The page
+  // loads them itself, under img-src https:, and the CSP stays as strict as it is.
+  if (request.destination === "image") return sameOrigin ? STRATEGY.IMAGE : STRATEGY.BYPASS;
   if (sameOrigin) return STRATEGY.SHELL;
   return STRATEGY.BYPASS; // no other cross-origin request is expected under this app's CSP
 }

@@ -39,8 +39,11 @@ test("bodies/* is never intercepted: S25's reader owns it in IndexedDB", () => {
   assert.equal(strategyFor(req(ORIGIN + "/bodies/nested/a1.json"), ORIGIN), STRATEGY.BYPASS);
 });
 
-test("an <img> request is the image strategy whether same-origin or cross-origin", () => {
-  assert.equal(strategyFor(req("https://img.example/a.jpg", "image"), ORIGIN), STRATEGY.IMAGE);
+// H2: this test used to require IMAGE for a cross-origin photo too. That was wrong: the
+// worker's fetch() of another origin is refused by the site's CSP (connect-src 'self'),
+// so every photo under the worker failed. Cross-origin photos are bypassed now.
+test("an <img> request is the image strategy same-origin, and bypassed cross-origin", () => {
+  assert.equal(strategyFor(req("https://img.example/a.jpg", "image"), ORIGIN), STRATEGY.BYPASS);
   assert.equal(strategyFor(req(ORIGIN + "/icons/icon-192.png", "image"), ORIGIN), STRATEGY.IMAGE);
 });
 
