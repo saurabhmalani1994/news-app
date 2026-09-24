@@ -62,6 +62,9 @@ def validate_source_taxonomy(source):
     ownership = source.get("ownership")
     if ownership is not None and ownership not in OWNERSHIP_LABELS:
         errors.append(f"source {sid!r}: ownership {ownership!r} not in {OWNERSHIP_LABELS}")
+    full_text_ok = source.get("full_text_ok")
+    if full_text_ok is not None and not isinstance(full_text_ok, bool):
+        errors.append(f"source {sid!r}: full_text_ok must be true or false, got {full_text_ok!r}")
     return errors
 
 

@@ -41,6 +41,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from contract.validate import validate
+from fetcher.bodies import collect_bodies, extract_body_html, write_bodies
 from fetcher.cluster import cluster_items, method_for
 from fetcher.images import extract_image, filter_placeholder_logos, tally_found
 from fetcher.taxonomy import validate_sources_taxonomy
@@ -195,7 +196,7 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
 
 def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP,
                       cluster_extra_cap=CLUSTER_EXTRA_CAP, timings=None, topics_doc=None,
-                      previous_health=None, previous_pool_status="absent"):
+                      previous_health=None, previous_pool_status="absent", bodies_out=None):
     """Turn fetch results for every source into one pool dict. Pure: no network, no clock.
 
     timings, if a dict is passed, receives the clustering wall time in seconds.
@@ -205,6 +206,11 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     S06: previous_health is the source_health block read back from the previously
     published pool (fetcher.health.fetch_previous_health), or None/{} when there was
     none to read; previous_pool_status records why, straight into the ledger.
+
+    S22: bodies_out, if a dict is passed, receives {"bodies": {article_id: body_dict}}
+    for the run's full_text_ok articles, so main() can write bodies/<id>.json without
+    this function doing any filesystem I/O itself. Every published article that got a
+    body also gets has_body=True set on its own dict here.
     """
     if topics_doc is None:
         topics_doc = load_topics()
@@ -214,6 +220,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     image_rejected = Counter()
     per_source = {}
     run_states = {}
+    body_candidates = {}
     fetched_total = 0
 
     for source in sources:
@@ -245,6 +252,11 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                                         image_rejected=image_rejected)
             if article is not None:
                 kept.append(article)
+                # S22: only ever look at the feed's own item, and only for a source
+                # already claiming full_text_ok, so a body can never come from
+                # anywhere but the feed content of a source meant to have one.
+                if source.get("full_text_ok"):
+                    body_candidates[article["id"]] = extract_body_html(item)
         item_time = max((a["published_at"] for a in kept), default=None)
         run_states[sid] = ("ok", len(items), item_time)
 
@@ -290,6 +302,16 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     filter_placeholder_logos(articles, image_rejected)
     image_found = tally_found(articles)
 
+    # S22: bodies are computed from the final published article list (post-cap,
+    # post-dedup), so only articles that actually made the pool ever get a file
+    # (R12: old bodies need not be kept, only current pool articles need files).
+    bodies, body_counts = collect_bodies(sources, articles, body_candidates)
+    for article in articles:
+        if article["id"] in bodies:
+            article["has_body"] = True
+    if bodies_out is not None:
+        bodies_out["bodies"] = bodies
+
     source_lean = {s["id"]: s["lean"] for s in sources if s.get("lean")}
     source_syndication = {s["id"]: s.get("syndication_group") or s["id"] for s in sources}
     clusters = _published_clusters(all_clusters, {a["id"] for a in articles}, by_id,
@@ -309,6 +331,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             "found": dict(sorted(image_found.items())),
             "rejected": dict(sorted(image_rejected.items())),
         },
+        "bodies": body_counts,
     }
     _assert_ledger_invariant(counts)
     return {
@@ -382,9 +405,11 @@ def main(argv=None):
     fetch_results = fetch_all(sources, timeout=args.timeout, retries=args.retries)
     previous_health, previous_pool_status = fetch_previous_health(args.previous_pool_url)
     timings = {}
+    bodies_out = {}
     pool = build_pool_fanout(
         sources, fetch_results, datetime.now(timezone.utc), per_source_cap=args.per_source_cap,
         timings=timings, previous_health=previous_health, previous_pool_status=previous_pool_status,
+        bodies_out=bodies_out,
     )
     errors = validate(pool)
     if errors:
@@ -394,6 +419,7 @@ def main(argv=None):
     out.parent.mkdir(parents=True, exist_ok=True)
     body = dumps(pool).encode("utf-8")
     out.write_bytes(body)
+    write_bodies(bodies_out.get("bodies", {}), out.parent / "bodies")
     c = pool["counts"]
     lean_counts = Counter(s["lean"] for s in sources if s.get("lean"))
     syn_groups = {s.get("syndication_group") or s["id"] for s in sources}
@@ -442,6 +468,14 @@ def main(argv=None):
         f"with_image={with_image}/{c['published']} hero_worthy_600px={hero_worthy} "
         f"share_by_bucket={json.dumps(share_by_bucket)} "
         f"sources_no_images={len(sources_no_images)}/{len(sources)} {json.dumps(sources_no_images)}"
+    )
+    full_text_sources = sorted(s["id"] for s in sources if s.get("full_text_ok"))
+    with_body = sum(1 for a in pool["articles"] if a.get("has_body"))
+    print(
+        f"full_text_ok_sources={len(full_text_sources)}/{len(sources)} {json.dumps(full_text_sources)} "
+        f"bodies_written={c['bodies']['written']} bodies_skipped_teaser={c['bodies']['skipped_teaser']} "
+        f"bodies_skipped_cap={c['bodies']['skipped_cap']} bodies_bytes={c['bodies']['bytes']} "
+        f"has_body_articles={with_body}/{c['published']}"
     )
     return 0
 

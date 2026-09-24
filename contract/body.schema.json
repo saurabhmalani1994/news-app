@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://almanac.local/contract/body.schema.json",
+  "title": "Almanac article body",
+  "description": "S22: one file per full_text_ok article, bodies/<article_id>.json (R12, DESIGN-v1.1 section 3). body_html is exactly what the feed's own item gave, content:encoded when the feed carries one and it clears the full-text length test, otherwise description; never a fetched article page. Raw HTML is fine here, S37's sanitizer runs at render time, not at write time. Closed shape: an unknown field is a contract change, not a silent addition.",
+  "type": "object",
+  "required": ["schema_version", "article_id", "source_id", "source_name", "url", "body_html"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "article_id": {
+      "description": "Matches the article's id in pool.json, and the filename this record is written as.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "source_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"},
+    "source_name": {
+      "description": "Source attribution, shown next to the body by the reader (S25).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "url": {
+      "description": "The canonical link out to the source's own article.",
+      "type": "string",
+      "pattern": "^https?://[^\\s]+$",
+      "maxLength": 2048
+    },
+    "body_html": {
+      "description": "Raw HTML (or plain text) exactly as the feed gave it. Untrusted until S37 sanitizes it at render time.",
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

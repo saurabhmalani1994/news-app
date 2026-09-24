@@ -8,7 +8,8 @@
       "bucket": "general",
       "lean": "center-left",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET rates NPR Center-Left; US public broadcaster.",
-      "syndication_group": "npr"
+      "syndication_group": "npr",
+      "full_text_ok": false
     },
     {
       "id": "bbc_world",
@@ -17,7 +18,8 @@
       "bucket": "general",
       "lean": "center",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET rates BBC World Center.",
-      "syndication_group": "bbc_world"
+      "syndication_group": "bbc_world",
+      "full_text_ok": false
     },
     {
       "id": "al_jazeera",
@@ -27,7 +29,8 @@
       "lean": "state",
       "lean_basis": "research/feeds-interests.md: Qatari state-funded, pro-Palestinian editorial lean on Israel/Gaza coverage.",
       "ownership": "state-funded",
-      "syndication_group": "al_jazeera"
+      "syndication_group": "al_jazeera",
+      "full_text_ok": false
     },
     {
       "id": "guardian_world",
@@ -36,7 +39,8 @@
       "bucket": "general",
       "lean": "left",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET and feeds-interests.md (Guardian US entry) both rate the Guardian Left / left-leaning; UK-owned.",
-      "syndication_group": "guardian"
+      "syndication_group": "guardian",
+      "full_text_ok": false
     },
     {
       "id": "axios",
@@ -45,7 +49,8 @@
       "bucket": "general",
       "lean": "center",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET rates Axios Center.",
-      "syndication_group": "axios"
+      "syndication_group": "axios",
+      "full_text_ok": true
     },
     {
       "id": "ars_technica",
@@ -54,7 +59,8 @@
       "bucket": "general",
       "lean": "center",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET rates Ars Technica Center; tech trade press, not political.",
-      "syndication_group": "ars_technica"
+      "syndication_group": "ars_technica",
+      "full_text_ok": true
     },
     {
       "id": "economist_finance",
@@ -63,7 +69,8 @@
       "bucket": "general",
       "lean": "center",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET: Center (globalist/economically right-of-center).",
-      "syndication_group": "economist"
+      "syndication_group": "economist",
+      "full_text_ok": false
     },
     {
       "id": "wsj_world",
@@ -72,7 +79,8 @@
       "bucket": "general",
       "lean": "center-right",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET rates WSJ news (not opinion) Center-Right; feeds-verified.md confirms the feed is WSJ content via Dow Jones RSS.",
-      "syndication_group": "wsj"
+      "syndication_group": "wsj",
+      "full_text_ok": false
     },
     {
       "id": "pbs_newshour",
@@ -81,7 +89,8 @@
       "bucket": "general",
       "lean": "center",
       "lean_basis": "Public-broadcaster consensus lean Center; R11 and research/feeds-asia.md: 17 of 20 sampled headline items carry Associated Press attribution in the body, so this feed stands in for AP wire copy.",
-      "syndication_group": "ap_wire"
+      "syndication_group": "ap_wire",
+      "full_text_ok": false
     },
     {
       "id": "politico",
@@ -90,7 +99,8 @@
       "bucket": "us_politics",
       "lean": "center-left",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET: Center-Left (DC establishment).",
-      "syndication_group": "politico"
+      "syndication_group": "politico",
+      "full_text_ok": true
     },
     {
       "id": "fox_politics",
@@ -99,7 +109,8 @@
       "bucket": "us_politics",
       "lean": "right",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET rates Fox News Right.",
-      "syndication_group": "fox_politics"
+      "syndication_group": "fox_politics",
+      "full_text_ok": true
     },
     {
       "id": "wapo_politics",
@@ -108,7 +119,8 @@
       "bucket": "us_politics",
       "lean": "center-left",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET: Lean Left.",
-      "syndication_group": "wapo"
+      "syndication_group": "wapo",
+      "full_text_ok": false
     },
     {
       "id": "the_hill",
@@ -117,7 +129,8 @@
       "bucket": "us_politics",
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: Center/institutional Beltway.",
-      "syndication_group": "the_hill"
+      "syndication_group": "the_hill",
+      "full_text_ok": false
     },
     {
       "id": "national_review",
@@ -126,7 +139,8 @@
       "bucket": "us_politics",
       "lean": "right",
       "lean_basis": "research/feeds-interests.md: Conservative/movement right.",
-      "syndication_group": "national_review"
+      "syndication_group": "national_review",
+      "full_text_ok": false
     },
     {
       "id": "reason",
@@ -135,7 +149,8 @@
       "bucket": "us_politics",
       "lean": "right",
       "lean_basis": "research/feeds-interests.md: Libertarian right (distinct pole from movement conservatism, still right of center).",
-      "syndication_group": "reason"
+      "syndication_group": "reason",
+      "full_text_ok": true
     },
     {
       "id": "mother_jones",
@@ -144,7 +159,8 @@
       "bucket": "us_politics",
       "lean": "left",
       "lean_basis": "research/feeds-interests.md: Progressive/investigative left.",
-      "syndication_group": "mother_jones"
+      "syndication_group": "mother_jones",
+      "full_text_ok": true
     },
     {
       "id": "guardian_us",
@@ -153,7 +169,8 @@
       "bucket": "us_politics",
       "lean": "left",
       "lean_basis": "research/feeds-interests.md: UK-owned, left-leaning.",
-      "syndication_group": "guardian"
+      "syndication_group": "guardian",
+      "full_text_ok": false
     },
     {
       "id": "washington_examiner",
@@ -162,7 +179,8 @@
       "bucket": "us_politics",
       "lean": "right",
       "lean_basis": "research/feeds-interests.md: Conservative/populist right.",
-      "syndication_group": "washington_examiner"
+      "syndication_group": "washington_examiner",
+      "full_text_ok": true
     },
     {
       "id": "the_dispatch",
@@ -171,7 +189,8 @@
       "bucket": "us_politics",
       "lean": "center-right",
       "lean_basis": "research/feeds-interests.md: Center-right, anti-Trump conservative.",
-      "syndication_group": "the_dispatch"
+      "syndication_group": "the_dispatch",
+      "full_text_ok": false
     },
     {
       "id": "straits_times_sg",
@@ -180,7 +199,8 @@
       "bucket": "singapore",
       "lean": "non-us",
       "lean_basis": "research/feeds-interests.md: Establishment, SPH Media; Singapore's dominant establishment press, does not map to a US left-right axis.",
-      "syndication_group": "straits_times_sph"
+      "syndication_group": "straits_times_sph",
+      "full_text_ok": false
     },
     {
       "id": "cna_singapore",
@@ -190,7 +210,8 @@
       "lean": "state",
       "lean_basis": "research/feeds-interests.md labels CNA 'State-linked, Mediacorp'; research/feeds-asia.md: Mediacorp is wholly owned by Temasek, Singapore's state investment arm.",
       "ownership": "state-owned",
-      "syndication_group": "cna_mediacorp"
+      "syndication_group": "cna_mediacorp",
+      "full_text_ok": false
     },
     {
       "id": "business_times_sg",
@@ -199,7 +220,8 @@
       "bucket": "singapore",
       "lean": "non-us",
       "lean_basis": "research/feeds-interests.md: Business/finance, SPH Media; establishment financial trade press, not mapped to a US-style axis.",
-      "syndication_group": "straits_times_sph"
+      "syndication_group": "straits_times_sph",
+      "full_text_ok": false
     },
     {
       "id": "mothership",
@@ -208,7 +230,8 @@
       "bucket": "singapore",
       "lean": "non-us",
       "lean_basis": "research/feeds-interests.md: Independent, youth-oriented; no US-style partisan lean documented.",
-      "syndication_group": "mothership"
+      "syndication_group": "mothership",
+      "full_text_ok": false
     },
     {
       "id": "independent_sg",
@@ -217,7 +240,8 @@
       "bucket": "singapore",
       "lean": "non-us",
       "lean_basis": "research/feeds-interests.md: Independent/tabloid, gov-critical; Singapore's establishment-vs-critical axis does not map onto the US left-right scale.",
-      "syndication_group": "independent_sg"
+      "syndication_group": "independent_sg",
+      "full_text_ok": false
     },
     {
       "id": "times_of_israel",
@@ -226,7 +250,8 @@
       "bucket": "israel_gaza",
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: Israeli mainstream, centrist.",
-      "syndication_group": "times_of_israel"
+      "syndication_group": "times_of_israel",
+      "full_text_ok": false
     },
     {
       "id": "haaretz",
@@ -235,7 +260,8 @@
       "bucket": "israel_gaza",
       "lean": "left",
       "lean_basis": "research/feeds-interests.md: Israeli left, government/occupation-critical.",
-      "syndication_group": "haaretz"
+      "syndication_group": "haaretz",
+      "full_text_ok": false
     },
     {
       "id": "jerusalem_post",
@@ -244,7 +270,8 @@
       "bucket": "israel_gaza",
       "lean": "center-right",
       "lean_basis": "research/feeds-interests.md: Israeli mainstream, right-of-center.",
-      "syndication_group": "jerusalem_post"
+      "syndication_group": "jerusalem_post",
+      "full_text_ok": false
     },
     {
       "id": "middle_east_eye",
@@ -253,7 +280,8 @@
       "bucket": "israel_gaza",
       "lean": "left",
       "lean_basis": "research/feeds-interests.md: UK-based, pro-Palestinian editorial line; grouped with Haaretz's occupation-critical stance for lean-diversity purposes on Israel/Gaza coverage.",
-      "syndication_group": "middle_east_eye"
+      "syndication_group": "middle_east_eye",
+      "full_text_ok": true
     },
     {
       "id": "arab_news",
@@ -263,7 +291,8 @@
       "lean": "state",
       "lean_basis": "research/feeds-interests.md: Saudi state-owned, Gulf/pan-Arab perspective.",
       "ownership": "state-owned",
-      "syndication_group": "arab_news"
+      "syndication_group": "arab_news",
+      "full_text_ok": false
     },
     {
       "id": "radio_dabanga",
@@ -272,7 +301,8 @@
       "bucket": "sudan",
       "lean": "non-us",
       "lean_basis": "research/feeds-interests.md: Sudanese-Dutch NGO radio, Darfur-focused, anti-regime advocacy voice; does not map to a US left-right axis.",
-      "syndication_group": "radio_dabanga"
+      "syndication_group": "radio_dabanga",
+      "full_text_ok": true
     },
     {
       "id": "reliefweb_sudan",
@@ -281,7 +311,8 @@
       "bucket": "sudan",
       "lean": "non-us",
       "lean_basis": "research/feeds-interests.md: UN OCHA aggregator of NGO/UN reports, not an editorially aligned news outlet.",
-      "syndication_group": "reliefweb"
+      "syndication_group": "reliefweb",
+      "full_text_ok": true
     },
     {
       "id": "allafrica_sudan",
@@ -290,7 +321,8 @@
       "bucket": "sudan",
       "lean": "non-us",
       "lean_basis": "research/feeds-interests.md: Pan-African wire aggregator, not a single editorially aligned outlet.",
-      "syndication_group": "allafrica"
+      "syndication_group": "allafrica",
+      "full_text_ok": false
     },
     {
       "id": "techcrunch_ai",
@@ -299,7 +331,8 @@
       "bucket": "ai",
       "lean": "center",
       "lean_basis": "research/feeds-interests.md labels this trade press with no political-lean rating; treated as center for a non-political vertical.",
-      "syndication_group": "techcrunch"
+      "syndication_group": "techcrunch",
+      "full_text_ok": false
     },
     {
       "id": "mit_tech_review_ai",
@@ -308,7 +341,8 @@
       "bucket": "ai",
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: research-adjacent trade press, no political-lean rating documented.",
-      "syndication_group": "mit_tech_review"
+      "syndication_group": "mit_tech_review",
+      "full_text_ok": true
     },
     {
       "id": "huggingface_blog",
@@ -317,7 +351,8 @@
       "bucket": "ai",
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: company/community blog, no political-lean rating documented.",
-      "syndication_group": "huggingface"
+      "syndication_group": "huggingface",
+      "full_text_ok": false
     },
     {
       "id": "arxiv_cs_ai",
@@ -326,7 +361,8 @@
       "bucket": "ai",
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: raw academic preprints, no political-lean rating documented.",
-      "syndication_group": "arxiv"
+      "syndication_group": "arxiv",
+      "full_text_ok": false
     },
     {
       "id": "import_ai",
@@ -335,7 +371,8 @@
       "bucket": "ai",
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: independent practitioner newsletter, no political-lean rating documented.",
-      "syndication_group": "import_ai"
+      "syndication_group": "import_ai",
+      "full_text_ok": true
     },
     {
       "id": "labiotech",
@@ -344,7 +381,8 @@
       "bucket": "biotech",
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: European biotech/synbio trade press, no political-lean rating documented.",
-      "syndication_group": "labiotech"
+      "syndication_group": "labiotech",
+      "full_text_ok": false
     },
     {
       "id": "gen_news",
@@ -353,7 +391,8 @@
       "bucket": "biotech",
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: broad biotech trade press, no political-lean rating documented.",
-      "syndication_group": "gen_news"
+      "syndication_group": "gen_news",
+      "full_text_ok": true
     },
     {
       "id": "agfundernews",
@@ -362,7 +401,8 @@
       "bucket": "biotech",
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: ag-bio trade press, no political-lean rating documented.",
-      "syndication_group": "agfundernews"
+      "syndication_group": "agfundernews",
+      "full_text_ok": true
     },
     {
       "id": "bioprocess_intl",
@@ -371,7 +411,8 @@
       "bucket": "biotech",
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: bioprocessing trade press, no political-lean rating documented.",
-      "syndication_group": "bioprocess_intl"
+      "syndication_group": "bioprocess_intl",
+      "full_text_ok": false
     },
     {
       "id": "fierce_biotech",
@@ -380,7 +421,8 @@
       "bucket": "biotech",
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: pharma/clinical trade press, no political-lean rating documented.",
-      "syndication_group": "fierce_biotech"
+      "syndication_group": "fierce_biotech",
+      "full_text_ok": false
     },
     {
       "id": "straits_times_asia",
@@ -389,7 +431,8 @@
       "bucket": "asia",
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: SPH Media, Singapore establishment press; same publisher as the Singapore-section feed.",
-      "syndication_group": "straits_times_sph"
+      "syndication_group": "straits_times_sph",
+      "full_text_ok": false
     },
     {
       "id": "cna_asia",
@@ -399,7 +442,8 @@
       "lean": "state",
       "lean_basis": "research/feeds-asia.md: State-owned: Mediacorp is wholly owned by Temasek, Singapore's state investment arm.",
       "ownership": "state-owned",
-      "syndication_group": "cna_mediacorp"
+      "syndication_group": "cna_mediacorp",
+      "full_text_ok": false
     },
     {
       "id": "the_diplomat",
@@ -408,7 +452,8 @@
       "bucket": "asia",
       "lean": "center",
       "lean_basis": "research/feeds-asia.md: Private, US-based Asia-policy analysis magazine, no partisan lean documented.",
-      "syndication_group": "the_diplomat"
+      "syndication_group": "the_diplomat",
+      "full_text_ok": false
     },
     {
       "id": "asia_times",
@@ -417,7 +462,8 @@
       "bucket": "asia",
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private, Hong Kong-based, no partisan lean documented; treated as non-us.",
-      "syndication_group": "asia_times"
+      "syndication_group": "asia_times",
+      "full_text_ok": false
     },
     {
       "id": "japan_times",
@@ -426,7 +472,8 @@
       "bucket": "asia",
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private, mainstream Japan-domestic press, no US-style lean documented.",
-      "syndication_group": "japan_times"
+      "syndication_group": "japan_times",
+      "full_text_ok": false
     },
     {
       "id": "kyodo_news",
@@ -436,7 +483,8 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Nonprofit cooperative owned by member papers/broadcasters; Japan's quasi-official wire, editorially independent in a free-press environment.",
       "ownership": "member-owned",
-      "syndication_group": "kyodo_news"
+      "syndication_group": "kyodo_news",
+      "full_text_ok": false
     },
     {
       "id": "yonhap",
@@ -446,7 +494,8 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Statutorily designated South Korea's national news agency, receives government subsidy, editorially independent in a free-press environment.",
       "ownership": "state-subsidized",
-      "syndication_group": "yonhap"
+      "syndication_group": "yonhap",
+      "full_text_ok": false
     },
     {
       "id": "korea_herald",
@@ -455,7 +504,8 @@
       "bucket": "asia",
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private (Herald Corporation), no US-style lean documented.",
-      "syndication_group": "korea_herald"
+      "syndication_group": "korea_herald",
+      "full_text_ok": false
     },
     {
       "id": "scmp_china",
@@ -465,7 +515,8 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Owned by Alibaba Group, a mainland Chinese company, since 2016; SCMP asserts editorial independence but the PRC-linked ownership is a documented fact.",
       "ownership": "corporate-controlled",
-      "syndication_group": "scmp"
+      "syndication_group": "scmp",
+      "full_text_ok": false
     },
     {
       "id": "focus_taiwan",
@@ -475,7 +526,8 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Operated by Taiwan's government-funded Central News Agency; Taiwan ranks among Asia's freest press environments, unlike PRC state media.",
       "ownership": "state-funded",
-      "syndication_group": "focus_taiwan"
+      "syndication_group": "focus_taiwan",
+      "full_text_ok": false
     },
     {
       "id": "hong_kong_free_press",
@@ -484,7 +536,8 @@
       "bucket": "asia",
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Independent nonprofit, crowdfunded, pro-press-freedom editorial stance; operates under Hong Kong's 2020 National Security Law.",
-      "syndication_group": "hong_kong_free_press"
+      "syndication_group": "hong_kong_free_press",
+      "full_text_ok": false
     },
     {
       "id": "the_hindu",
@@ -493,7 +546,8 @@
       "bucket": "asia",
       "lean": "center-left",
       "lean_basis": "research/feeds-asia.md: Private (Kasturi & Sons), center-left.",
-      "syndication_group": "the_hindu"
+      "syndication_group": "the_hindu",
+      "full_text_ok": false
     },
     {
       "id": "indian_express",
@@ -502,7 +556,8 @@
       "bucket": "asia",
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private, independent, investigative reputation; no US-style lean documented.",
-      "syndication_group": "indian_express"
+      "syndication_group": "indian_express",
+      "full_text_ok": false
     },
     {
       "id": "livemint",
@@ -511,7 +566,8 @@
       "bucket": "asia",
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private (HT Media), business focus, no US-style lean documented.",
-      "syndication_group": "livemint"
+      "syndication_group": "livemint",
+      "full_text_ok": false
     },
     {
       "id": "economic_times",
@@ -520,7 +576,8 @@
       "bucket": "asia",
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private (Times Group), business focus, no US-style lean documented.",
-      "syndication_group": "economic_times"
+      "syndication_group": "economic_times",
+      "full_text_ok": false
     },
     {
       "id": "bangkok_post",
@@ -529,7 +586,8 @@
       "bucket": "asia",
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private; operates under Thailand's lese-majeste law (Section 112) and Computer Crime Act, which constrain coverage of the monarchy and government.",
-      "syndication_group": "bangkok_post"
+      "syndication_group": "bangkok_post",
+      "full_text_ok": false
     },
     {
       "id": "malay_mail",
@@ -538,7 +596,8 @@
       "bucket": "asia",
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private; Malaysian outlets require annual licenses under the Printing Presses and Publications Act.",
-      "syndication_group": "malay_mail"
+      "syndication_group": "malay_mail",
+      "full_text_ok": false
     },
     {
       "id": "rappler",
@@ -547,7 +606,8 @@
       "bucket": "asia",
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Independent; faced government legal action (tax charges, license-revocation attempt) under the Duterte administration.",
-      "syndication_group": "rappler"
+      "syndication_group": "rappler",
+      "full_text_ok": false
     },
     {
       "id": "vnexpress",
@@ -557,7 +617,8 @@
       "lean": "state",
       "lean_basis": "research/feeds-asia.md: Operates under Vietnam's state media-licensing system (Ministry of Information and Communications); Vietnam ranks near the bottom of global press-freedom indices.",
       "ownership": "state-owned",
-      "syndication_group": "vnexpress"
+      "syndication_group": "vnexpress",
+      "full_text_ok": false
     }
   ]
 }

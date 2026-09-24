@@ -89,7 +89,11 @@
           "minItems": 1,
           "items": {"$ref": "#/$defs/topic"}
         },
-        "image": {"$ref": "#/$defs/article_image"}
+        "image": {"$ref": "#/$defs/article_image"},
+        "has_body": {
+          "description": "S22: true only when bodies/<id>.json was written this run (R12). Optional and false-by-omission so pools from before this slice stay valid; the reader (S25) treats a missing has_body the same as false.",
+          "type": "boolean"
+        }
       }
     },
     "article_image": {
@@ -222,7 +226,7 @@
       }
     },
     "counts": {
-      "description": "Run ledger. drops maps a fixed reason key to count (S02); leniency maps each parser tolerance applied (R9) to count, keys open. feed_states is optional, added by S05 fanout runs: it maps each closed feed-level outcome to a count, and the sum equals the number of configured sources. fetched == published + sum(drops) is asserted on every run. previous_pool_status is optional, added by S06: it records whether the previous published pool (read back from the live site to carry source_health counters forward) was read ok, was absent, was unreachable, or predated this slice's schema. images is optional, added by S38: found and rejected are closed-set maps of image outcomes for the run.",
+      "description": "Run ledger. drops maps a fixed reason key to count (S02); leniency maps each parser tolerance applied (R9) to count, keys open. feed_states is optional, added by S05 fanout runs: it maps each closed feed-level outcome to a count, and the sum equals the number of configured sources. fetched == published + sum(drops) is asserted on every run. previous_pool_status is optional, added by S06: it records whether the previous published pool (read back from the live site to carry source_health counters forward) was read ok, was absent, was unreachable, or predated this slice's schema. images is optional, added by S38: found and rejected are closed-set maps of image outcomes for the run. bodies is optional, added by S22: written/skipped/bytes for this run's bodies/<id>.json output.",
       "type": "object",
       "required": ["fetched", "published", "drops", "leniency"],
       "additionalProperties": false,
@@ -233,7 +237,20 @@
         "leniency": {"$ref": "#/$defs/count_map"},
         "feed_states": {"$ref": "#/$defs/feed_states"},
         "previous_pool_status": {"type": "string", "enum": ["ok", "absent", "unreachable", "old_schema"]},
-        "images": {"$ref": "#/$defs/image_counts"}
+        "images": {"$ref": "#/$defs/image_counts"},
+        "bodies": {"$ref": "#/$defs/body_counts"}
+      }
+    },
+    "body_counts": {
+      "description": "S22: this run's bodies/<id>.json outcomes. written is how many files were written. skipped_teaser is published articles from a full_text_ok source whose feed item did not itself clear the full-text length test live (a teaser, not a body). skipped_cap is candidates that cleared the test but were skipped because MAX_TOTAL_BODY_BYTES for the run was already spent. bytes is the total size of the files actually written.",
+      "type": "object",
+      "required": ["written", "skipped_teaser", "skipped_cap", "bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "written": {"type": "integer", "minimum": 0},
+        "skipped_teaser": {"type": "integer", "minimum": 0},
+        "skipped_cap": {"type": "integer", "minimum": 0},
+        "bytes": {"type": "integer", "minimum": 0}
       }
     }
   }

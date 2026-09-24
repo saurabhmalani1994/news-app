@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 SCHEMA_PATH = Path(__file__).with_name("pool.schema.json")
+BODY_SCHEMA_PATH = Path(__file__).with_name("body.schema.json")
 
 ANNOTATIONS = {"$schema", "$id", "$defs", "$comment", "title", "description"}
 ASSERTIONS = {
@@ -26,6 +27,12 @@ class SchemaError(Exception):
 
 def load_schema():
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def load_body_schema():
+    """S22: the closed shape for bodies/<article_id>.json, a separate document
+    from the pool, validated with the same stdlib engine (R30)."""
+    return json.loads(BODY_SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
 def _type_ok(value, name):
@@ -189,11 +196,19 @@ def check_integrity(pool):
     return errors
 
 
+def check_shape(value, schema):
+    """Structural validation only (the _check walk), no pool-specific cross
+    references. S22 reuses this for bodies/<article_id>.json, which is a closed
+    shape but not a pool, so check_integrity's pool-only assumptions do not apply."""
+    errors = []
+    _check(value, schema, schema, "$", errors)
+    return errors
+
+
 def validate(pool, schema=None):
     """Return a list of error strings; empty means valid."""
     schema = schema if schema is not None else load_schema()
-    errors = []
-    _check(pool, schema, schema, "$", errors)
+    errors = check_shape(pool, schema)
     if not errors:
         errors = check_integrity(pool)
     return errors
