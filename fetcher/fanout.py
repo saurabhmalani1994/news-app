@@ -9,16 +9,19 @@ does not stop the run; the pool publishes with whatever fed successfully (R9, R1
 Within a feed that did parse, item extraction and R9 leniency reuse the same rules
 as the S01 single-feed fetcher (fetcher.fetch), just applied per source instead of
 to one hardcoded feed. Articles are capped per source so the published pool holds
-near the 400KB size target in DESIGN-v1.1 R12; anything past the cap is counted
-over_cap, the reason key S01/S02 already reserved for it.
+near the pool.json size budget (DESIGN-v1.1 R12, raised to about 600KB by F5 as the
+source count grew); anything past the cap is counted over_cap, the reason key
+S01/S02 already reserved for it.
 
 S07: clustering (fetcher.cluster) runs over every item that survives the item-level
 checks, before the cap, so a story's coverage is measured across all fetched items
 rather than the first few per feed. The cap is applied after clustering: each source
 keeps its first per_source_cap items in feed order, plus up to cluster_extra_cap more
 that belong to a multi-source cluster, so a big story is not cut off at item six.
-Worst case is (cap + extra) x sources articles, 8 x 61 = 488, which at the measured
-~620 bytes per article stays under the 400KB target. Published clusters list only
+Worst case is (cap + extra) x sources articles, 8 x 92 = 736, which at the measured
+~620 bytes per article would run close to 600KB; F5 measured an actual run (many
+sources publish fewer than the cap) at about 484KB, still comfortably under budget,
+so the cap stayed at 5/3 rather than being tightened. Published clusters list only
 published articles; a cluster left with fewer than two is not published.
 
 S06: every configured source also gets a health entry (fetcher.health), carrying

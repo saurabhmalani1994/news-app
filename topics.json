@@ -2,8 +2,8 @@
   "schema_version": 1,
   "hard_news": ["world", "politics", "economy", "science", "conflict"],
   "topics": [
-    "ai", "asia", "biotech", "conflict", "economy", "politics",
-    "science", "singapore", "us_politics", "world"
+    "ai", "asia", "biotech", "climate_tech", "conflict", "economy", "foodtech",
+    "politics", "science", "singapore", "us_politics", "world"
   ],
   "geo_topics": {
     "note": "G1: singapore and asia are never bucket tags. Each is set exactly when the article's own text gives the geo tag named here (fetcher/geo.py, geo.json), so ranking affinity, R16 and the Singapore and Asia tabs read one signal.",
@@ -42,6 +42,23 @@
     "conflict": [
       "war", "attack", "airstrike", "military", "ceasefire", "troops",
       "invasion", "bombing", "killed", "clashes", "militant", "offensive"
+    ],
+    "biotech": [
+      "synthetic biology", "biomanufacturing", "precision fermentation",
+      "bioeconomy", "biofuel", "industrial biotech", "genetic engineering",
+      "gene editing", "crispr", "bioprocessing", "biorefinery"
+    ],
+    "foodtech": [
+      "alternative protein", "plant-based", "cultivated meat", "cultured meat",
+      "precision fermentation", "foodtech", "food tech", "vertical farming",
+      "lab-grown meat", "novel food", "regenerative agriculture", "agtech",
+      "food security", "biomanufactured food"
+    ],
+    "climate_tech": [
+      "climate tech", "climate technology", "carbon capture", "decarbonization",
+      "decarbonize", "renewable energy", "clean energy", "solar power",
+      "wind power", "battery storage", "electric vehicle", "ev charging",
+      "green hydrogen", "climate finance", "net zero", "carbon removal"
     ],
     "world": [
       "united nations", "summit", "treaty", "embassy", "refugee",

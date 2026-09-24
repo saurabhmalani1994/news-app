@@ -70,7 +70,8 @@
       "lean": "center",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET: Center (globalist/economically right-of-center).",
       "syndication_group": "economist",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "paywall": true
     },
     {
       "id": "wsj_world",
@@ -80,7 +81,8 @@
       "lean": "center-right",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET rates WSJ news (not opinion) Center-Right; feeds-verified.md confirms the feed is WSJ content via Dow Jones RSS.",
       "syndication_group": "wsj",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "paywall": true
     },
     {
       "id": "pbs_newshour",
@@ -619,6 +621,330 @@
       "lean_basis": "research/feeds-asia.md: Operates under Vietnam's state media-licensing system (Ministry of Information and Communications); Vietnam ranks near the bottom of global press-freedom indices.",
       "ownership": "state-owned",
       "syndication_group": "vnexpress",
+      "full_text_ok": false
+    },
+    {
+      "id": "dawn_pk",
+      "name": "Dawn",
+      "feed_url": "https://www.dawn.com/feeds/home",
+      "bucket": "asia",
+      "lean": "non-us",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (25 items, newest same-day, description up to 7,771 chars = full text). Private (Pakistan Herald Publications), Pakistan's dominant English-language paper, no US-style lean documented.",
+      "syndication_group": "dawn_pk",
+      "full_text_ok": true
+    },
+    {
+      "id": "france24_france",
+      "name": "France 24 (France)",
+      "feed_url": "https://www.france24.com/en/france/rss",
+      "bucket": "europe",
+      "lean": "non-us",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (30 items, newest within a week, description up to 510 chars). France 24 is owned by France Medias Monde, a French state holding company, but editorially independent like BBC; no general international-desk feed was found live (only this France section), so scope is narrower than the outlet's full coverage.",
+      "ownership": "state-owned",
+      "syndication_group": "france24",
+      "full_text_ok": false
+    },
+    {
+      "id": "euronews_en",
+      "name": "Euronews",
+      "feed_url": "https://www.euronews.com/rss?level=theme&name=news",
+      "bucket": "europe",
+      "lean": "non-us",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (50 items, newest same-day, description up to 286 chars). Pan-European broadcaster, majority-owned by a private equity holder (Alpac Capital) since 2022, no US-style lean documented.",
+      "ownership": "corporate-controlled",
+      "syndication_group": "euronews",
+      "full_text_ok": false
+    },
+    {
+      "id": "le_monde_en",
+      "name": "Le Monde (English)",
+      "feed_url": "https://www.lemonde.fr/en/rss/une.xml",
+      "bucket": "europe",
+      "lean": "non-us",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (16 items, newest same-day, description up to 343 chars). Private (Le Monde Group), France's paper of record, no US-style lean documented.",
+      "syndication_group": "le_monde",
+      "full_text_ok": false
+    },
+    {
+      "id": "al_monitor",
+      "name": "Al-Monitor",
+      "feed_url": "https://www.al-monitor.com/rss.xml",
+      "bucket": "middle_east",
+      "lean": "non-us",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (20 items, newest same-day, description up to 564 chars). Private, US-based pan-Middle East analysis outlet distinct from the Israel/Gaza-conflict bucket's outlets, no US-style lean documented.",
+      "syndication_group": "al_monitor",
+      "full_text_ok": false
+    },
+    {
+      "id": "ynet_news",
+      "name": "Ynet News",
+      "feed_url": "https://www.ynetnews.com/Integration/StoryRss3082.xml",
+      "bucket": "middle_east",
+      "lean": "non-us",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (30 items, newest same-day, description up to 295 chars). Private (Yedioth Ahronoth Group), Israeli mainstream, no US-style lean documented.",
+      "syndication_group": "ynet",
+      "full_text_ok": false
+    },
+    {
+      "id": "daily_maverick",
+      "name": "Daily Maverick",
+      "feed_url": "https://www.dailymaverick.co.za/dmrss/",
+      "bucket": "africa",
+      "lean": "non-us",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (52 items, newest same-day, description up to 425 chars). Private, independent South African investigative outlet, no US-style lean documented.",
+      "syndication_group": "daily_maverick",
+      "full_text_ok": false
+    },
+    {
+      "id": "premium_times",
+      "name": "Premium Times",
+      "feed_url": "https://www.premiumtimesng.com/feed",
+      "bucket": "africa",
+      "lean": "non-us",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (15 items, newest same-day, description up to 359 chars). Private, independent Nigerian investigative outlet, no US-style lean documented.",
+      "syndication_group": "premium_times",
+      "full_text_ok": false
+    },
+    {
+      "id": "allafrica_general",
+      "name": "AllAfrica",
+      "feed_url": "https://allafrica.com/tools/headlines/rdf/latest/headlines.rdf",
+      "bucket": "africa",
+      "lean": "non-us",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (33 items, newest same-day, description up to 446 chars). Pan-African wire aggregator, same publisher as allafrica_sudan (syndication_group shared so a shared story counts once for R16 diversity), not a single editorially aligned outlet.",
+      "syndication_group": "allafrica",
+      "full_text_ok": false
+    },
+    {
+      "id": "buenos_aires_times",
+      "name": "Buenos Aires Times",
+      "feed_url": "https://www.batimes.com.ar/feed",
+      "bucket": "latin_america",
+      "lean": "non-us",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (100 items, newest same-day, description up to 338 chars). Private, Argentina's English-language paper of record, no US-style lean documented.",
+      "syndication_group": "buenos_aires_times",
+      "full_text_ok": false
+    },
+    {
+      "id": "mercopress",
+      "name": "MercoPress",
+      "feed_url": "https://en.mercopress.com/rss/",
+      "bucket": "latin_america",
+      "lean": "non-us",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest same-day, description up to 411 chars). Private, Uruguay-based South Atlantic/Mercosur regional wire, no US-style lean documented.",
+      "syndication_group": "mercopress",
+      "full_text_ok": false
+    },
+    {
+      "id": "rest_of_world",
+      "name": "Rest of World",
+      "feed_url": "https://restofworld.org/feed/",
+      "bucket": "latin_america",
+      "lean": "non-us",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (12 items, newest same-day, description up to 203 chars). US-based nonprofit newsroom covering tech outside Western markets globally, not Latin America exclusively; bucketed here per the brief's own grouping, scope is broader in practice.",
+      "syndication_group": "rest_of_world",
+      "full_text_ok": false
+    },
+    {
+      "id": "abc_australia",
+      "name": "ABC News Australia",
+      "feed_url": "https://www.abc.net.au/news/feed/51120/rss.xml",
+      "bucket": "oceania",
+      "lean": "non-us",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (25 items, newest same-day, description up to 236 chars). Australian Broadcasting Corporation, publicly funded but editorially independent like BBC, no US-style lean documented.",
+      "ownership": "state-funded",
+      "syndication_group": "abc_australia",
+      "full_text_ok": false
+    },
+    {
+      "id": "guardian_australia",
+      "name": "Guardian Australia",
+      "feed_url": "https://www.theguardian.com/australia-news/rss",
+      "bucket": "oceania",
+      "lean": "left",
+      "lean_basis": "research/sources-landscape.md and feeds-interests.md rate the Guardian group Left; same publisher/syndication as guardian_world and guardian_us.",
+      "syndication_group": "guardian",
+      "full_text_ok": false
+    },
+    {
+      "id": "ft_home",
+      "name": "Financial Times",
+      "feed_url": "https://www.ft.com/rss/home",
+      "bucket": "business",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (9 items, newest same-day, description up to 135 chars, headline+snippet only). Financial/business press, rated Center by common convention like the Economist and WSJ news desk already in sources.json.",
+      "syndication_group": "ft",
+      "full_text_ok": false,
+      "paywall": true
+    },
+    {
+      "id": "bloomberg_markets",
+      "name": "Bloomberg Markets",
+      "feed_url": "https://feeds.bloomberg.com/markets/news.rss",
+      "bucket": "business",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (20 items, newest same-day, headline-only, no description text). Business/financial wire, rated Center by common convention.",
+      "syndication_group": "bloomberg",
+      "full_text_ok": false
+    },
+    {
+      "id": "semafor",
+      "name": "Semafor",
+      "feed_url": "https://www.semafor.com/rss.xml",
+      "bucket": "business",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (253 items, newest same-day, description up to 248 chars). Global news/business outlet in the same DC-adjacent explanatory format as Axios (already sources.json center), no partisan lean documented.",
+      "syndication_group": "semafor",
+      "full_text_ok": false
+    },
+    {
+      "id": "sifted",
+      "name": "Sifted",
+      "feed_url": "https://sifted.eu/feed",
+      "bucket": "business",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (24 items, newest same-day, headline-only, no description text). European startup/VC trade press (FT-backed), no partisan lean documented, treated as center like other trade press in sources.json.",
+      "syndication_group": "sifted",
+      "full_text_ok": false
+    },
+    {
+      "id": "crunchbase_news",
+      "name": "Crunchbase News",
+      "feed_url": "https://news.crunchbase.com/feed/",
+      "bucket": "business",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest same-day, description up to 449 chars). Startup/VC funding trade press, no partisan lean documented; keyword tagging (topics.json) picks up biotech, foodtech and climate_tech items from its funding coverage.",
+      "syndication_group": "crunchbase_news",
+      "full_text_ok": false
+    },
+    {
+      "id": "science_news",
+      "name": "Science News",
+      "feed_url": "https://www.sciencenews.org/feed",
+      "bucket": "science",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (20 items, newest same-day, description up to 159 chars). Nonprofit (Society for Science) science-journalism magazine, no partisan lean documented, treated as center like other science/trade press in sources.json.",
+      "syndication_group": "science_news",
+      "full_text_ok": false
+    },
+    {
+      "id": "quanta_magazine",
+      "name": "Quanta Magazine",
+      "feed_url": "https://www.quantamagazine.org/feed/",
+      "bucket": "science",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (5 items, newest 1 day old, description up to 298 chars). Simons Foundation-funded nonprofit science journalism, no partisan lean documented.",
+      "syndication_group": "quanta",
+      "full_text_ok": false
+    },
+    {
+      "id": "nyt_world",
+      "name": "New York Times World",
+      "feed_url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+      "bucket": "general",
+      "lean": "center-left",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (58 items, newest same-day, description up to 230 chars). Common media-bias convention rates the New York Times Center-Left, same bucket as Guardian World and Washington Post already in sources.json.",
+      "syndication_group": "nyt",
+      "full_text_ok": false
+    },
+    {
+      "id": "propublica",
+      "name": "ProPublica",
+      "feed_url": "https://www.propublica.org/feeds/propublica/main",
+      "bucket": "general",
+      "lean": "center-left",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (20 items, newest same-day, description up to 153 chars). Nonprofit investigative newsroom, Creative Commons licensed; common convention rates its accountability-journalism focus Center-Left, nonpartisan mission notwithstanding.",
+      "syndication_group": "propublica",
+      "full_text_ok": false
+    },
+    {
+      "id": "global_voices",
+      "name": "Global Voices",
+      "feed_url": "https://globalvoices.org/feed/",
+      "bucket": "general",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (15 items, newest same-day, description up to 234 chars). Nonprofit, Creative Commons-licensed international citizen-media network, no single national lens or partisan lean documented.",
+      "syndication_group": "global_voices",
+      "full_text_ok": false
+    },
+    {
+      "id": "green_queen",
+      "name": "Green Queen",
+      "feed_url": "https://www.greenqueen.com.hk/feed/",
+      "bucket": "climate_food",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest same-day, description up to 545 chars). Asia-based alternative-protein/foodtech trade press, no partisan lean documented, treated as center like other trade press in sources.json.",
+      "syndication_group": "green_queen",
+      "full_text_ok": false
+    },
+    {
+      "id": "food_dive",
+      "name": "Food Dive",
+      "feed_url": "https://www.fooddive.com/feeds/news/",
+      "bucket": "climate_food",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest same-day, description up to 150 chars). US food-industry trade press, no partisan lean documented.",
+      "syndication_group": "food_dive",
+      "full_text_ok": false
+    },
+    {
+      "id": "canary_media",
+      "name": "Canary Media",
+      "feed_url": "https://www.canarymedia.com/feed",
+      "bucket": "climate_food",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (100 items, newest same-day, description up to 319 chars). Nonprofit climate-energy trade press (RMI-affiliated), no partisan lean documented, treated as center like other trade press in sources.json.",
+      "syndication_group": "canary_media",
+      "full_text_ok": false
+    },
+    {
+      "id": "latitude_media",
+      "name": "Latitude Media",
+      "feed_url": "https://www.latitudemedia.com/feed",
+      "bucket": "climate_food",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest same-day, description up to 238 chars). Climate-tech trade press, no partisan lean documented.",
+      "syndication_group": "latitude_media",
+      "full_text_ok": false
+    },
+    {
+      "id": "trellis_greenbiz",
+      "name": "Trellis (GreenBiz)",
+      "feed_url": "https://www.trellis.net/feed",
+      "bucket": "climate_food",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest 1 day old, description up to 297 chars). Sustainability-business trade press (formerly GreenBiz), no partisan lean documented.",
+      "syndication_group": "trellis",
+      "full_text_ok": false
+    },
+    {
+      "id": "ctvc",
+      "name": "CTVC",
+      "feed_url": "https://www.ctvc.co/rss/",
+      "bucket": "climate_food",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (15 items, newest 3 days old, headline-only, no description text). Climate-tech venture newsletter, no partisan lean documented.",
+      "syndication_group": "ctvc",
+      "full_text_ok": false
+    },
+    {
+      "id": "biofuels_digest",
+      "name": "Biofuels Digest",
+      "feed_url": "https://www.biofuelsdigest.com/feed/",
+      "bucket": "climate_food",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest same-day, description up to 429 chars). Bioeconomy/biofuels trade press, no partisan lean documented; keyword tagging (topics.json) also picks up biotech from its industrial-biotech coverage.",
+      "syndication_group": "biofuels_digest",
+      "full_text_ok": false
+    },
+    {
+      "id": "techcrunch_climate",
+      "name": "TechCrunch Climate",
+      "feed_url": "https://techcrunch.com/category/climate/feed/",
+      "bucket": "climate_food",
+      "lean": "center",
+      "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (20 items, newest same-day, description up to 269 chars). TechCrunch vertical, same publisher/rating as techcrunch_ai already in sources.json (center, non-political trade press).",
+      "syndication_group": "techcrunch",
       "full_text_ok": false
     }
   ]
