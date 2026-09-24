@@ -1,0 +1,371 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "npr",
+      "name": "NPR",
+      "feed_url": "https://feeds.npr.org/1001/rss.xml",
+      "bucket": "general"
+    },
+    {
+      "id": "bbc_world",
+      "name": "BBC World",
+      "feed_url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+      "bucket": "general"
+    },
+    {
+      "id": "al_jazeera",
+      "name": "Al Jazeera",
+      "feed_url": "https://www.aljazeera.com/xml/rss/all.xml",
+      "bucket": "general"
+    },
+    {
+      "id": "guardian_world",
+      "name": "The Guardian World",
+      "feed_url": "https://www.theguardian.com/world/rss",
+      "bucket": "general"
+    },
+    {
+      "id": "axios",
+      "name": "Axios",
+      "feed_url": "https://api.axios.com/feed/",
+      "bucket": "general"
+    },
+    {
+      "id": "ars_technica",
+      "name": "Ars Technica",
+      "feed_url": "https://feeds.arstechnica.com/arstechnica/index",
+      "bucket": "general"
+    },
+    {
+      "id": "economist_finance",
+      "name": "The Economist Finance and Economics",
+      "feed_url": "https://www.economist.com/finance-and-economics/rss.xml",
+      "bucket": "general"
+    },
+    {
+      "id": "wsj_world",
+      "name": "WSJ World News",
+      "feed_url": "https://feeds.content.dowjones.io/public/rss/RSSWorldNews",
+      "bucket": "general"
+    },
+    {
+      "id": "pbs_newshour",
+      "name": "PBS NewsHour Headlines",
+      "feed_url": "https://www.pbs.org/newshour/feeds/rss/headlines",
+      "bucket": "general"
+    },
+    {
+      "id": "politico",
+      "name": "Politico",
+      "feed_url": "https://rss.politico.com/politics-news.xml",
+      "bucket": "us_politics"
+    },
+    {
+      "id": "fox_politics",
+      "name": "Fox News Politics",
+      "feed_url": "https://moxie.foxnews.com/google-publisher/politics.xml",
+      "bucket": "us_politics"
+    },
+    {
+      "id": "wapo_politics",
+      "name": "Washington Post Politics",
+      "feed_url": "https://feeds.washingtonpost.com/rss/politics",
+      "bucket": "us_politics"
+    },
+    {
+      "id": "the_hill",
+      "name": "The Hill",
+      "feed_url": "https://thehill.com/feed/",
+      "bucket": "us_politics"
+    },
+    {
+      "id": "national_review",
+      "name": "National Review",
+      "feed_url": "https://www.nationalreview.com/feed/",
+      "bucket": "us_politics"
+    },
+    {
+      "id": "reason",
+      "name": "Reason",
+      "feed_url": "https://reason.com/feed/",
+      "bucket": "us_politics"
+    },
+    {
+      "id": "mother_jones",
+      "name": "Mother Jones",
+      "feed_url": "https://www.motherjones.com/feed/",
+      "bucket": "us_politics"
+    },
+    {
+      "id": "guardian_us",
+      "name": "Guardian US",
+      "feed_url": "https://www.theguardian.com/us-news/rss",
+      "bucket": "us_politics"
+    },
+    {
+      "id": "washington_examiner",
+      "name": "Washington Examiner",
+      "feed_url": "https://www.washingtonexaminer.com/feed/",
+      "bucket": "us_politics"
+    },
+    {
+      "id": "the_dispatch",
+      "name": "The Dispatch",
+      "feed_url": "https://thedispatch.com/feed/",
+      "bucket": "us_politics"
+    },
+    {
+      "id": "straits_times_sg",
+      "name": "Straits Times Singapore",
+      "feed_url": "https://www.straitstimes.com/news/singapore/rss.xml",
+      "bucket": "singapore"
+    },
+    {
+      "id": "cna_singapore",
+      "name": "CNA Singapore",
+      "feed_url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml",
+      "bucket": "singapore"
+    },
+    {
+      "id": "business_times_sg",
+      "name": "Business Times Singapore",
+      "feed_url": "https://www.businesstimes.com.sg/rss.xml",
+      "bucket": "singapore"
+    },
+    {
+      "id": "mothership",
+      "name": "Mothership",
+      "feed_url": "https://mothership.sg/feed/",
+      "bucket": "singapore"
+    },
+    {
+      "id": "independent_sg",
+      "name": "The Independent Singapore",
+      "feed_url": "https://theindependent.sg/feed/",
+      "bucket": "singapore"
+    },
+    {
+      "id": "times_of_israel",
+      "name": "Times of Israel",
+      "feed_url": "https://www.timesofisrael.com/feed/",
+      "bucket": "israel_gaza"
+    },
+    {
+      "id": "haaretz",
+      "name": "Haaretz",
+      "feed_url": "https://www.haaretz.com/cmlink/1.4605102",
+      "bucket": "israel_gaza"
+    },
+    {
+      "id": "jerusalem_post",
+      "name": "Jerusalem Post",
+      "feed_url": "https://www.jpost.com/rss/rssfeedsfrontpage.aspx",
+      "bucket": "israel_gaza"
+    },
+    {
+      "id": "middle_east_eye",
+      "name": "Middle East Eye",
+      "feed_url": "https://www.middleeasteye.net/rss",
+      "bucket": "israel_gaza"
+    },
+    {
+      "id": "arab_news",
+      "name": "Arab News",
+      "feed_url": "https://www.arabnews.com/rss.xml",
+      "bucket": "israel_gaza"
+    },
+    {
+      "id": "radio_dabanga",
+      "name": "Radio Dabanga",
+      "feed_url": "https://www.dabangasudan.org/en/feed",
+      "bucket": "sudan"
+    },
+    {
+      "id": "reliefweb_sudan",
+      "name": "ReliefWeb Sudan",
+      "feed_url": "https://reliefweb.int/country/sdn/rss.xml",
+      "bucket": "sudan"
+    },
+    {
+      "id": "allafrica_sudan",
+      "name": "AllAfrica Sudan",
+      "feed_url": "https://allafrica.com/tools/headlines/rdf/sudan/headlines.rdf",
+      "bucket": "sudan"
+    },
+    {
+      "id": "techcrunch_ai",
+      "name": "TechCrunch AI",
+      "feed_url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+      "bucket": "ai"
+    },
+    {
+      "id": "mit_tech_review_ai",
+      "name": "MIT Technology Review AI",
+      "feed_url": "https://www.technologyreview.com/topic/artificial-intelligence/feed",
+      "bucket": "ai"
+    },
+    {
+      "id": "huggingface_blog",
+      "name": "Hugging Face Blog",
+      "feed_url": "https://huggingface.co/blog/feed.xml",
+      "bucket": "ai"
+    },
+    {
+      "id": "arxiv_cs_ai",
+      "name": "arXiv cs.AI",
+      "feed_url": "https://rss.arxiv.org/rss/cs.AI",
+      "bucket": "ai"
+    },
+    {
+      "id": "import_ai",
+      "name": "Import AI",
+      "feed_url": "https://importai.substack.com/feed",
+      "bucket": "ai"
+    },
+    {
+      "id": "labiotech",
+      "name": "Labiotech.eu",
+      "feed_url": "https://www.labiotech.eu/feed/",
+      "bucket": "biotech"
+    },
+    {
+      "id": "gen_news",
+      "name": "GEN",
+      "feed_url": "https://www.genengnews.com/feed/",
+      "bucket": "biotech"
+    },
+    {
+      "id": "agfundernews",
+      "name": "AgFunderNews",
+      "feed_url": "https://agfundernews.com/feed",
+      "bucket": "biotech"
+    },
+    {
+      "id": "bioprocess_intl",
+      "name": "BioProcess International",
+      "feed_url": "https://www.bioprocessintl.com/rss.xml",
+      "bucket": "biotech"
+    },
+    {
+      "id": "fierce_biotech",
+      "name": "Fierce Biotech",
+      "feed_url": "https://www.fiercebiotech.com/rss.xml",
+      "bucket": "biotech"
+    },
+    {
+      "id": "straits_times_asia",
+      "name": "Straits Times Asia",
+      "feed_url": "https://www.straitstimes.com/news/asia/rss.xml",
+      "bucket": "asia"
+    },
+    {
+      "id": "cna_asia",
+      "name": "CNA Asia",
+      "feed_url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511",
+      "bucket": "asia"
+    },
+    {
+      "id": "the_diplomat",
+      "name": "The Diplomat",
+      "feed_url": "https://thediplomat.com/feed/",
+      "bucket": "asia"
+    },
+    {
+      "id": "asia_times",
+      "name": "Asia Times",
+      "feed_url": "https://asiatimes.com/feed/",
+      "bucket": "asia"
+    },
+    {
+      "id": "japan_times",
+      "name": "Japan Times",
+      "feed_url": "https://www.japantimes.co.jp/feed/",
+      "bucket": "asia"
+    },
+    {
+      "id": "kyodo_news",
+      "name": "Kyodo News",
+      "feed_url": "https://english.kyodonews.net/list/feed/rss4kyodonews-fzone",
+      "bucket": "asia"
+    },
+    {
+      "id": "yonhap",
+      "name": "Yonhap News",
+      "feed_url": "https://en.yna.co.kr/RSS/news.xml",
+      "bucket": "asia"
+    },
+    {
+      "id": "korea_herald",
+      "name": "Korea Herald",
+      "feed_url": "https://www.koreaherald.com/rss/newsAll",
+      "bucket": "asia"
+    },
+    {
+      "id": "scmp_china",
+      "name": "SCMP China",
+      "feed_url": "https://www.scmp.com/rss/4/feed",
+      "bucket": "asia"
+    },
+    {
+      "id": "focus_taiwan",
+      "name": "Focus Taiwan",
+      "feed_url": "https://feeds.feedburner.com/rsscna/engnews/",
+      "bucket": "asia"
+    },
+    {
+      "id": "hong_kong_free_press",
+      "name": "Hong Kong Free Press",
+      "feed_url": "https://hongkongfp.com/feed/",
+      "bucket": "asia"
+    },
+    {
+      "id": "the_hindu",
+      "name": "The Hindu",
+      "feed_url": "https://www.thehindu.com/feeder/default.rss",
+      "bucket": "asia"
+    },
+    {
+      "id": "indian_express",
+      "name": "Indian Express",
+      "feed_url": "https://indianexpress.com/feed/",
+      "bucket": "asia"
+    },
+    {
+      "id": "livemint",
+      "name": "Mint (Livemint)",
+      "feed_url": "https://www.livemint.com/rss/news",
+      "bucket": "asia"
+    },
+    {
+      "id": "economic_times",
+      "name": "Economic Times",
+      "feed_url": "https://economictimes.indiatimes.com/rssfeedsdefault.cms",
+      "bucket": "asia"
+    },
+    {
+      "id": "bangkok_post",
+      "name": "Bangkok Post",
+      "feed_url": "https://www.bangkokpost.com/rss/data/topstories.xml",
+      "bucket": "asia"
+    },
+    {
+      "id": "malay_mail",
+      "name": "Malay Mail",
+      "feed_url": "https://www.malaymail.com/feed/rss/malaysia",
+      "bucket": "asia"
+    },
+    {
+      "id": "rappler",
+      "name": "Rappler",
+      "feed_url": "https://www.rappler.com/rss",
+      "bucket": "asia"
+    },
+    {
+      "id": "vnexpress",
+      "name": "VnExpress International",
+      "feed_url": "https://e.vnexpress.net/rss/news.rss",
+      "bucket": "asia"
+    }
+  ]
+}
