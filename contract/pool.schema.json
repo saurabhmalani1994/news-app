@@ -158,7 +158,11 @@
         "hype": {"type": "integer", "minimum": 0},
         "eligible": {"type": "boolean"},
         "live": {"type": "boolean"},
-        "hold_state": {"enum": ["none", "holding", "released"]}
+        "hold_state": {"enum": ["none", "holding", "released"]},
+        "live_since": {
+          "description": "S32: when this event took the Live slot, present only while live is true. The 12h hold floor (R22) is measured from it, and it is the one piece of hysteresis state the previous pool must carry that the fields above cannot. Optional, so pools from before S32 stay valid.",
+          "$ref": "#/$defs/utc_timestamp"
+        }
       }
     },
     "count_map": {
