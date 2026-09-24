@@ -341,3 +341,9 @@ body {
     transition: none;
   }
 }
+
+/* S11: while a stored profile re-ranks the page (rank-gate.js), the headlines stay
+   hidden, so no row is ever seen moving; the layout box is kept, nothing shifts. */
+.rerank main {
+  visibility: hidden;
+}

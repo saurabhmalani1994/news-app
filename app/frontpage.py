@@ -4,15 +4,27 @@ A story is either a cluster (S07) or an article no cluster holds. A cluster show
 as its lead article, never as repeated rows. Pure and deterministic: the same pool
 gives the same stories and the same tiers whatever order its arrays arrive in.
 
-Ordering here is INTERIM. The ranker is S11 (DESIGN section 4); until it lands,
-`interim_order` stands in with an order the design allows: independent source count,
-then recency. S11 replaces `interim_order` and nothing else in this module.
+Order comes from the one ranker, app/static/js/ranker.js (S11, DESIGN section 4), run
+here under Node with the shipped default profile at the pool's generated_at. The device
+runs the same module again only when its stored profile differs (rank-gate.js).
 """
+import json
+import shutil
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
-from app.dek import strip_wire_junk
+from app.dek import ELLIPSIS, fit_dek, strip_wire_junk
 from app.typography import fold_quotes
+
+RANK_CLI = Path(__file__).resolve().parent / "rank_cli.mjs"
+
+# Dek line limits per tier (style.css clamps at the same counts). A dek ends on the last
+# whole sentence inside the limit; CHARS_PER_LINE is a conservative fill of a 320px
+# measure at the dek's 16.5px Newsreader, so a fitted dek never meets the clamp.
+DEK_LINES = {"hero": 4, "secondary": 3}
+CHARS_PER_LINE = 38
 
 # Tier sizes, by position in the order. Hero is the single top story; secondary are
 # lead blocks that keep their dek; river rows carry no dek (nyt-measured, row 5);
@@ -64,10 +76,21 @@ def independent_source_count(members, near_duplicates):
     return len(units)
 
 
+def _needs_ellipsis(dek, lines):
+    return fit_dek(dek, lines * CHARS_PER_LINE).endswith(ELLIPSIS)
+
+
 def _lead(members):
     """The member that fronts the story: one with a dek (hero and lead blocks show it),
-    then the newest, then the lowest id so ties never depend on input order."""
-    return min(members, key=lambda a: (clean_dek(a) == "", -_epoch(a["published_at"]), a["id"]))
+    then (D1) one whose dek fits a lead block's three lines without an ellipsis, then
+    the hero's four, then the newest, then the lowest id so ties never depend on input
+    order. The fit is judged at every dek tier rather than the story's own, so the lead
+    never depends on rank and a device re-rank can promote a row without a new lead."""
+    def key(a):
+        dek = clean_dek(a)
+        return (dek == "", bool(dek) and _needs_ellipsis(dek, DEK_LINES["secondary"]),
+                bool(dek) and _needs_ellipsis(dek, DEK_LINES["hero"]), -_epoch(a["published_at"]), a["id"])
+    return min(members, key=key)
 
 
 def build_stories(pool):
@@ -99,10 +122,45 @@ def build_stories(pool):
     return stories
 
 
-def interim_order(stories):
-    """INTERIM, replaced by the S11 ranker. More independent sources first, then the
-    story's newest article, then id as a stable tiebreak."""
-    return sorted(stories, key=lambda s: (-s.independent_sources, -_epoch(s.latest), s.id))
+RANK_ARTICLE_FIELDS = ("id", "source_id", "title", "published_at", "topics")
+RANK_CLUSTER_FIELDS = ("id", "article_ids", "near_duplicates", "independent_sources", "lean_buckets")
+
+
+def rank_input(pool):
+    """The compact pool the ranker reads: only the fields it scores on, sorted by id.
+    The build ranks exactly this, and the page embeds exactly this for the device, so
+    both sides rank byte-identical input."""
+    def pick(item, fields):
+        return {k: item[k] for k in fields if k in item}
+    return {
+        "generated_at": pool.get("generated_at"),
+        "articles": sorted((pick(a, RANK_ARTICLE_FIELDS) for a in pool["articles"]), key=lambda a: a["id"]),
+        "clusters": sorted((pick(c, RANK_CLUSTER_FIELDS) for c in pool.get("clusters", [])), key=lambda c: c["id"]),
+    }
+
+
+def run_ranker(pool):
+    """{key, ranked}: the default profile's ranking-field key and every story, best
+    first, with its score and explanation (app/static/js/ranker.js under Node)."""
+    node = shutil.which("node")
+    if node is None:
+        raise RuntimeError("the S11 ranker needs Node on PATH (preinstalled on GitHub's Ubuntu runners)")
+    payload = json.dumps({"pool": rank_input(pool), "now": pool.get("generated_at")})
+    done = subprocess.run([node, str(RANK_CLI)], input=payload.encode("utf-8"), capture_output=True, check=False)
+    if done.returncode:
+        raise RuntimeError("ranker failed: " + done.stderr.decode("utf-8", "replace")[-2000:])
+    return json.loads(done.stdout.decode("utf-8"))
+
+
+def ranked_stories(pool, ranking=None):
+    """Stories in the ranker's order. The ranker groups the pool the same way
+    build_stories does; a mismatch is a bug, so it fails loudly."""
+    ranking = ranking or run_ranker(pool)
+    stories = {s.id: s for s in build_stories(pool)}
+    order = [r["id"] for r in ranking["ranked"]]
+    if sorted(order) != sorted(stories):
+        raise RuntimeError("ranker and build_stories disagree on the story set")
+    return [stories[i] for i in order]
 
 
 def assign_tiers(ordered):
@@ -118,5 +176,5 @@ def assign_tiers(ordered):
     }
 
 
-def front_page(pool):
-    return assign_tiers(interim_order(build_stories(pool)))
+def front_page(pool, ranking=None):
+    return assign_tiers(ranked_stories(pool, ranking))

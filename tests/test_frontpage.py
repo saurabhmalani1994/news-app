@@ -9,8 +9,8 @@ import pytest
 
 from app import frontpage
 from app.build import render
-from app.frontpage import (HERO_COUNT, RIVER_COUNT, SECONDARY_COUNT, build_stories,
-                           clean_dek, front_page, independent_source_count, interim_order)
+from app.frontpage import (HERO_COUNT, RIVER_COUNT, SECONDARY_COUNT, _lead, build_stories,
+                           clean_dek, front_page, independent_source_count, run_ranker)
 from app.typography import fold_quotes, smart_quotes
 from tests.test_render import _parse
 from tests.test_tokens import DARK_TOKENS, STYLE_CSS, _block_after, _declarations, _resolve
@@ -89,11 +89,32 @@ def test_tier_sizes_follow_the_order():
         HERO_COUNT, SECONDARY_COUNT, RIVER_COUNT, 30 - HERO_COUNT - SECONDARY_COUNT - RIVER_COUNT]
 
 
-def test_interim_order_is_sources_then_recency():
-    ordered = interim_order(build_stories(fixture_pool()))
-    keys = [(-s.independent_sources, -frontpage._epoch(s.latest), s.id) for s in ordered]
-    assert keys == sorted(keys)
-    assert ordered[0].id == "a000" and ordered[0].independent_sources == 4
+def test_front_page_follows_the_one_ranker():
+    """S11 replaced interim_order: the page's order is ranker.js's, best score first,
+    over exactly the stories build_stories makes."""
+    pool = fixture_pool()
+    ranking = run_ranker(pool)
+    flat = [s.id for name in frontpage.TIERS for s in front_page(pool)[name]]
+    assert flat == [r["id"] for r in ranking["ranked"]]
+    assert sorted(flat) == sorted(s.id for s in build_stories(pool))
+    scores = [r["score"] for r in ranking["ranked"]]
+    assert scores == sorted(scores, reverse=True)
+    for r in ranking["ranked"]:
+        assert sum(t["value"] for t in r["explanation"]) == r["score"]
+    assert flat[0] == "a000"  # 4 independent sources and the newest member
+
+
+def test_lead_prefers_a_dek_that_fits_without_an_ellipsis():
+    """D1: among members with a dek, one that fits a lead block with no ellipsis fronts
+    the cluster, even over a newer one that would need cutting; then the old rule."""
+    long_dek = "An unbroken opening sentence that runs on and on well past what any lead block can hold " * 2
+    newest_long = _article(1, "s01", hour=20, dek=long_dek.strip())
+    older_fits = _article(2, "s02", hour=18, dek="A short dek that fits.")
+    newest_no_dek = _article(3, "s03", hour=21)
+    assert _lead([newest_long, older_fits, newest_no_dek])["id"] == "a002"
+    also_fits = _article(4, "s04", hour=19, dek="Another short one.")
+    assert _lead([older_fits, also_fits, newest_long])["id"] == "a004"  # then newest
+    assert _lead([newest_long, newest_no_dek])["id"] == "a001"  # a dek still beats none
 
 
 # Proof 2: every cluster appears exactly once.
@@ -137,8 +158,12 @@ def test_cluster_meta_names_its_source_count_quietly():
 # S10: svg/circle/path are the app's own static masthead icon (the profile-screen
 # entry point), authored in app/build.py's PAGE template, never built from a feed
 # field, so allowing them here does not touch the R26 guarantee this test checks.
+# S11: script is the app's own head gate (APP_SCRIPTS, an external file carrying no feed
+# data) and template holds the device ranker's input as escaped text, never markup.
 APP_TAGS = {"html", "head", "meta", "title", "link", "body", "header", "h1", "main", "ol", "li",
-            "a", "span", "section", "h2", "footer", "p", "time", "svg", "circle", "path"}
+            "a", "span", "section", "h2", "footer", "p", "time", "svg", "circle", "path",
+            "script", "template"}
+APP_SCRIPTS = ['<script src="js/rank-gate.js">']
 
 
 def test_every_rendered_string_is_text_only():
@@ -152,7 +177,8 @@ def test_every_rendered_string_is_text_only():
     page = render(pool)
     parsed = _parse(page)
     assert set(parsed.tags) <= APP_TAGS
-    assert "<script" not in page and "<img" not in page and "<iframe" not in page and "<b " not in page
+    assert re.findall(r"<script\b[^>]*>", page) == APP_SCRIPTS
+    assert "<img" not in page and "<iframe" not in page and "<b " not in page
     for text in parsed.items:
         assert fold_quotes(text).startswith(evil)
     for dek in (d for d in parsed.deks if d is not None):
@@ -178,7 +204,7 @@ def test_tiers_render_with_their_own_headline_class():
     page = render(fixture_pool())
     parsed = _parse(page)
     assert parsed.tiers[:HERO_COUNT] == ["hero"]
-    hero_rows = re.findall(r'<li class="story story--(\w[\w-]*)">.*?<span class="(headline[^"]*)"', page)
+    hero_rows = re.findall(r'<li class="story story--(\w[\w-]*)"[^>]*>.*?<span class="(headline[^"]*)"', page)
     classes = {tier: cls for tier, cls in hero_rows}
     assert classes == {"hero": "headline headline--hero", "secondary": "headline headline--river",
                        "river": "headline headline--river", "text-only": "headline"}
@@ -255,3 +281,22 @@ def test_front_page_ends_after_a_capped_tail_with_the_rest_one_tap_away():
 def test_short_pool_has_no_rest_toggle():
     page = render(fixture_pool())
     assert "more-rest" not in page and "More headlines" in page
+
+
+def test_device_rank_input_is_escaped_text_that_round_trips():
+    """The embedded ranker input (S11) is template text: hostile titles stay text, and
+    unescaped it is the same compact pool the build ranked."""
+    import html
+    import json
+    from app.frontpage import rank_input
+    pool = fixture_pool()
+    pool["articles"][3]["title"] = '</template><script>alert(1)</script>'
+    page = render(pool)
+    raw = re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)
+    assert "<" not in raw and ">" not in raw
+    data = json.loads(html.unescape(raw))
+    assert data["pool"] == rank_input(pool) and data["now"] == pool["generated_at"]
+    assert re.findall(r"<script\b[^>]*>", page) == APP_SCRIPTS
+    rows = re.findall(r'<li class="story story--[\w-]+" data-sid="([^"]+)">', page)
+    assert rows == [r["id"] for r in run_ranker(pool)["ranked"]]
+    assert re.search(r'<html lang="en" data-rank-key="[^"]+">', page)

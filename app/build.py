@@ -20,7 +20,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from app.dek import fit_dek
-from app.frontpage import clean_dek, front_page
+from app.frontpage import CHARS_PER_LINE, DEK_LINES, clean_dek, front_page, rank_input, run_ranker
 from app.typography import smart_quotes
 
 ROOT = Path(__file__).resolve().parent
@@ -32,7 +32,7 @@ STATIC = ROOT / "static"
 PRELOAD_FONTS = ("Newsreader-Bold-latin.woff2", "LibreFranklin-Medium-latin.woff2")
 
 PAGE = """<!doctype html>
-<html lang="en">
+<html lang="en" data-rank-key="{rank_key}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -43,6 +43,7 @@ PAGE = """<!doctype html>
 {preloads}
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="style.css">
+<script src="js/rank-gate.js"></script>
 </head>
 <body>
 <header class="masthead">
@@ -57,6 +58,7 @@ PAGE = """<!doctype html>
 </ol>
 {more}
 </main>
+<template id="rank-input">{rank_input}</template>
 <footer class="colophon"><p class="colophon-text">{count} stories from {articles} articles. Updated <time datetime="{generated_at}">{updated}</time></p></footer>
 </body>
 </html>
@@ -70,14 +72,14 @@ MORE_COUNT = 20
 
 MORE = """<section class="module" aria-labelledby="more-label">
 <h2 class="module-label" id="more-label">More headlines</h2>
-<ol class="river river--text-only">
+<ol class="river river--text-only" id="more-list">
 {items}
 </ol>
 {rest}</section>"""
 
 REST = """<details class="more-rest">
 <summary class="more-toggle">Show {count} more headlines</summary>
-<ol class="river river--text-only">
+<ol class="river river--text-only" id="rest-list">
 {items}
 </ol>
 </details>
@@ -87,18 +89,14 @@ REST = """<details class="more-rest">
 # A later image slot goes first inside .story-body; its box is reserved in style.css
 # (aspect-ratio), so adding images will not shift text.
 STORY = (
-    '<li class="story story--{tier}">{open}'
+    '<li class="story story--{tier}" data-sid="{sid}">{open}'
     '<span class="story-body"><span class="headline{headline_mod}">{title}</span>{dek}'
     '<span class="meta">{meta}</span></span>{close}</li>'
 )
 DEK = '<span class="dek">{dek}</span>'
 HEADLINE_MOD = {"hero": " headline--hero", "secondary": " headline--river", "river": " headline--river",
                 "text_only": ""}
-# Dek line limits per tier (style.css clamps at the same counts). A dek ends on the last
-# whole sentence inside the limit; CHARS_PER_LINE is a conservative fill of a 320px
-# measure at the dek's 16.5px Newsreader, so a fitted dek never meets the clamp.
-DEK_LINES = {"hero": 4, "secondary": 3}
-CHARS_PER_LINE = 38
+# Dek line limits live with the lead rule in app.frontpage (D1); re-exported here.
 DEK_TIERS = tuple(DEK_LINES)
 
 
@@ -172,15 +170,35 @@ def _render_story(story, tier, source_names, now):
                  'target="_blank" rel="noopener noreferrer">')
         close = "</a>"
     return STORY.format(
-        tier=tier.replace("_", "-"), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
+        tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
         title=title, dek=dek, meta=_meta(story, source_names, now),
     )
 
 
-def render(pool):
+def _dek_pairs(stories):
+    """Each story's fitted dek for the hero and a lead block, one entry when they agree,
+    so the device can promote any row into a dek tier without re-fitting text."""
+    pairs = {}
+    for story in stories:
+        dek = clean_dek(story.lead)
+        if dek:
+            fitted = [smart_quotes(fit_dek(dek, DEK_LINES[t] * CHARS_PER_LINE)) for t in DEK_TIERS]
+            pairs[story.id] = fitted[:1] if fitted[0] == fitted[1] else fitted
+    return pairs
+
+
+def _rank_input_json(pool, stories):
+    """The device's ranking input as template text. Only &, < and > are escaped, so no
+    feed string can close the template or open a tag (R26); JSON quotes stay readable."""
+    data = {"now": pool.get("generated_at"), "pool": rank_input(pool), "deks": _dek_pairs(stories)}
+    return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
+
+
+def render(pool, ranking=None):
     now = _parse_time(pool.get("generated_at"))
     source_names = {s["id"]: s.get("name", "") for s in pool.get("sources", [])}
-    tiers = front_page(pool)
+    ranking = ranking or run_ranker(pool)
+    tiers = front_page(pool, ranking)
 
     def rows(names):
         return "\n".join(
@@ -202,6 +220,8 @@ def render(pool):
     )
     updated = now.strftime("%d %b %H:%M UTC") if now else ""
     return PAGE.format(
+        rank_key=escape(ranking["key"], quote=True),
+        rank_input=_rank_input_json(pool, [s for name in tiers for s in tiers[name]]),
         preloads=preloads,
         top=rows(("hero", "secondary", "river")),
         more=more,
@@ -231,11 +251,12 @@ def main(argv=None):
     pool_path, out = Path(args.pool), Path(args.out)
     pool = json.loads(pool_path.read_text(encoding="utf-8"))
     out.mkdir(parents=True, exist_ok=True)
-    (out / "index.html").write_text(render(pool), encoding="utf-8")
+    ranking = run_ranker(pool)
+    (out / "index.html").write_text(render(pool, ranking), encoding="utf-8")
     _copy_static(out)
     if pool_path.resolve() != (out / "pool.json").resolve():
         shutil.copyfile(pool_path, out / "pool.json")
-    tiers = front_page(pool)
+    tiers = front_page(pool, ranking)
     counts = ", ".join(f"{name} {len(tiers[name])}" for name in tiers)
     print(f"built {out / 'index.html'}: {counts}")
     return 0
