@@ -87,6 +87,30 @@ def test_integrity_unknown_source_rejected():
     assert validate(broken)
 
 
+def test_unknown_drop_reason_key_rejected():
+    # S02: drops has a fixed, closed set of reason keys.
+    broken = copy.deepcopy(GOLDEN)
+    broken["counts"]["drops"]["mystery_reason"] = 1
+    assert not JS.is_valid(broken)
+    assert validate(broken)
+
+
+def test_fixed_drop_reason_keys_accepted():
+    ok = copy.deepcopy(GOLDEN)
+    ok["counts"]["drops"] = {
+        "no_title": 1, "no_date": 1, "bad_url": 1, "duplicate_url": 1, "over_cap": 1,
+    }
+    ok["counts"]["fetched"] = ok["counts"]["published"] + 5
+    assert JS.is_valid(ok)
+    assert validate(ok) == []
+
+
+def test_integrity_fetched_must_equal_published_plus_drops():
+    broken = copy.deepcopy(GOLDEN)
+    broken["counts"]["fetched"] = broken["counts"]["published"] + 99
+    assert validate(broken)
+
+
 def test_stdlib_validator_refuses_unsupported_keywords():
     schema = copy.deepcopy(SCHEMA)
     schema["$defs"]["article"]["properties"]["title"]["format"] = "uri"

@@ -75,6 +75,38 @@ def test_unusable_items_dropped_with_a_reason():
     assert c["fetched"] == c["published"] + sum(c["drops"].values())
 
 
+def test_s02_proof_titleless_dateless_duplicate_url():
+    # QUEUE.md S02 proof line: a run seeded with a titleless item, a dateless item and
+    # a duplicate url ends with fetched == published + sum(drops), each of those three
+    # reasons exactly 1.
+    pool = build_pool(_feed(
+        "<item><title>Good</title><link>https://e.org/good</link>" + DATE + "</item>"
+        "<item><title></title><link>https://e.org/no-title</link>" + DATE + "</item>"
+        "<item><title>No date</title><link>https://e.org/no-date</link></item>"
+        "<item><title>Dup</title><link>https://e.org/good</link>" + DATE + "</item>"
+    ), NOW)
+    c = pool["counts"]
+    assert c["fetched"] == 4
+    assert c["published"] == 1
+    assert c["drops"] == {"no_title": 1, "no_date": 1, "duplicate_url": 1}
+    assert c["fetched"] == c["published"] + sum(c["drops"].values())
+    assert validate(pool) == []
+
+
+def test_ledger_invariant_asserted_at_runtime():
+    # S02: fetched == published + sum(drops) is asserted by the fetcher itself, not
+    # only checked later by the validator. Exercise the real check with a ledger an
+    # honest build_pool run could never produce.
+    from fetcher.fetch import _assert_ledger_invariant
+
+    good = {"fetched": 4, "published": 1, "drops": {"no_title": 1, "no_date": 1, "duplicate_url": 1}}
+    _assert_ledger_invariant(good)  # does not raise
+
+    bad = {"fetched": 5, "published": 1, "drops": {"no_title": 1}}
+    with pytest.raises(FeedError):
+        _assert_ledger_invariant(bad)
+
+
 def test_unparseable_feed_raises():
     with pytest.raises(FeedError):
         build_pool(b"<rss><channel><item></channel>", NOW)
