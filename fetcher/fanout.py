@@ -545,9 +545,18 @@ def main(argv=None):
         f"r16_lean_span_clusters={r16_clusters}/{len(pool['clusters'])}"
     )
     unhealthy = sorted(sid for sid, h in pool["source_health"].items() if h["unhealthy"])
+    # F6: sources with a nonzero streak, visible before they ever cross the
+    # unhealthy threshold, so a run-to-run counter carried through the cache is
+    # visible in this log even when nothing has actually gone unhealthy yet.
+    watch = {
+        sid: [h["consecutive_error"], h["consecutive_empty"]]
+        for sid, h in sorted(pool["source_health"].items())
+        if h["consecutive_error"] or h["consecutive_empty"]
+    }
     print(
         f"state_local={state_local_status} previous_pool_status={c['previous_pool_status']} "
-        f"unhealthy_sources={len(unhealthy)}/{len(sources)} {json.dumps(unhealthy)}"
+        f"unhealthy_sources={len(unhealthy)}/{len(sources)} {json.dumps(unhealthy)} "
+        f"streaks[error,empty]={json.dumps(watch)}"
     )
     routed = sorted(s["id"] for s in sources if _route_for(s) != "direct")
     print(f"routes={json.dumps(c['routes'])} routed_sources={json.dumps(routed)}")
