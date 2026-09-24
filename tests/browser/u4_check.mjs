@@ -27,10 +27,11 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
+import { PYTHON } from "./python.mjs";
 import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
-const PY = process.env.PYTHON || "C:/Users/SaurabhMalani/dev/news-app/.venv/Scripts/python.exe";
+const PY = PYTHON; // PYTHON env, else the repo .venv (tests/browser/python.mjs)
 const TMP = join(ROOT, "tests", ".tmp-u4");
 const SHOTS = process.argv[2] ? resolve(process.argv[2]) : null;
 

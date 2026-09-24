@@ -25,6 +25,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
+import { PYTHON } from "./python.mjs";
 import { PASS_DEFAULTS } from "../../app/static/js/passes.js";
 import { STANDING_DEFAULTS } from "../../app/static/js/standing.js";
 import { LIVE_OVERRIDES_DEFAULTS } from "../../app/static/js/live.js";
@@ -34,7 +35,7 @@ const OLD_REF = "508ee2f"; // main just before U2 (9286c11^): the build the phon
 const NEW_REF = arg("--new");
 const SHOTS = arg("--shots");
 const ONLY = arg("--only"); // "today" runs session T alone
-const PY = process.env.PYTHON || "C:/Users/SaurabhMalani/dev/news-app/.venv/Scripts/python.exe";
+const PY = PYTHON; // PYTHON env, else the repo .venv (tests/browser/python.mjs)
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const POOL = join(ROOT, "tests", "fixtures", "golden_pool.json");
 const TMP = join(ROOT, "tests", ".tmp-h2");

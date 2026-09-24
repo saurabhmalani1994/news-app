@@ -27,9 +27,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
+import { PYTHON } from "./python.mjs";
 
 const BROKEN_REF = process.argv[2] || "1de9f5b";
-const PY = process.env.PYTHON || "C:/Users/SaurabhMalani/dev/news-app/.venv/Scripts/python.exe";
+const PY = PYTHON; // PYTHON env, else the repo .venv (tests/browser/python.mjs)
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const POOL = join(ROOT, "tests", "fixtures", "golden_pool.json");
 const TMP = join(ROOT, "tests", ".tmp-h1");
