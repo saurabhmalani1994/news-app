@@ -295,6 +295,28 @@ body {
   margin-top: 1px;
 }
 
+/* U1: with a summary, the headline keeps the column beside the thumbnail and the
+   summary and meta run the full measure under both, so two lines hold a real sentence.
+   Without one ("top"), the rules above stand: meta beside the thumbnail, as NYT sets it. */
+:root:not(.summaries-top) .story--river .story-body:has(.story-media):has(.dek) {
+  grid-template-rows: auto auto auto;
+}
+
+:root:not(.summaries-top) .story--river .story-body:has(.story-media):has(.dek) .story-media {
+  grid-row: 1;
+}
+
+:root:not(.summaries-top) .story--river .story-body:has(.story-media) .dek {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin-top: 12px;
+}
+
+:root:not(.summaries-top) .story--river .story-body:has(.story-media):has(.dek) .meta {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
 /* Headlines wrap greedily, as NYT's do, with only the orphan guard of `pretty`:
    `balance` left two-line heads visibly short of the measure. */
 .headline {
@@ -351,6 +373,30 @@ body {
   margin-top: 1px;
 }
 
+/* U1: river and text-only rows carry a two-line summary in the same dek token, fitted
+   to whole sentences at build (app.frontpage dek_budget), the clamp only a safety net.
+   The owner's display.summaries "top" (rank-gate.js sets .summaries-top before first
+   paint) takes them away again, back to NYT's own river. */
+.story--river .dek,
+.story--text-only .dek {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  margin-top: 6px;
+}
+
+.story--text-only .dek {
+  margin-top: 3px;
+}
+
+.summaries-top .story--river .dek,
+.summaries-top .story--text-only .dek {
+  display: none;
+}
+
+.summaries-top .story--river .dek + .meta {
+  margin-top: 11px;
+}
+
 /* Meta: source, the quiet source count, age. Only the source name may truncate. */
 .meta {
   display: flex;
@@ -384,6 +430,17 @@ body {
 .meta-rest {
   flex: none;
   white-space: pre;
+}
+
+/* U1: "Read here" on a row that opens in the app's reader, the quietest meta tone, so
+   it says where a tap goes without competing with the source. */
+.meta-read {
+  flex: none;
+  white-space: pre;
+}
+
+.meta-read-label {
+  color: var(--color-meta-tertiary);
 }
 
 /* S13 other-side link: the same story as an outlet of the lean least seen on this page
@@ -887,6 +944,7 @@ body {
   overscroll-behavior-y: contain;
   scroll-snap-align: start;
   scroll-snap-stop: always;
+  padding-bottom: var(--scroll-end);
 }
 
 /* Today's nameplate sits in its panel under the strip and scrolls away with it; the
@@ -898,12 +956,24 @@ body {
 }
 
 /* Bottom nav: four equal targets, icon over label, on the measured lighter surface;
-   the safe-area inset is added below it, so it never covers a row. */
+   the safe-area inset is added below it. U1: pinned to the bottom of the screen, as on
+   the profile page, and every scroller above it (each tab panel, Following, Saved,
+   Live) ends with --scroll-end of padding, the nav's height plus the inset plus a
+   comfortable gap, so the last row always scrolls clear of it, whatever height the
+   phone reports for the app (installed or in a browser tab, gesture or button nav). */
 .bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
   display: flex;
-  flex: none;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   background: var(--color-nav-surface);
+}
+
+:root {
+  --scroll-end: calc(var(--chrome-bottom-nav) + env(safe-area-inset-bottom) + 24px);
 }
 
 .nav-item {
@@ -974,7 +1044,7 @@ body {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  padding: calc(env(safe-area-inset-top) + 28px) 16px 32px;
+  padding: calc(env(safe-area-inset-top) + 28px) 16px var(--scroll-end);
 }
 
 .view-title {
@@ -1087,6 +1157,19 @@ body {
   max-width: 640px;
   margin: 0 auto;
   padding: 26px var(--space-gutter) 0;
+}
+
+/* U1: when the full text comes from another outlet in the story than the card's own,
+   one quiet sans line above the headline says whose ("Full text from Axios"). */
+.reader-via {
+  margin: 0 0 10px;
+  font-family: var(--type-meta-family);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
+  font-weight: var(--type-meta-weight);
+  letter-spacing: var(--type-meta-tracking);
+  text-transform: var(--type-meta-transform);
+  color: var(--color-meta-tertiary);
 }
 
 .reader-title {

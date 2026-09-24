@@ -1,6 +1,10 @@
-// S25: the in-app reader. A tap on a story whose lead article has a body file (the
-// build marks its link data-body) opens the story here, set like an NYT article page;
-// every other story links out to its source as before (reader/core.js readerChoice).
+// S25: the in-app reader. A tap on a story with a body file (the build marks its link
+// data-body) opens the story here, set like an NYT article page; every other story
+// links out to its source as before (reader/core.js readerChoice). U1: any outlet in the
+// story's cluster with full text qualifies, not only the lead; the member opened is
+// re-picked at tap time with the stored profile's trust (reader/core.js bestMember),
+// and when it is not the card's own outlet the reader shows that article's own headline
+// and a quiet "Full text from ..." credit.
 //
 // The reader is one layer over the app (#reader, static markup from build.py). Home is
 // never touched underneath: its tab, its pager and each panel's scroll stay exactly
@@ -15,8 +19,10 @@
 import { sanitizeBody } from "./sanitize.js";
 import { bodyCache } from "./reader/cache.js";
 import {
-  BODY_ID, EMOJI_IMAGE, NOTES, TRAILER, formatPublished, imageStem, loadBody, readerChoice, sameText, smartQuotes, tinyImage,
+  BODY_ID, EMOJI_IMAGE, NOTES, TRAILER, bestMember, creditLine, formatPublished, imageStem, loadBody, readerChoice, sameText,
+  smartQuotes, tinyImage,
 } from "./reader/core.js";
+import { STORAGE_KEY } from "./profile/store.js";
 // S24: thumbs at the end of the reader, the same record and toggle as the card's own
 // overflow sheet (story-actions.js), keyed the same way (storyIdForArticle) so a thumb
 // given here and one given from the card agree on which story it belongs to.
@@ -99,20 +105,54 @@ function arrow() {
   return svg;
 }
 
+/** The article the card for story `sid` shows: its cluster's lead, or the story's own
+ * id for a single-article story. */
+function cardLead(data, sid) {
+  const cluster = (data.pool?.clusters || []).find((c) => c.id === sid);
+  return cluster?.lead || sid || null;
+}
+
+/** U1: the stored profile's trust map, read the way rank-gate.js reads the profile;
+ * {} (every outlet at 1.0) when there is none or it cannot be read. */
+function storedTrust() {
+  try {
+    const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null")?.history;
+    const trust = history?.[history.length - 1]?.profile?.trust;
+    return trust && typeof trust === "object" ? trust : {};
+  } catch {
+    return {};
+  }
+}
+
+/** U1: the article a tap on the card for `sid` opens: the build's data-body pick
+ * (`fallback`), re-made with the stored profile's trust. */
+function memberFor(sid, fallback) {
+  const data = pageInput();
+  return bestMember(sid && data.bodies?.[sid], cardLead(data, sid), storedTrust()) || fallback;
+}
+
 /** What the page knows about the story before its body arrives. */
 function storyFacts(id, link) {
   const data = pageInput();
   const record = data.byId.get(id) || {};
   const li = link?.closest("li.story");
   const sid = li?.dataset.sid;
+  const lead = cardLead(data, sid);
+  const own = !sid || id === lead;
   const deks = (sid && data.deks?.[sid]) || [];
-  const href = link?.getAttribute("href") || "";
+  const member = (sid && (data.bodies?.[sid] || []).find((c) => c[0] === id)) || null;
+  const href = own ? link?.getAttribute("href") || "" : member?.[3] || "";
+  const source = (data.names || {})[record.source_id] || (own ? link?.querySelector(".meta-source")?.textContent : "") || "";
   return {
-    title: link?.querySelector(".headline")?.textContent || record.title || "",
+    sid,
+    // The card's own headline for its own outlet; another outlet's article keeps its
+    // own headline, typeset as the build sets titles.
+    title: own ? link?.querySelector(".headline")?.textContent || record.title || "" : smartQuotes(record.title || ""),
     // The hero's fitted dek; one cut short with an ellipsis is left out, since the
-    // body below carries the whole thought.
-    dek: deks[0] && !/…\s*$/.test(deks[0]) ? deks[0] : "",
-    source: (data.names || {})[record.source_id] || link?.querySelector(".meta-source")?.textContent || "",
+    // body below carries the whole thought. Only the card's own outlet has one here.
+    dek: own && deks[0] && !/…\s*$/.test(deks[0]) ? deks[0] : "",
+    credit: own ? "" : creditLine(record.source_id, data.byId.get(lead)?.source_id, source),
+    source,
     published: record.published_at || "",
     photo: (data.reader || {})[id] || null,
     href: WEB.test(href) ? href : "",
@@ -149,9 +189,9 @@ function thumbButton(direction, pressed) {
  * the same IndexedDB record and the same "never touches profile.json" as the card's
  * own overflow sheet. `id` is the article the reader opened; storyIdForArticle finds
  * the cluster it fronts, if any, so this agrees with a thumb given from the card. */
-async function thumbsRow(id) {
+async function thumbsRow(id, storyId) {
   const data = pageInput();
-  const sid = storyIdForArticle(data, id);
+  const sid = storyId || storyIdForArticle(data, id);
   const attrs = storyAttributes(data, sid);
   let existing = null;
   try {
@@ -298,7 +338,7 @@ function fill(id, facts) {
     if (result.state !== "ready") {
       body.replaceChildren(showNote(result.state, facts, id, fill));
       const end = linkOut(facts.href, facts.source);
-      const thumbs = await thumbsRow(id);
+      const thumbs = await thumbsRow(id, facts.sid);
       if (mine === token && current?.id === id) article.append(end, thumbs);
       if (result.state === "offline") addEventListener("online", () => { if (current?.id === id && mine === token) fill(id, facts); }, { once: true });
       return;
@@ -318,7 +358,7 @@ function fill(id, facts) {
     if (dek && lede && sameText(dek.textContent, lede.textContent)) lede.remove();
     body.replaceChildren(fragment);
     const end = linkOut(record.url || facts.href, record.source_name || facts.source);
-    const thumbs = await thumbsRow(id);
+    const thumbs = await thumbsRow(id, facts.sid);
     if (mine === token && current?.id === id) article.append(end, thumbs);
     out.hidden = !(record.url || facts.href);
     if (record.url || facts.href) out.setAttribute("href", record.url || facts.href);
@@ -327,6 +367,7 @@ function fill(id, facts) {
 
 function render(id, facts) {
   const head = el("header", "reader-head");
+  if (facts.credit) head.append(el("p", "reader-via", facts.credit));
   const title = el("h1", "reader-title", facts.title);
   title.id = "reader-title";
   head.append(title);
@@ -356,7 +397,7 @@ function open(id, link, push) {
   const facts = storyFacts(id, link);
   render(id, facts);
   const data = pageInput();
-  const sid = storyIdForArticle(data, id);
+  const sid = facts.sid || storyIdForArticle(data, id);
   markOpened(sid, historyAttrs(data, sid, facts.title, facts.href));
   current = { id, link, pushed: push };
   if (push) history.pushState({ almanacReader: id }, "", `#read-${id}`);
@@ -397,8 +438,15 @@ function goBack() {
 }
 
 function linkFor(id) {
-  return document.querySelector(`#section-today a.story-link[data-body="${id}"]`)
+  const direct = document.querySelector(`#section-today a.story-link[data-body="${id}"]`)
     || document.querySelector(`a.story-link[data-body="${id}"]`);
+  if (direct) return direct;
+  // U1: a member the device re-picked by trust is not the build's data-body; find its
+  // story's card instead. Ids are BODY_ID-checked before they reach a selector.
+  const sid = Object.entries(pageInput().bodies || {}).find(([, list]) => list.some((c) => c[0] === id))?.[0];
+  if (!sid || !BODY_ID.test(sid)) return null;
+  return document.querySelector(`#section-today li.story[data-sid="${sid}"] a.story-link[data-body]`)
+    || document.querySelector(`li.story[data-sid="${sid}"] a.story-link[data-body]`);
 }
 
 document.addEventListener("click", (event) => {
@@ -415,7 +463,7 @@ document.addEventListener("click", (event) => {
     return;
   }
   event.preventDefault();
-  open(id, link, true);
+  open(memberFor(link.closest("li.story[data-sid]")?.dataset.sid, id), link, true);
 });
 
 back.addEventListener("click", goBack);

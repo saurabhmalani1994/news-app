@@ -23,8 +23,8 @@ from urllib.parse import urlsplit
 from app.csp import headers_file
 from app.health import render as render_health
 from app.dek import fit_dek
-from app.frontpage import (CHARS_PER_LINE, DEK_LINES, clean_dek, front_page, pass_input, rank_input,
-                           run_ranker, source_ownership)
+from app.frontpage import (CHARS_PER_LINE, DEK_LINES, ROW_DEK_LINES, clean_dek, dek_budget, front_page,
+                           pass_input, rank_input, run_ranker, source_ownership)
 from app.images import THUMB_PX, credit_text, hero_box, hero_media, hero_worthy, image_url, media_for, thumb_ok
 from app.serviceworker import write_service_worker
 from app.source_catalog import write as write_source_catalog
@@ -181,30 +181,93 @@ TOAST = """<div class="toast" id="toast" role="status" aria-live="polite" hidden
 <button class="toast-action" id="toast-action" type="button" hidden></button>
 </div>"""
 
-# S25: a story opens in the reader only when its lead article has a body file (S22
-# has_body) and a link out; the id is the contract's article id shape, so it can only
-# ever name a file under bodies/.
+# S25: an article opens in the reader only when it has a body file (S22 has_body) and a
+# link out; the id is the contract's article id shape, so it can only ever name a file
+# under bodies/.
 BODY_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 
 def body_id(article):
-    """The lead's article id when the reader can open it, else None."""
+    """The article's id when the reader can open it, else None."""
     aid = article.get("id")
     if article.get("has_body") is True and isinstance(aid, str) and BODY_ID.match(aid) and _safe_url(article.get("url")):
         return aid
     return None
 
 
-def reader_photos(stories):
-    """{article_id: [url, width, height, credit]} for each shown story whose lead the
-    reader can open and whose own photo is hero-worthy (S39): the article's own photo,
-    never one borrowed from another outlet in its cluster, in the D2 hero box."""
+# U1: a story opens in the reader when ANY outlet in its cluster has full text, not only
+# its lead. Each such member is a candidate [article_id, source_id, body_chars, url]; the
+# build picks with the default profile (no trust set), the device re-picks at tap time
+# with the stored profile's trust (js/reader/core.js bestMember, the same rule).
+_TAGS = re.compile(r"<[^>]*>")
+
+
+def body_chars(bodies_dir):
+    """{article_id: characters of body text} for every body file the fetcher wrote, the
+    tags stripped and whitespace folded; {} when there is no bodies directory."""
+    chars = {}
+    if not bodies_dir or not Path(bodies_dir).is_dir():
+        return chars
+    for path in sorted(Path(bodies_dir).glob("*.json")):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(record, dict):
+            continue
+        html, aid = record.get("body_html"), record.get("article_id")
+        if isinstance(html, str) and isinstance(aid, str):
+            chars[aid] = len(" ".join(_TAGS.sub(" ", html).split()))
+    return chars
+
+
+def body_candidates(story, by_id, chars):
+    """The story's members the reader can open, as [id, source_id, body_chars, url],
+    in id order so the page is byte-stable."""
+    out = []
+    for aid in story.article_ids:
+        article = by_id.get(aid)
+        if article and body_id(article):
+            out.append([aid, article.get("source_id") or "", int(chars.get(aid, 0)), _safe_url(article.get("url"))])
+    return out
+
+
+def best_member(candidates, lead_id, trust=None):
+    """Which candidate the reader opens: the lead when it has a body, else the member
+    from the outlet the owner trusts most (profile trust, 1.0 when unset), else the
+    longest body, then the lowest id so ties never depend on input order."""
+    if not candidates:
+        return None
+    if any(c[0] == lead_id for c in candidates):
+        return lead_id
+    trust = trust or {}
+    return min(candidates, key=lambda c: (-float(trust.get(c[1], 1.0)), -c[2], c[0]))[0]
+
+
+def reader_bodies(stories, by_id, chars):
+    """{story_id: candidates} for every shown story with at least one openable member."""
+    out = {}
+    for story in stories:
+        candidates = body_candidates(story, by_id, chars)
+        if candidates:
+            out[story.id] = candidates
+    return dict(sorted(out.items()))
+
+
+def reader_photos(stories, by_id=None):
+    """{article_id: [url, width, height, credit]} for each article the reader can open
+    in a shown story (U1: any member, not only the lead) whose own photo is hero-worthy
+    (S39): the article's own photo, never one borrowed from another outlet in its
+    cluster, in the D2 hero box."""
+    by_id = by_id or {}
     photos = {}
     for story in stories:
-        aid = body_id(story.lead)
-        image = story.lead.get("image")
-        if aid and hero_worthy(image):
-            photos[aid] = [image_url(image), *hero_box(image), credit_text(image)]
+        members = [by_id[aid] for aid in story.article_ids if aid in by_id] or [story.lead]
+        for article in members:
+            aid = body_id(article)
+            image = article.get("image")
+            if aid and hero_worthy(image):
+                photos[aid] = [image_url(image), *hero_box(image), credit_text(image)]
     return dict(sorted(photos.items()))
 
 
@@ -398,8 +461,11 @@ CREDIT = '<span class="story-credit">{credit}</span>'
 DEK = '<span class="dek">{dek}</span>'
 HEADLINE_MOD = {"hero": " headline--hero", "secondary": " headline--river", "river": " headline--river",
                 "text_only": ""}
-# Dek line limits live with the lead rule in app.frontpage (D1); re-exported here.
-DEK_TIERS = tuple(DEK_LINES)
+# Dek line limits live with the lead rule in app.frontpage (D1); re-exported here. U1:
+# every tier carries a dek; rank-gate.js hides the rows' for display.summaries "top".
+DEK_TIERS = tuple(DEK_LINES) + tuple(ROW_DEK_LINES)
+# U1: a quiet mark in the meta line on a row that opens in the app's reader.
+READ_HERE = "Read here"
 
 
 def _parse_time(value):
@@ -435,9 +501,10 @@ def _safe_url(url):
     return None
 
 
-def _meta(story, source_names, now):
-    """Source, then the quiet 'N sources' for a multi-outlet cluster, then age. The
-    source name alone may truncate; the rest never does."""
+def _meta(story, source_names, now, read_here=False):
+    """Source, then the quiet 'N sources' for a multi-outlet cluster, then age, then
+    (U1) 'Read here' when the row opens in the reader. The source name alone may
+    truncate; the rest never does."""
     article = story.lead
     source = source_names.get(article.get("source_id"), "")
     rest = []
@@ -453,6 +520,9 @@ def _meta(story, source_names, now):
     if tail:
         lead_sep = f" {MIDDOT} " if source else ""
         parts.append(f'<span class="meta-rest">{escape(lead_sep + tail)}</span>')
+    if read_here:
+        sep = f" {MIDDOT} " if parts else ""
+        parts.append(f'<span class="meta-read">{escape(sep)}<span class="meta-read-label">{READ_HERE}</span></span>')
     return "".join(parts)
 
 
@@ -506,40 +576,46 @@ def _other_side(record, links, source_names, leans):
         title=escape(title, quote=False))
 
 
-def _render_story(story, tier, source_names, now, by_id, other="", coverage=""):
+def _render_story(story, tier, source_names, now, by_id, other="", coverage="", chars=None):
     article = story.lead
     title = escape(smart_quotes(article["title"]), quote=False)
     dek = ""
     if tier in DEK_TIERS:
-        text = fit_dek(clean_dek(article), DEK_LINES[tier] * CHARS_PER_LINE)
+        text = fit_dek(clean_dek(article), dek_budget(tier))
         if text:
             dek = DEK.format(dek=escape(smart_quotes(text), quote=False))
     url = _safe_url(article.get("url"))
+    aid = None
     if url is None:
         open_, close = '<span class="story-link">', "</span>"
     else:
-        aid = body_id(article)
+        # U1: the member the reader opens (lead first, then trust, then length).
+        aid = best_member(body_candidates(story, by_id, chars or {}), article.get("id"))
         body = f' data-body="{escape(aid, quote=True)}"' if aid else ""
         open_ = (f'<a class="story-link" href="{escape(url, quote=True)}" '
                  f'target="_blank" rel="noopener noreferrer"{body}>')
         close = "</a>"
     return STORY.format(
         tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
-        title=title, dek=dek, meta=_meta(story, source_names, now), other=other, coverage=coverage,
+        title=title, dek=dek, meta=_meta(story, source_names, now, read_here=aid is not None), other=other,
+        coverage=coverage,
         media=_media(tier, hero_media(_members(story, by_id), article, source_names) if tier == "hero" else None,
                      article.get("image")),
     )
 
 
 def _dek_pairs(stories):
-    """Each story's fitted dek for the hero and a lead block, one entry when they agree,
-    so the device can promote any row into a dek tier without re-fitting text."""
+    """Each story's fitted dek for the hero, a lead block and a row (river or text-only,
+    U1), in that order, trailing repeats dropped ([hero] when all three agree), so the
+    device can move any row to any tier without re-fitting text (js/tiers.js dekFor)."""
     pairs = {}
     for story in stories:
         dek = clean_dek(story.lead)
         if dek:
-            fitted = [smart_quotes(fit_dek(dek, DEK_LINES[t] * CHARS_PER_LINE)) for t in DEK_TIERS]
-            pairs[story.id] = fitted[:1] if fitted[0] == fitted[1] else fitted
+            fitted = [smart_quotes(fit_dek(dek, dek_budget(t))) for t in ("hero", "secondary", "river")]
+            while len(fitted) > 1 and fitted[-1] == fitted[-2]:
+                fitted.pop()
+            pairs[story.id] = fitted
     return pairs
 
 
@@ -555,7 +631,7 @@ def _image_records(stories, by_id, source_names):
     return records
 
 
-def _rank_input_json(pool, stories, by_id, source_names, links):
+def _rank_input_json(pool, stories, by_id, source_names, links, chars=None):
     """The device's ranking input as template text. Only &, < and > are escaped, so no
     feed string can close the template or open a tag (R26); JSON quotes stay readable.
     S13: buckets, leans and names for the passes, and the other-side link data. S14:
@@ -564,12 +640,14 @@ def _rank_input_json(pool, stories, by_id, source_names, links):
     shape."""
     data = {"now": pool.get("generated_at"), "pool": rank_input(pool), "deks": _dek_pairs(stories),
             "images": _image_records(stories, by_id, source_names), **pass_input(pool), "links": links,
-            "reader": reader_photos(stories), "ownership": source_ownership(pool),
-            "coverage": coverage_articles(pool)}
+            "reader": reader_photos(stories, by_id), "bodies": reader_bodies(stories, by_id, chars or {}),
+            "ownership": source_ownership(pool), "coverage": coverage_articles(pool)}
     return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
 
 
-def render(pool, ranking=None):
+def render(pool, ranking=None, chars=None):
+    """The front page. `chars` is body_chars() of the run's bodies/ (U1: the longest
+    body breaks a tie between members the reader could open); None reads as none."""
     now = _parse_time(pool.get("generated_at"))
     source_names = {s["id"]: s.get("name", "") for s in pool.get("sources", [])}
     by_id = {a["id"]: a for a in pool["articles"]}
@@ -588,7 +666,7 @@ def render(pool, ranking=None):
 
     def row(story, tier):
         return _render_story(story, tier, source_names, now, by_id, others.get(story.id, ""),
-                              coverages.get(story.id, ""))
+                              coverages.get(story.id, ""), chars)
 
     def rows(names):
         return "\n".join(row(story, tier) for tier in names for story in tiers[tier])
@@ -618,7 +696,7 @@ def render(pool, ranking=None):
         toast=TOAST,
         rank_key=escape(ranking["key"], quote=True),
         notices=render_notices(ranking.get("notices", [])),
-        rank_input=_rank_input_json(pool, shown_stories, by_id, source_names, links),
+        rank_input=_rank_input_json(pool, shown_stories, by_id, source_names, links, chars),
         preloads=preloads,
         top=rows(("hero", "secondary", "river")),
         more=more,
@@ -649,7 +727,9 @@ def main(argv=None):
     pool = json.loads(pool_path.read_text(encoding="utf-8"))
     out.mkdir(parents=True, exist_ok=True)
     ranking = run_ranker(pool)
-    (out / "index.html").write_text(render(pool, ranking), encoding="utf-8")
+    # U1: the fetcher writes bodies/ beside the pool (fetcher.fanout main).
+    chars = body_chars(pool_path.parent / "bodies")
+    (out / "index.html").write_text(render(pool, ranking, chars), encoding="utf-8")
     _copy_static(out)
     # S17: the Health screen, off the You tab, built the same way as the front page
     # (the pool's own ledger and source_health, embedded once, at build time).

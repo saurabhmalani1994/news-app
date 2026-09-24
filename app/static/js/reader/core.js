@@ -205,3 +205,37 @@ export function smartQuotes(text, prev = "") {
   }
   return out;
 }
+
+/**
+ * U1: which member of a story the reader opens when any outlet in its cluster has full
+ * text. `candidates` is the build's list for the story ([article_id, source_id,
+ * body_chars, url], app/build.py body_candidates); the lead wins when it has a body,
+ * else the member from the outlet the owner trusts most (`trust`, the profile's own
+ * map, 1.0 when unset), else the longest body, then the lowest id. The same rule as
+ * app/build.py best_member, so the build's pick and the device's agree for the default
+ * profile. Returns an article id, or null.
+ */
+export function bestMember(candidates, leadId, trust = {}) {
+  const valid = (Array.isArray(candidates) ? candidates : [])
+    .filter((c) => Array.isArray(c) && typeof c[0] === "string" && BODY_ID.test(c[0]));
+  if (!valid.length) return null;
+  if (valid.some((c) => c[0] === leadId)) return leadId;
+  const weight = (c) => {
+    const t = trust && typeof trust === "object" ? trust[c[1]] : undefined;
+    return typeof t === "number" && Number.isFinite(t) ? t : 1;
+  };
+  const chars = (c) => (Number.isFinite(c[2]) ? c[2] : 0);
+  return valid.reduce((best, c) => {
+    const d = weight(c) - weight(best) || chars(c) - chars(best) || (c[0] < best[0] ? 1 : -1);
+    return d > 0 ? c : best;
+  })[0];
+}
+
+/**
+ * U1: the quiet credit line the reader shows when the text it opened comes from an
+ * outlet other than the one the card named ("Full text from Axios"), else "".
+ */
+export function creditLine(memberSource, cardSource, sourceName) {
+  if (!memberSource || !cardSource || memberSource === cardSource) return "";
+  return sourceName ? `Full text from ${sourceName}` : "";
+}

@@ -28,10 +28,24 @@ SOURCES_JSON = Path(__file__).resolve().parent.parent / "sources.json"
 # measure at the dek's 16.5px Newsreader, so a fitted dek never meets the clamp.
 DEK_LINES = {"hero": 4, "secondary": 3}
 CHARS_PER_LINE = 38
+# U1: river and text-only rows carry a two-line summary too (the owner's "none of the
+# news shows texts"), unless the profile's display.summaries is "top". Their measure is
+# 280px beside the overflow gutter (320px under a thumbnail); 44 characters filled a
+# 280px line on the emulator, so 40 stays conservative.
+ROW_DEK_LINES = {"river": 2, "text_only": 2}
+ROW_CHARS_PER_LINE = 40
+
+
+def dek_budget(tier):
+    """The dek's character budget for a tier: its line limit times its measure's fill."""
+    if tier in DEK_LINES:
+        return DEK_LINES[tier] * CHARS_PER_LINE
+    return ROW_DEK_LINES[tier] * ROW_CHARS_PER_LINE
+
 
 # Tier sizes, by position in the order. Hero is the single top story; secondary are
-# lead blocks that keep their dek; river rows carry no dek (nyt-measured, row 5);
-# every story after that is a compact text-only row.
+# lead blocks with a longer dek; river rows show a thumbnail and a two-line dek; every
+# story after that is a compact text-only row with the same two-line dek.
 HERO_COUNT = 1
 SECONDARY_COUNT = 2
 RIVER_COUNT = 12

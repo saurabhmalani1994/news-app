@@ -24,6 +24,9 @@
       var stored = JSON.parse(raw).history;
       p = stored[stored.length - 1].profile;
     }
+    // U1: display.summaries "top" keeps summaries to the hero and the two lead blocks
+    // (NYT's own layout); set before first paint, so no row ever changes height.
+    if (p && p.display && p.display.summaries === "top") root.classList.add("summaries-top");
     var sameProfile = !p || canonical([p.topics, p.trust, p.boosts, p.mutes, p.seen_penalty, p.passes, p.standing_stories]) === root.getAttribute("data-rank-key");
 
     var summary = null;

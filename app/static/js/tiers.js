@@ -40,6 +40,17 @@ export function media(tier, record) {
   return [frame, credit];
 }
 
+/** U1: the fitted dek a row of `tier` shows, from the build's list for its story
+ * (app/build.py _dek_pairs): [hero, lead block, row], trailing repeats dropped. Every
+ * tier carries one; rank-gate.js hides the river and text-only rows' deks when the
+ * profile's display.summaries is "top". */
+export function dekFor(entry, tier) {
+  if (!Array.isArray(entry) || !entry.length) return "";
+  const index = tier === "hero" ? 0 : tier === "secondary" ? 1 : 2;
+  const text = entry[Math.min(index, entry.length - 1)];
+  return typeof text === "string" ? text : "";
+}
+
 /** Places `order`'s rows (a Map of sid to li) into lists = [top, more, rest]; a missing
  * list drops the rows its slots would hold. */
 export function retier(lists, order, rows, deks, images) {
@@ -54,11 +65,11 @@ export function retier(lists, order, rows, deks, images) {
       li.querySelector(".dek")?.remove();
       li.querySelectorAll(".story-media, .story-credit").forEach((el) => el.remove());
       li.querySelector(".story-body").prepend(...media(tier, images[order[i]]));
-      const pair = deks[order[i]];
-      if (pair && (tier === "hero" || tier === "secondary")) {
+      const text = dekFor(deks[order[i]], tier);
+      if (text) {
         const dek = document.createElement("span");
         dek.className = "dek";
-        dek.textContent = tier === "hero" ? pair[0] : pair[pair.length - 1];
+        dek.textContent = text;
         li.querySelector(".headline").after(dek);
       }
       target[slot].append(li);

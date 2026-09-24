@@ -226,13 +226,14 @@ def test_tiers_render_with_their_own_headline_class():
                        "river": "headline headline--river", "text-only": "headline"}
 
 
-def test_deks_only_on_hero_and_lead_blocks():
+def test_every_tier_carries_a_dek():
+    # U1 (owner: "none of the news shows texts"): river and text-only rows carry a
+    # two-line dek too; before U1 only the hero and the lead blocks did. The "top"
+    # setting hides the rows' deks on the device (tests/test_u1_summaries_reader.py).
     parsed = _parse(render(fixture_pool()))
+    assert {t for t in parsed.tiers} >= {"hero", "secondary", "river", "text-only"}
     for dek, tier in zip(parsed.deks, parsed.tiers):
-        if tier in ("hero", "secondary"):
-            assert dek, tier
-        else:
-            assert dek is None, tier
+        assert dek, tier
 
 
 def test_dek_repeating_the_title_is_dropped():
