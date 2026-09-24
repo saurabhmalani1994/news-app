@@ -70,7 +70,7 @@
     "topic": {
       "description": "S08: closed tag set from topics.json. hard_news there names the R16 hard-news subset (world, politics, economy, science, conflict).",
       "type": "string",
-      "enum": ["ai", "asia", "biotech", "conflict", "economy", "politics", "science", "singapore", "world"]
+      "enum": ["ai", "asia", "biotech", "conflict", "economy", "politics", "science", "singapore", "us_politics", "world"]
     },
     "lean_bucket": {
       "description": "S08: closed set from fetcher/taxonomy.py. Lean is a shared, repo-owned claim about a source (R10); trust is personal and lives on the device, never here.",
