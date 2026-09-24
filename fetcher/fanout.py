@@ -42,6 +42,7 @@ from pathlib import Path
 
 from contract.validate import validate
 from fetcher.cluster import cluster_items, method_for
+from fetcher.images import extract_image, filter_placeholder_logos, tally_found
 from fetcher.taxonomy import validate_sources_taxonomy
 from fetcher.topics import load_topics, tag_article
 from fetcher.health import compute_source_health, fetch_previous_health
@@ -131,12 +132,18 @@ def fetch_all(sources, fetch_fn=None, timeout=DEFAULT_TIMEOUT, retries=DEFAULT_R
     return results
 
 
-def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=None, topics_doc=None):
+def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=None, topics_doc=None,
+                      image_rejected=None):
     """Build one article dict from an <item>, or return None (the drop reason is
     already counted). Mirrors fetcher.fetch.build_pool's per-item rules exactly.
 
     S08: when topics_doc is given, every returned article also carries a deterministic
     "topics" tag list, computed from source_bucket plus the article's own title and dek.
+
+    S38: when image_rejected (a Counter) is given, the article also gets a best-effort
+    image from the feed's own fields (fetcher.images.extract_image), plus a scratch
+    "_image_method" field that build_pool_fanout consumes and strips before publish;
+    universal rejections land in image_rejected as they happen.
     """
     raw_title = _clean(_text(item, "title"))
     title = _plain(raw_title)
@@ -178,6 +185,11 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
         article["dek"] = dek
     if topics_doc is not None:
         article["topics"] = tag_article(source_bucket, title, dek, topics_doc)
+    if image_rejected is not None:
+        image, method = extract_image(item, image_rejected)
+        if image is not None:
+            article["image"] = image
+            article["_image_method"] = method
     return article
 
 
@@ -199,6 +211,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     leniency = Counter()
     drops = Counter()
     feed_states = Counter()
+    image_rejected = Counter()
     per_source = {}
     run_states = {}
     fetched_total = 0
@@ -228,7 +241,8 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             # The duplicate url check waits for the publish step below, so a url capped
             # out of one feed can still publish from a later feed, as before S07.
             article = _extract_article(item, sid, frozenset(), leniency, drops,
-                                        source_bucket=source.get("bucket"), topics_doc=topics_doc)
+                                        source_bucket=source.get("bucket"), topics_doc=topics_doc,
+                                        image_rejected=image_rejected)
             if article is not None:
                 kept.append(article)
         item_time = max((a["published_at"] for a in kept), default=None)
@@ -270,6 +284,12 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             published_urls.add(article["url"])
             articles.append(article)
 
+    # S38: the repeated-placeholder check needs every published article for a source
+    # at once, so it runs here, after capping, as a second pass; tally_found then
+    # strips the "_image_method" scratch field from every article, kept or not.
+    filter_placeholder_logos(articles, image_rejected)
+    image_found = tally_found(articles)
+
     source_lean = {s["id"]: s["lean"] for s in sources if s.get("lean")}
     source_syndication = {s["id"]: s.get("syndication_group") or s["id"] for s in sources}
     clusters = _published_clusters(all_clusters, {a["id"] for a in articles}, by_id,
@@ -285,6 +305,10 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
         "leniency": dict(sorted(leniency.items())),
         "feed_states": {k: feed_states.get(k, 0) for k in FEED_STATES},
         "previous_pool_status": previous_pool_status,
+        "images": {
+            "found": dict(sorted(image_found.items())),
+            "rejected": dict(sorted(image_rejected.items())),
+        },
     }
     _assert_ledger_invariant(counts)
     return {
@@ -394,6 +418,30 @@ def main(argv=None):
     print(
         f"previous_pool_status={c['previous_pool_status']} "
         f"unhealthy_sources={len(unhealthy)}/{len(sources)} {json.dumps(unhealthy)}"
+    )
+    with_image = sum(1 for a in pool["articles"] if "image" in a)
+    hero_worthy = sum(1 for a in pool["articles"] if a.get("image", {}).get("width", 0) >= 600)
+    bucket_by_source = {s["id"]: s.get("bucket") for s in sources}
+    bucket_totals = Counter(bucket_by_source.get(a["source_id"]) for a in pool["articles"])
+    bucket_with_image = Counter(
+        bucket_by_source.get(a["source_id"]) for a in pool["articles"] if "image" in a
+    )
+    share_by_bucket = {
+        b: f"{bucket_with_image.get(b, 0)}/{n}" for b, n in sorted(bucket_totals.items())
+    }
+    articles_by_source = {}
+    for a in pool["articles"]:
+        articles_by_source.setdefault(a["source_id"], []).append(a)
+    sources_no_images = sorted(
+        sid for sid, arts in articles_by_source.items()
+        if arts and not any("image" in a for a in arts)
+    )
+    print(
+        f"images_found={json.dumps(c['images']['found'])} "
+        f"images_rejected={json.dumps(c['images']['rejected'])} "
+        f"with_image={with_image}/{c['published']} hero_worthy_600px={hero_worthy} "
+        f"share_by_bucket={json.dumps(share_by_bucket)} "
+        f"sources_no_images={len(sources_no_images)}/{len(sources)} {json.dumps(sources_no_images)}"
     )
     return 0
 
