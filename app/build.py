@@ -26,6 +26,7 @@ from app.dek import fit_dek
 from app.frontpage import (CHARS_PER_LINE, DEK_LINES, ROW_DEK_LINES, clean_dek, dek_budget, front_page,
                            pass_input, rank_input, run_ranker, source_ownership)
 from app.images import THUMB_PX, credit_text, hero_box, hero_media, hero_worthy, image_url, media_for, thumb_ok
+from app.lean import hit_html as lean_hit_html, marker_html as lean_marker_html
 from app.serviceworker import write_service_worker
 from app.source_catalog import write as write_source_catalog
 from app.typography import smart_quotes
@@ -60,6 +61,7 @@ PAGE = """<!doctype html>
 <script type="module" src="js/reader.js"></script>
 <script type="module" src="js/story-actions.js"></script>
 <script type="module" src="js/coverage-view.js"></script>
+<script type="module" src="js/lean-view.js"></script>
 <script type="module" src="js/history/observe.js"></script>
 <script type="module" src="js/live-actions.js"></script>
 <script type="module" src="js/saved-screen.js"></script>
@@ -436,7 +438,7 @@ STORY_COVERAGE = ('<button class="story-coverage" type="button" data-sid="{sid}"
 STORY = (
     '<li class="story story--{tier}" data-sid="{sid}">{open}'
     '<span class="story-body">{media}<span class="headline{headline_mod}">{title}</span>{dek}'
-    '<span class="meta">{meta}</span></span>{close}' + STORY_OVERFLOW + "{coverage}{other}</li>"
+    '<span class="meta">{meta}</span></span>{close}{lean_hit}' + STORY_OVERFLOW + "{coverage}{other}</li>"
 )
 # S13 other-side slot: one attached link under a many-outlet card, to the same story as
 # an outlet of the lean least seen on this page tells it (app/static/js/passes.js says
@@ -464,7 +466,12 @@ HEADLINE_MOD = {"hero": " headline--hero", "secondary": " headline--river", "riv
 # Dek line limits live with the lead rule in app.frontpage (D1); re-exported here. U1:
 # every tier carries a dek; rank-gate.js hides the rows' for display.summaries "top".
 DEK_TIERS = tuple(DEK_LINES) + tuple(ROW_DEK_LINES)
-# U1: a quiet mark in the meta line on a row that opens in the app's reader.
+# U1: a quiet mark in the meta line on a row that opens in the app's reader. R43: the
+# row names the outlet whose full text opens, the member best_member picks: the row's
+# own source when that is the one (the name already leads the line), else after the
+# mark, "Read here · Reuters". rerank.js re-picks before first paint for a stored
+# profile's trust, and the reader opens exactly the row's data-body, so the row and the
+# reader always agree.
 READ_HERE = "Read here"
 
 
@@ -501,10 +508,12 @@ def _safe_url(url):
     return None
 
 
-def _meta(story, source_names, now, read_here=False):
-    """Source, then the quiet 'N sources' for a multi-outlet cluster, then age, then
-    (U1) 'Read here' when the row opens in the reader. The source name alone may
-    truncate; the rest never does."""
+def _meta(story, source_names, now, read_from=None, lean=None):
+    """Source, its lean marker (L1), then the quiet 'N sources' for a multi-outlet
+    cluster, then age, then (U1) 'Read here' when the row opens in the reader: `read_from`
+    is '' when the text is the row's own outlet's, else (R43) that other outlet's name,
+    set after the mark. Only the two outlet names may truncate (style.css); the source
+    count and the age never do."""
     article = story.lead
     source = source_names.get(article.get("source_id"), "")
     rest = []
@@ -516,13 +525,16 @@ def _meta(story, source_names, now, read_here=False):
     parts = []
     if source:
         parts.append(f'<span class="meta-source">{escape(source)}</span>')
+        parts.append(lean_marker_html(lean))
     tail = f" {MIDDOT} ".join(rest)
     if tail:
         lead_sep = f" {MIDDOT} " if source else ""
         parts.append(f'<span class="meta-rest">{escape(lead_sep + tail)}</span>')
-    if read_here:
+    if read_from is not None:
         sep = f" {MIDDOT} " if parts else ""
         parts.append(f'<span class="meta-read">{escape(sep)}<span class="meta-read-label">{READ_HERE}</span></span>')
+        if read_from:
+            parts.append(f'<span class="meta-read-source">{escape(read_from)}</span>')
     return "".join(parts)
 
 
@@ -576,8 +588,10 @@ def _other_side(record, links, source_names, leans):
         title=escape(title, quote=False))
 
 
-def _render_story(story, tier, source_names, now, by_id, other="", coverage="", chars=None):
+def _render_story(story, tier, source_names, now, by_id, other="", coverage="", chars=None, leans=None):
     article = story.lead
+    source_id = article.get("source_id")
+    lean = (leans or {}).get(source_id)
     title = escape(smart_quotes(article["title"]), quote=False)
     dek = ""
     if tier in DEK_TIERS:
@@ -586,19 +600,23 @@ def _render_story(story, tier, source_names, now, by_id, other="", coverage="", 
             dek = DEK.format(dek=escape(smart_quotes(text), quote=False))
     url = _safe_url(article.get("url"))
     aid = None
+    read_from = None
     if url is None:
         open_, close = '<span class="story-link">', "</span>"
     else:
         # U1: the member the reader opens (lead first, then trust, then length).
         aid = best_member(body_candidates(story, by_id, chars or {}), article.get("id"))
         body = f' data-body="{escape(aid, quote=True)}"' if aid else ""
+        if aid:
+            member = (by_id.get(aid) or article).get("source_id")
+            read_from = source_names.get(member, "") if member != source_id else ""
         open_ = (f'<a class="story-link" href="{escape(url, quote=True)}" '
                  f'target="_blank" rel="noopener noreferrer"{body}>')
         close = "</a>"
     return STORY.format(
         tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
-        title=title, dek=dek, meta=_meta(story, source_names, now, read_here=aid is not None), other=other,
-        coverage=coverage,
+        title=title, dek=dek, meta=_meta(story, source_names, now, read_from=read_from, lean=lean), other=other,
+        coverage=coverage, lean_hit=lean_hit_html(source_id, lean) if source_names.get(source_id) else "",
         media=_media(tier, hero_media(_members(story, by_id), article, source_names) if tier == "hero" else None,
                      article.get("image")),
     )
@@ -666,7 +684,7 @@ def render(pool, ranking=None, chars=None):
 
     def row(story, tier):
         return _render_story(story, tier, source_names, now, by_id, others.get(story.id, ""),
-                              coverages.get(story.id, ""), chars)
+                              coverages.get(story.id, ""), chars, leans)
 
     def rows(names):
         return "\n".join(row(story, tier) for tier in names for story in tiers[tier])

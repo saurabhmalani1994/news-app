@@ -18,8 +18,40 @@ import { retier, placeOtherSide } from "./tiers.js";
 import { buildDefaultProfile } from "./profile/default-profile.js";
 import { summaryToHistory } from "./history/summary.js";
 import { seenPenaltyTerm } from "./history/penalty.js";
+import { readChoice } from "./reader/core.js";
 
 const root = document.documentElement;
+
+/** R43: each "Read here" row re-picks, for this profile's trust, the member whose full
+ * text it opens (reader/core.js readChoice, the build's own rule) and names its outlet
+ * the way app/build.py does: nothing more when it is the row's own source, else the
+ * name after the mark. The row's data-body is what the reader opens, as is, so the row
+ * and the reader agree. Runs while the page is hidden, inside one nowrap meta line
+ * whose height never changes, so nothing moves. */
+function placeReadChoice(rows, input, trust) {
+  const leads = new Map((input.pool?.clusters || []).map((c) => [c.id, c.lead]));
+  const sourceOf = new Map((input.pool?.articles || []).map((a) => [a.id, a.source_id]));
+  for (const [sid, li] of rows) {
+    const link = li.querySelector("a.story-link[data-body]");
+    if (!link) continue;
+    const lead = leads.get(sid) || sid;
+    const choice = readChoice(input.bodies?.[sid], lead, trust || {});
+    if (!choice || choice.id === link.dataset.body) continue;
+    link.dataset.body = choice.id;
+    const name = choice.source_id === sourceOf.get(lead) ? "" : (input.names || {})[choice.source_id] || "";
+    let label = li.querySelector(".meta-read-source");
+    if (!name) {
+      label?.remove();
+    } else {
+      if (!label) {
+        label = document.createElement("span");
+        label.className = "meta-read-source";
+        li.querySelector(".meta-read")?.after(label);
+      }
+      label.textContent = name;
+    }
+  }
+}
 
 /** S28: the silence alarm for this profile, the same markup app/build.py writes, every
  * string set as text only (R26). Runs while the page is hidden, so nothing moves. */
@@ -56,6 +88,7 @@ try {
     for (const [sid, li] of rows) if (!onPage.has(sid)) li.remove();
     const lists = ["headlines", "more-list", "rest-list"].map((id) => document.getElementById(id));
     retier(lists, order, rows, input.deks, input.images || {});
+    placeReadChoice(rows, input, profile.trust);
     for (const story of pages.today) placeOtherSide(rows.get(story.id), story.other_side || null, input);
     drawNotices(document.getElementById("standing-notices"), pages.notices);
     const toggle = today.querySelector(".more-toggle");

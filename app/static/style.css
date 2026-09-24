@@ -443,6 +443,283 @@ body {
   color: var(--color-meta-tertiary);
 }
 
+/* R43: when the full text that opens is another outlet's, its name after the mark
+   ("Read here · Reuters"), in the same quietest tone. When the line runs out of room
+   this name and the source name give way together, each keeping the same share of
+   itself (equal shrink, weighted by width) and at least a few letters; the source
+   count and the age never do. */
+.meta-read-source {
+  flex: 0 1 auto;
+  min-width: 3.4em;
+  overflow: hidden;
+  white-space: pre;
+  text-overflow: ellipsis;
+  color: var(--color-meta-tertiary);
+}
+
+.meta-read-source::before {
+  content: " \00B7  ";
+}
+
+/* L1: the lean marker (js/lean.js leanMarker, app/lean.py), the one block for every
+   place a source name shows. Five 4dp dots right after the name, left to right the US
+   scale left, center-left, center, center-right, right; the source's own bucket is
+   filled, the other four faint, all in the meta's own tone, so it reads as metadata and
+   not decoration. It sits inside the meta line's own 11dp line box (never taller than
+   the caps beside it), so it adds no height to any row. "State" for state media is the
+   meta caps a step smaller, in the tertiary tone. An outlet outside the US axis
+   ("non-us") gets nothing. The owner turns markers off (html.lean-off) or colors the
+   filled dot (html.lean-color, muted blue left, muted red right, grey center) under
+   You > Display; rank-gate.js sets both classes before first paint. */
+.lean,
+.lean-sheet-dots {
+  --lean-left: #8FA6C6;
+  --lean-right: #C99590;
+}
+
+.lean {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 7px;
+  anchor-name: --lean;
+}
+
+.lean > i {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.28;
+}
+
+.lean--left > i:nth-child(1),
+.lean--center-left > i:nth-child(2),
+.lean--center > i:nth-child(3),
+.lean--center-right > i:nth-child(4),
+.lean--right > i:nth-child(5) {
+  opacity: 1;
+}
+
+.lean-color .lean--left > i:nth-child(1),
+.lean-color .lean--center-left > i:nth-child(2) {
+  background: var(--lean-left);
+}
+
+.lean-color .lean--center-right > i:nth-child(4),
+.lean-color .lean--right > i:nth-child(5) {
+  background: var(--lean-right);
+}
+
+.lean-state {
+  font-family: var(--type-meta-family);
+  font-size: 9px;
+  line-height: 11px;
+  font-weight: var(--type-meta-weight);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-meta-tertiary);
+}
+
+@media (prefers-color-scheme: light) {
+  .lean,
+  .lean-sheet-dots {
+    --lean-left: #4F6E97;
+    --lean-right: #9B5A54;
+  }
+}
+
+/* The row's tap target for its marker (js/lean.js leanHit): a sibling of the row's own
+   link, never inside it, laid 48dp square over the dots by anchor positioning, above
+   the link and the coverage trigger, so a tap on the dots opens the lean sheet and a
+   tap anywhere else in the row still opens the story. anchor-scope keeps each row's
+   button on its own row's dots. Absolutely positioned, so it never moves a pixel of
+   layout. Where anchor positioning is missing the button stays for keyboards and
+   screen readers only, and a tap on the dots opens the story like the rest of the row. */
+.story {
+  anchor-scope: --lean;
+}
+
+.lean-hit {
+  position: absolute;
+  position-anchor: --lean;
+  top: calc(anchor(center) - var(--touch-min) / 2);
+  left: calc(anchor(center) - var(--touch-min) / 2);
+  z-index: 1;
+  width: var(--touch-min);
+  height: var(--touch-min);
+  padding: 0;
+  border-style: none;
+  border-radius: 50%;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.lean-hit:active {
+  background: color-mix(in srgb, var(--color-headline) 9%, transparent);
+}
+
+.lean-hit:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -8px;
+}
+
+@supports not (anchor-name: --lean) {
+  .lean-hit {
+    top: 0;
+    left: 0;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+/* Beside the coverage view's outlet name, and after the reader's byline source (there
+   a real button into the same sheet, its 48dp target drawn around the dots by ::before,
+   so the byline keeps its 20dp line). */
+.coverage-row-head .lean {
+  margin-left: -1px;
+  color: var(--color-meta);
+}
+
+.lean-open {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border-style: none;
+  background: transparent;
+  color: var(--color-meta);
+  vertical-align: top;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lean-open::before {
+  content: "";
+  position: absolute;
+  inset: -14px -8px -14px -2px;
+  border-radius: 24px;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.lean-open:active::before {
+  background: color-mix(in srgb, var(--color-headline) 9%, transparent);
+}
+
+.lean-open:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: 4px;
+}
+
+.lean-off .lean,
+.lean-off .lean-hit,
+.lean-off .lean-open {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lean-hit {
+    transition: none;
+  }
+}
+
+/* The lean sheet (js/lean.js leanSheetContent) in S24's sheet: the same scale, larger,
+   between two quiet end labels, the bucket in words, then why it is rated so and who
+   owns it, each under a meta-voice label and a hairline, and one closing line saying
+   the rating is the outlet's, not the story's. Text only, no card, no color unless the
+   owner turned color on. */
+.lean-sheet {
+  padding: 0 var(--space-gutter) 14px;
+}
+
+.lean-sheet-head {
+  padding: 8px 0 18px;
+}
+
+.lean-sheet-scale {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  color: var(--color-meta);
+}
+
+.lean-sheet-dots {
+  display: flex;
+  gap: 14px;
+}
+
+.lean-sheet-dots > i {
+  display: block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.28;
+}
+
+.lean-sheet-end,
+.lean-sheet-label {
+  font-family: var(--type-meta-family);
+  font-size: var(--type-meta-size);
+  line-height: 14px;
+  font-weight: var(--type-meta-weight);
+  letter-spacing: var(--type-meta-tracking);
+  text-transform: uppercase;
+  color: var(--color-meta-tertiary);
+}
+
+.lean-sheet-word {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 22.5px;
+  line-height: 26px;
+  font-weight: 700;
+  color: var(--color-headline);
+}
+
+.lean-sheet-part {
+  padding: 14px 0 16px;
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.lean-sheet-part[hidden] {
+  display: none;
+}
+
+.lean-sheet-label {
+  margin: 0 0 7px;
+}
+
+.lean-sheet-basis,
+.lean-sheet-owner {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  line-height: 21px;
+  font-weight: 500;
+  color: var(--color-dek);
+  overflow-wrap: break-word;
+}
+
+.lean-sheet-note {
+  margin: 0;
+  padding-top: 14px;
+  border-top: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--color-meta-tertiary);
+}
+
 /* S13 other-side link: the same story as an outlet of the lean least seen on this page
    tells it. It sits inside its card's row, under the card's meta, as its own full-width
    touch target: the label in the meta voice, then that outlet's headline in the
