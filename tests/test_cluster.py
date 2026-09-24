@@ -117,6 +117,28 @@ def test_similar_wording_outside_the_time_window_does_not_merge():
 
 # Pool level: the same fixture through the fanout, as RSS.
 
+# S08: outlet_a and outlet_b share a lean bucket, outlet_c does not, so the quake
+# cluster is the "three-outlet cluster spanning two lean buckets" proof fixture.
+# wire_x and wire_y share one syndication_group (both carry the same AP-style wire
+# story), so the wire cluster is the "two outlets, one independent source" proof.
+SOURCE_META = {
+    "outlet_a": {"lean": "center-left", "syndication_group": "outlet_a"},
+    "outlet_b": {"lean": "center-left", "syndication_group": "outlet_b"},
+    "outlet_c": {"lean": "center", "syndication_group": "outlet_c"},
+    "wire_x": {"lean": "center", "syndication_group": "ap_wire"},
+    "wire_y": {"lean": "center", "syndication_group": "ap_wire"},
+}
+
+
+def _source(sid):
+    meta = SOURCE_META.get(sid, {"lean": "center", "syndication_group": sid})
+    return {
+        "id": sid, "name": sid, "feed_url": f"https://{sid}.example/feed", "bucket": "general",
+        "lean": meta["lean"], "lean_basis": "test fixture, not a real rating",
+        "syndication_group": meta["syndication_group"],
+    }
+
+
 def _rss(items):
     body = "".join(
         f"<item><title>{i['title']}</title><link>{i['url']}</link>"
@@ -133,8 +155,7 @@ def _pool(extra_by_source=None, cap=5):
         by_source.setdefault(it["source_id"], []).append(it)
     for sid, its in (extra_by_source or {}).items():
         by_source.setdefault(sid, []).extend(its)
-    sources = [{"id": sid, "name": sid, "feed_url": f"https://{sid}.example/feed",
-                "bucket": "general"} for sid in by_source]
+    sources = [_source(sid) for sid in by_source]
     results = {sid: (_rss(its), None) for sid, its in by_source.items()}
     return build_pool_fanout(sources, results, NOW, per_source_cap=cap)
 
@@ -154,6 +175,30 @@ def test_pool_carries_clusters_valid_under_both_validators():
         assert c["id"].startswith("c_")
 
 
+def test_independent_sources_counts_syndication_groups_not_source_ids():
+    # S08 proof: wire-x and wire-y are two different outlets (wire_x, wire_y) carrying
+    # the same wire story, sharing one syndication_group ("ap_wire"), so the pair counts
+    # as one independent source, not two. Fixes the S07 deferral.
+    pool = _pool()
+    by_url = {a["id"]: a["url"].rsplit("/", 1)[1] for a in pool["articles"]}
+    wire = next(c for c in pool["clusters"]
+                if {by_url[i] for i in c["article_ids"]} == {"wire-x", "wire-y"})
+    assert wire["independent_sources"] == 1
+    assert wire["lean_buckets"] == ["center"]
+
+
+def test_three_outlet_cluster_spanning_two_lean_buckets_reports_both():
+    # S08 proof: the quake cluster has three outlets (outlet_a, outlet_b, outlet_c),
+    # each its own syndication group, but outlet_a and outlet_b share a lean bucket
+    # while outlet_c does not, so the cluster spans exactly two lean buckets.
+    pool = _pool()
+    by_url = {a["id"]: a["url"].rsplit("/", 1)[1] for a in pool["articles"]}
+    quake = next(c for c in pool["clusters"]
+                 if {by_url[i] for i in c["article_ids"]} == {"quake-a", "quake-b", "quake-c"})
+    assert quake["independent_sources"] == 3
+    assert quake["lean_buckets"] == ["center", "center-left"]
+
+
 def test_clustered_item_past_the_cap_still_publishes():
     # Push the quake story to the end of outlet_c's feed behind two unclustered items.
     items = [LONE[2], LONE[1]]  # marathon and reef, both unclustered
@@ -161,8 +206,7 @@ def test_clustered_item_past_the_cap_still_publishes():
                  for i in items]
     by_source = {"outlet_a": [QUAKE[0]], "outlet_b": [QUAKE[1]],
                  "outlet_c": reordered + [QUAKE[2]]}
-    sources = [{"id": s, "name": s, "feed_url": f"https://{s}.example/feed", "bucket": "general"}
-               for s in by_source]
+    sources = [_source(s) for s in by_source]
     results = {s: (_rss(its), None) for s, its in by_source.items()}
     pool = build_pool_fanout(sources, results, NOW, per_source_cap=1, cluster_extra_cap=1)
     ids = {a["url"].rsplit("/", 1)[1] for a in pool["articles"]}
@@ -178,8 +222,7 @@ def test_url_capped_in_one_feed_still_publishes_from_a_later_feed():
     # nothing is counted twice. The pre-S07 behaviour, kept.
     reef, marathon = LONE[1], LONE[2]
     by_source = {"outlet_a": [reef, marathon], "outlet_b": [marathon]}
-    sources = [{"id": s, "name": s, "feed_url": f"https://{s}.example/feed", "bucket": "general"}
-               for s in by_source]
+    sources = [_source(s) for s in by_source]
     results = {s: (_rss(its), None) for s, its in by_source.items()}
     pool = build_pool_fanout(sources, results, NOW, per_source_cap=1)
     published = {(a["source_id"], a["url"]) for a in pool["articles"]}
