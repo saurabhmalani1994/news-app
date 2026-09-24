@@ -1,0 +1,326 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-24T05:10:00Z",
+  "sources": [
+    {
+      "id": "npr",
+      "name": "NPR",
+      "feed_url": "https://feeds.npr.org/1001/rss.xml"
+    },
+    {
+      "id": "bbc_world",
+      "name": "BBC World",
+      "feed_url": "https://feeds.bbci.co.uk/news/world/rss.xml"
+    },
+    {
+      "id": "al_jazeera",
+      "name": "Al Jazeera",
+      "feed_url": "https://www.aljazeera.com/xml/rss/all.xml"
+    },
+    {
+      "id": "politico",
+      "name": "Politico",
+      "feed_url": "https://rss.politico.com/politics-news.xml"
+    },
+    {
+      "id": "fox_politics",
+      "name": "Fox News Politics",
+      "feed_url": "https://moxie.foxnews.com/google-publisher/politics.xml"
+    },
+    {
+      "id": "straits_times_sg",
+      "name": "Straits Times Singapore",
+      "feed_url": "https://www.straitstimes.com/news/singapore/rss.xml"
+    },
+    {
+      "id": "cna_singapore",
+      "name": "CNA Singapore",
+      "feed_url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml"
+    },
+    {
+      "id": "times_of_israel",
+      "name": "Times of Israel",
+      "feed_url": "https://www.timesofisrael.com/feed/"
+    },
+    {
+      "id": "haaretz",
+      "name": "Haaretz",
+      "feed_url": "https://www.haaretz.com/cmlink/1.4605102"
+    },
+    {
+      "id": "radio_dabanga",
+      "name": "Radio Dabanga",
+      "feed_url": "https://www.dabangasudan.org/en/feed"
+    },
+    {
+      "id": "techcrunch_ai",
+      "name": "TechCrunch AI",
+      "feed_url": "https://techcrunch.com/category/artificial-intelligence/feed/"
+    },
+    {
+      "id": "labiotech",
+      "name": "Labiotech.eu",
+      "feed_url": "https://www.labiotech.eu/feed/"
+    },
+    {
+      "id": "the_diplomat",
+      "name": "The Diplomat",
+      "feed_url": "https://thediplomat.com/feed/"
+    },
+    {
+      "id": "gen_news",
+      "name": "GEN",
+      "feed_url": "https://www.genengnews.com/feed/"
+    }
+  ],
+  "articles": [
+    {
+      "id": "art-shutdown-npr",
+      "source_id": "npr",
+      "url": "https://example.org/2026/09/24/shutdown-npr",
+      "title": "Congress races toward a shutdown deadline",
+      "published_at": "2026-09-24T03:00:00Z"
+    },
+    {
+      "id": "art-shutdown-bbc",
+      "source_id": "npr",
+      "url": "https://example.org/2026/09/24/shutdown-bbc",
+      "title": "US government shutdown looms as talks stall",
+      "published_at": "2026-09-24T03:10:00Z"
+    },
+    {
+      "id": "art-rates-npr",
+      "source_id": "npr",
+      "url": "https://example.org/2026/09/24/rates-npr",
+      "title": "Central bank holds rates steady",
+      "published_at": "2026-09-24T02:00:00Z"
+    },
+    {
+      "id": "art-rates-bbc",
+      "source_id": "npr",
+      "url": "https://example.org/2026/09/24/rates-bbc",
+      "title": "Rate decision leaves markets little changed",
+      "published_at": "2026-09-24T02:20:00Z"
+    }
+  ],
+  "clusters": [
+    {
+      "id": "c-shutdown",
+      "method": "cosine_entity",
+      "article_ids": [
+        "art-shutdown-npr",
+        "art-shutdown-bbc"
+      ],
+      "near_duplicates": [],
+      "independent_sources": 2,
+      "lean_buckets": [
+        "center",
+        "center-left"
+      ]
+    },
+    {
+      "id": "c-rates",
+      "method": "cosine_entity",
+      "article_ids": [
+        "art-rates-npr",
+        "art-rates-bbc"
+      ],
+      "near_duplicates": [],
+      "independent_sources": 2,
+      "lean_buckets": [
+        "center",
+        "center-left"
+      ]
+    }
+  ],
+  "counts": {
+    "fetched": 25,
+    "published": 4,
+    "drops": {
+      "no_title": 1,
+      "no_date": 0,
+      "bad_url": 0,
+      "duplicate_url": 3,
+      "over_cap": 17
+    },
+    "leniency": {
+      "title_markup": 4,
+      "link_from_guid": 2,
+      "bare_ampersand": 1
+    },
+    "feed_states": {
+      "ok": 9,
+      "empty": 2,
+      "http_error": 1,
+      "timeout": 1,
+      "parse_error": 1
+    },
+    "previous_pool_status": "ok",
+    "images": {
+      "found": {
+        "media_content": 14,
+        "media_thumbnail": 3,
+        "enclosure": 1,
+        "content_img": 2
+      },
+      "rejected": {
+        "not_https": 2,
+        "data_uri": 0,
+        "tiny_pixel": 3,
+        "repeated_placeholder": 1
+      }
+    }
+  },
+  "events": [
+    {
+      "id": "ev-shutdown",
+      "label": "Government shutdown standoff",
+      "cluster_ids": [
+        "c-shutdown"
+      ],
+      "hype": 6,
+      "eligible": true,
+      "live": true,
+      "hold_state": "holding"
+    },
+    {
+      "id": "ev-rates",
+      "label": "Central bank rate decision",
+      "cluster_ids": [
+        "c-rates"
+      ],
+      "hype": 2,
+      "eligible": false,
+      "live": false,
+      "hold_state": "none"
+    }
+  ],
+  "source_health": {
+    "npr": {
+      "state": "ok",
+      "last_ok_at": "2026-09-24T04:40:00Z",
+      "last_item_at": "2026-09-24T04:35:00Z",
+      "consecutive_empty": 0,
+      "consecutive_error": 0,
+      "items_fetched": 12,
+      "unhealthy": false
+    },
+    "bbc_world": {
+      "state": "ok",
+      "last_ok_at": "2026-09-24T04:40:00Z",
+      "last_item_at": "2026-09-24T04:35:00Z",
+      "consecutive_empty": 0,
+      "consecutive_error": 0,
+      "items_fetched": 9,
+      "unhealthy": false
+    },
+    "al_jazeera": {
+      "state": "http_error",
+      "last_ok_at": "2026-09-24T02:10:00Z",
+      "last_item_at": "2026-09-24T01:55:00Z",
+      "consecutive_empty": 0,
+      "consecutive_error": 4,
+      "items_fetched": 0,
+      "unhealthy": true
+    },
+    "politico": {
+      "state": "ok",
+      "last_ok_at": "2026-09-24T04:40:00Z",
+      "last_item_at": "2026-09-24T04:35:00Z",
+      "consecutive_empty": 0,
+      "consecutive_error": 0,
+      "items_fetched": 7,
+      "unhealthy": false
+    },
+    "fox_politics": {
+      "state": "timeout",
+      "last_ok_at": "2026-09-24T02:10:00Z",
+      "last_item_at": "2026-09-24T01:55:00Z",
+      "consecutive_empty": 0,
+      "consecutive_error": 1,
+      "items_fetched": 0,
+      "unhealthy": false
+    },
+    "straits_times_sg": {
+      "state": "empty",
+      "last_ok_at": "2026-09-24T02:10:00Z",
+      "last_item_at": "2026-09-24T01:55:00Z",
+      "consecutive_empty": 6,
+      "consecutive_error": 0,
+      "items_fetched": 0,
+      "unhealthy": true
+    },
+    "cna_singapore": {
+      "state": "ok",
+      "last_ok_at": "2026-09-24T04:40:00Z",
+      "last_item_at": "2026-09-24T04:35:00Z",
+      "consecutive_empty": 0,
+      "consecutive_error": 0,
+      "items_fetched": 5,
+      "unhealthy": false
+    },
+    "times_of_israel": {
+      "state": "ok",
+      "last_ok_at": "2026-09-24T04:40:00Z",
+      "last_item_at": "2026-09-24T04:35:00Z",
+      "consecutive_empty": 0,
+      "consecutive_error": 0,
+      "items_fetched": 8,
+      "unhealthy": false
+    },
+    "haaretz": {
+      "state": "parse_error",
+      "last_ok_at": "2026-09-24T02:10:00Z",
+      "last_item_at": "2026-09-24T01:55:00Z",
+      "consecutive_empty": 0,
+      "consecutive_error": 1,
+      "items_fetched": 0,
+      "unhealthy": false
+    },
+    "radio_dabanga": {
+      "state": "ok",
+      "last_ok_at": "2026-09-24T04:40:00Z",
+      "last_item_at": "2026-09-24T04:35:00Z",
+      "consecutive_empty": 0,
+      "consecutive_error": 0,
+      "items_fetched": 2,
+      "unhealthy": false
+    },
+    "techcrunch_ai": {
+      "state": "ok",
+      "last_ok_at": "2026-09-24T04:40:00Z",
+      "last_item_at": "2026-09-24T04:35:00Z",
+      "consecutive_empty": 0,
+      "consecutive_error": 0,
+      "items_fetched": 4,
+      "unhealthy": false
+    },
+    "labiotech": {
+      "state": "ok",
+      "last_ok_at": "2026-09-24T04:40:00Z",
+      "last_item_at": "2026-09-24T04:35:00Z",
+      "consecutive_empty": 0,
+      "consecutive_error": 0,
+      "items_fetched": 3,
+      "unhealthy": false
+    },
+    "the_diplomat": {
+      "state": "empty",
+      "last_ok_at": "2026-09-24T02:10:00Z",
+      "last_item_at": "2026-09-24T01:55:00Z",
+      "consecutive_empty": 2,
+      "consecutive_error": 0,
+      "items_fetched": 0,
+      "unhealthy": false
+    },
+    "gen_news": {
+      "state": "empty",
+      "last_ok_at": "2026-09-24T01:00:00Z",
+      "last_item_at": "2026-09-24T00:40:00Z",
+      "consecutive_empty": 3,
+      "consecutive_error": 0,
+      "items_fetched": 0,
+      "unhealthy": false
+    }
+  }
+}
