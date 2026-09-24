@@ -173,7 +173,6 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     drops = Counter()
     feed_states = Counter()
     per_source = {}
-    seen_urls = set()
     fetched_total = 0
 
     for source in sources:
@@ -195,13 +194,18 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
         fetched_total += len(items)
         kept = per_source.setdefault(sid, [])
         for item in items:
-            article = _extract_article(item, sid, seen_urls, leniency, drops)
-            if article is None:
-                continue
-            seen_urls.add(article["url"])
-            kept.append(article)
+            # The duplicate url check waits for the publish step below, so a url capped
+            # out of one feed can still publish from a later feed, as before S07.
+            article = _extract_article(item, sid, frozenset(), leniency, drops)
+            if article is not None:
+                kept.append(article)
 
-    candidates = [a for s in sources for a in per_source.get(s["id"], [])]
+    candidates, seen_ids = [], set()
+    for source in sources:
+        for article in per_source.get(source["id"], []):
+            if article["id"] not in seen_ids:  # one url is one article to the clusterer
+                seen_ids.add(article["id"])
+                candidates.append(article)
     t0 = time.perf_counter()
     all_clusters = cluster_items(candidates)
     if timings is not None:
@@ -215,16 +219,22 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             multi_source.update(cl["article_ids"])
 
     articles = []
+    published_urls = set()
     for source in sources:
-        extra = 0
-        for pos, article in enumerate(per_source.get(source["id"], [])):
-            if pos < per_source_cap:
-                articles.append(article)
+        kept = extra = 0
+        for article in per_source.get(source["id"], []):
+            if article["url"] in published_urls:
+                drops["duplicate_url"] += 1
+                continue
+            if kept < per_source_cap:
+                kept += 1
             elif article["id"] in multi_source and extra < cluster_extra_cap:
-                articles.append(article)
                 extra += 1
             else:
                 drops["over_cap"] += 1
+                continue
+            published_urls.add(article["url"])
+            articles.append(article)
 
     clusters = _published_clusters(all_clusters, {a["id"] for a in articles}, by_id)
 

@@ -173,6 +173,21 @@ def test_clustered_item_past_the_cap_still_publishes():
     assert validate(pool) == []
 
 
+def test_url_capped_in_one_feed_still_publishes_from_a_later_feed():
+    # Same url in two feeds: capped out of the first, so the second copy publishes, and
+    # nothing is counted twice. The pre-S07 behaviour, kept.
+    reef, marathon = LONE[1], LONE[2]
+    by_source = {"outlet_a": [reef, marathon], "outlet_b": [marathon]}
+    sources = [{"id": s, "name": s, "feed_url": f"https://{s}.example/feed", "bucket": "general"}
+               for s in by_source]
+    results = {s: (_rss(its), None) for s, its in by_source.items()}
+    pool = build_pool_fanout(sources, results, NOW, per_source_cap=1)
+    published = {(a["source_id"], a["url"]) for a in pool["articles"]}
+    assert published == {("outlet_a", reef["url"]), ("outlet_b", marathon["url"])}
+    assert pool["counts"]["drops"] == {"over_cap": 1}
+    assert validate(pool) == []
+
+
 # Timing: synthetic items shaped like a live run.
 
 CLUSTER_BUDGET_SECONDS = 8.0
