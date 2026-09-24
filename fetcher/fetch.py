@@ -129,6 +129,16 @@ def _utc(dt):
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _assert_ledger_invariant(counts):
+    """R9/S02: fetched must equal published plus the sum of drops, every run."""
+    total_drops = sum(counts["drops"].values())
+    if counts["fetched"] != counts["published"] + total_drops:
+        raise FeedError(
+            "ledger invariant broken: fetched "
+            f"{counts['fetched']} != published {counts['published']} + drops {total_drops}"
+        )
+
+
 def build_pool(data, now, source=SOURCE, limit=5):
     """Turn raw feed bytes into a pool dict. Pure: no network, no clock."""
     leniency = Counter()
@@ -180,18 +190,20 @@ def build_pool(data, now, source=SOURCE, limit=5):
         if dek:
             article["dek"] = dek
         articles.append(article)
+    counts = {
+        "fetched": len(items),
+        "published": len(articles),
+        "drops": dict(sorted(drops.items())),
+        "leniency": dict(sorted(leniency.items())),
+    }
+    _assert_ledger_invariant(counts)
     return {
         "schema_version": 1,
         "generated_at": _utc(now),
         "sources": [dict(source)],
         "articles": articles,
         "clusters": [],
-        "counts": {
-            "fetched": len(items),
-            "published": len(articles),
-            "drops": dict(sorted(drops.items())),
-            "leniency": dict(sorted(leniency.items())),
-        },
+        "counts": counts,
     }
 
 
