@@ -14,8 +14,14 @@
 // step). Every change is one ProfileStore save (one version) with a quiet Undo that
 // reverts to the version before it. Nothing here is sent anywhere; the only fetches are
 // this app's own schema and source catalog, both precached.
+//
+// H2: a profile saved by an older build is migrated forward on load (migrate.js, one
+// new version, history kept). No lookup can take the page down: the page's own chrome
+// is found or made (pageChrome), and every section is built on its own, so a missing
+// field shows a calm line in that section only while the rest of the page works.
 import { ProfileStore } from "./profile/store.js";
 import { buildDefaultProfile } from "./profile/default-profile.js";
+import { migrateProfile } from "./profile/migrate.js";
 import { formatDiff } from "./profile/diff.js";
 import { showToast, hideToast } from "./toast.js";
 import {
@@ -57,9 +63,37 @@ function showErrors(container, errors) {
   container.appendChild(list);
 }
 
-const section = (label, children, extra = {}) => el("section", { class: "settings-section", ...extra }, [
-  el("h2", { class: "settings-label", text: label }), ...children,
+/** H2: the calm line a section shows instead of itself when it cannot be drawn. */
+const sectionNotice = (label) => el("section", { class: "settings-section" }, [
+  label ? el("h2", { class: "settings-label", text: label }) : null,
+  el("p", { class: "settings-hint section-notice", role: "status", text: "This part could not be shown. The rest of the page works, and your profile is unchanged." }),
 ]);
+
+/** A section; `children` may be a function, so an error while building it stays inside
+ * this one section (H2). */
+function section(label, children, extra = {}) {
+  let nodes;
+  try {
+    nodes = typeof children === "function" ? children() : children;
+  } catch (err) {
+    console.warn(`You page: the ${label} section could not be drawn`, err);
+    return sectionNotice(label);
+  }
+  return el("section", { class: "settings-section", ...extra }, [el("h2", { class: "settings-label", text: label }), ...nodes]);
+}
+
+/** H2: the page's own chrome, found by id, or made when an older or newer page lacks
+ * it, so no lookup here is ever null. */
+function pageChrome() {
+  let root = document.getElementById("settings-root");
+  if (!root) {
+    root = el("main", { class: "settings", id: "settings-root" });
+    document.body.insertBefore(root, document.querySelector(".bottom-nav"));
+  }
+  const title = document.getElementById("page-title") || el("h1");
+  const back = document.getElementById("masthead-back") || el("a");
+  return { root, title, back };
+}
 
 const rowText = (label, sub) => el("div", { class: "setting-row-text" }, [
   el("span", { class: "setting-label", text: label }),
@@ -92,11 +126,9 @@ async function loadJson(path) {
 }
 
 function main(schema, catalog) {
-  const store = new ProfileStore({ storage: window.localStorage, schema, seedDefault: buildDefaultProfile });
-  const sources = catalog?.sources || [];
-  const root = document.getElementById("settings-root");
-  const title = document.getElementById("page-title");
-  const back = document.getElementById("masthead-back");
+  const store = new ProfileStore({ storage: window.localStorage, schema, seedDefault: buildDefaultProfile, migrate: migrateProfile });
+  const sources = Array.isArray(catalog?.sources) ? catalog.sources : [];
+  const { root, title, back } = pageChrome();
 
   // --- Scroll memory: per view, kept for the tab's session so Back from Health (a
   // separate page) and Back between views both land where the reader left off. ---
@@ -160,32 +192,27 @@ function main(schema, catalog) {
 
   // --- You ---
   function viewYou(profile) {
-    const topics = Object.entries(profile.topics);
-    const interests = el("div", { id: "topics-list" }, topics.map(([id, t]) => {
-      const floor = t.enabled !== false && t.floor_slots > 0;
-      const value = floor ? `Top ${t.floor_slots}` : levelWord(levelOf(t));
-      return linkRow(`#interest/${encodeURIComponent(id)}`, t.label, null, value, { "data-topic": id });
-    }));
-
-    const standing = profile.standing_stories || [];
-    const stories = standing.map((s) => linkRow(`#story/${encodeURIComponent(s.id)}`, s.label, null,
-      s.enabled ? "On" : "Off"));
-
-    const counts = sourceCounts(profile, sources);
-    const sourcesLabel = sources.length ? `${counts.on} of ${counts.total} sources on` : "Choose your sources";
-    const version = store.history()[0].version;
-
     return [
-      section("Your interests", [interests]),
-      section("Standing stories", stories.length ? stories : [
-        el("p", { class: "settings-hint", text: "None followed. Add one in Advanced." }),
-      ]),
-      section("News sources", [linkRow("#sources", sourcesLabel, "Pick the outlets your pages draw from", null, { id: "sources-row" })]),
-      section("Display", [switchRow("summaries", "Summaries on every story", "Off shows them on the lead stories only",
+      section("Your interests", () => [el("div", { id: "topics-list" }, Object.entries(profile.topics).map(([id, t]) => {
+        const floor = t.enabled !== false && t.floor_slots > 0;
+        const value = floor ? `Top ${t.floor_slots}` : levelWord(levelOf(t));
+        return linkRow(`#interest/${encodeURIComponent(id)}`, t.label || id, null, value, { "data-topic": id });
+      }))]),
+      section("Standing stories", () => {
+        const stories = (profile.standing_stories || []).map((s) => linkRow(`#story/${encodeURIComponent(s.id)}`, s.label || s.id, null,
+          s.enabled ? "On" : "Off"));
+        return stories.length ? stories : [el("p", { class: "settings-hint", text: "None followed. Add one in Advanced." })];
+      }),
+      section("News sources", () => {
+        const counts = sourceCounts(profile, sources);
+        const sourcesLabel = sources.length ? `${counts.on} of ${counts.total} sources on` : "Choose your sources";
+        return [linkRow("#sources", sourcesLabel, "Pick the outlets your pages draw from", null, { id: "sources-row" })];
+      }),
+      section("Display", () => [switchRow("summaries", "Summaries on every story", "Off shows them on the lead stories only",
         summariesMode(profile) === "all",
         (on) => commit((p) => withSummaries(p, on ? "all" : "top"), on ? "Summaries on every story" : "Summaries on lead stories only"))]),
       section("Health", [linkRow("/health", "Feed health", "Pool age, the last run, every source's status")]),
-      section("Advanced", [linkRow("#advanced", "Profile data and versions", `Raw JSON, history and revert. Now v${version}`)]),
+      section("Advanced", () => [linkRow("#advanced", "Profile data and versions", `Raw JSON, history and revert. Now v${store.history()[0].version}`)]),
       el("footer", { class: "colophon colophon--settings" }, [
         el("p", { class: "colophon-text", text: "Kept on this device only. Your profile is never sent anywhere." }),
       ]),
@@ -293,7 +320,7 @@ function main(schema, catalog) {
       spellcheck: "false",
       onchange: (e) => commit((p) => withStandingField(p, id, "keywords", e.target.value), `${story.label} keywords saved`),
     });
-    keywords.value = story.keywords.join(", ");
+    keywords.value = (story.keywords || []).join(", ");
     return [
       section("Following", [switchRow("enabled", "Follow this story", "Off stops the floor and the silence alarm for it.",
         story.enabled, (on) => commit((p) => withStandingField(p, id, "enabled", on), on ? `${story.label} on` : `${story.label} off`))]),
@@ -495,8 +522,8 @@ function main(schema, catalog) {
 
   // --- Routing and rendering ---
   function titleFor(route, profile) {
-    if (route.view === "interest") return profile.topics[route.id]?.label;
-    if (route.view === "story") return (profile.standing_stories || []).find((s) => s.id === route.id)?.label;
+    if (route.view === "interest") { const t = profile.topics?.[route.id]; return t && (t.label || route.id); }
+    if (route.view === "story") { const s = (profile.standing_stories || []).find((x) => x?.id === route.id); return s && (s.label || s.id); }
     if (route.view === "sources") return "News sources";
     if (route.view === "advanced") return "Advanced";
     return "You";
@@ -511,7 +538,14 @@ function main(schema, catalog) {
     const focusKey = document.activeElement?.dataset?.focusKey;
     const y = scrollY;
     rendering = true;
-    root.replaceChildren(...VIEWS[current.view](profile, current.id));
+    let nodes;
+    try {
+      nodes = VIEWS[current.view](profile, current.id);
+    } catch (err) {
+      console.warn(`You page: the ${current.view} view could not be drawn`, err);
+      nodes = [sectionNotice(null)];
+    }
+    root.replaceChildren(...nodes);
     rendering = false;
     root.removeAttribute("aria-busy");
     root.dataset.view = current.view;
@@ -578,8 +612,9 @@ function main(schema, catalog) {
 Promise.all([loadJson("profile.schema.json"), loadJson("source-catalog.json").catch(() => null)])
   .then(([schema, catalog]) => main(schema, catalog))
   .catch((err) => {
-    const root = document.getElementById("settings-root");
+    console.warn("You page could not load", err);
+    const { root } = pageChrome();
     root.removeAttribute("aria-busy");
-    root.textContent = "";
-    root.appendChild(el("p", { class: "form-errors", text: `Could not load the You page: ${err.message}` }));
+    root.replaceChildren(el("p", { class: "settings-hint settings-hint--top section-notice", role: "status",
+      text: "Your settings could not be shown just now. Your profile is unchanged. Open this page again to retry." }));
   });

@@ -34,14 +34,19 @@ export class ProfileStore {
    * @param {object} opts.schema - profile.schema.json, already parsed
    * @param {Function} [opts.seedDefault] - (nowIso) => default profile
    * @param {Function} [opts.now] - () => ISO timestamp string, injectable for tests
+   * @param {Function} [opts.migrate] - H2: (profile, nowIso) => {profile, added}; when
+   *   `added` is not empty the stored profile is from an older build, and the result is
+   *   saved once as a new version (history untouched). migrate.js migrateProfile.
    */
-  constructor({ storage, schema, seedDefault, now = nowIso }) {
+  constructor({ storage, schema, seedDefault, now = nowIso, migrate }) {
     if (!storage) throw new Error("ProfileStore needs a storage adapter");
     if (!schema) throw new Error("ProfileStore needs profile.schema.json");
     this.storage = storage;
     this.schema = schema;
     this.seedDefault = seedDefault;
     this.now = now;
+    this.migrate = migrate;
+    this._migrationChecked = false;
   }
 
   _read() {
@@ -63,7 +68,7 @@ export class ProfileStore {
   /** Loads the store, seeding it with the default profile on first run. */
   _ensure() {
     const existing = this._read();
-    if (existing) return existing;
+    if (existing) return this._migrated(existing);
     if (!this.seedDefault) throw new Error("no profile saved yet and no seedDefault provided");
     const profile = this.seedDefault(this.now());
     const data = { history: [{ version: profile.profile_version, timestamp: this.now(), profile }] };
@@ -71,10 +76,28 @@ export class ProfileStore {
     return data;
   }
 
+  /** H2: once per store, a profile saved by an older build is brought forward and saved
+   * as one new version noted "migration"; earlier versions are never touched. If the
+   * result does not validate, nothing is written and the stored profile is used as is. */
+  _migrated(data) {
+    if (!this.migrate || this._migrationChecked) return data;
+    this._migrationChecked = true;
+    const latest = data.history[data.history.length - 1];
+    let migrated;
+    try {
+      migrated = this.migrate(latest.profile, this.now());
+    } catch {
+      return data;
+    }
+    if (!migrated.added.length) return data;
+    const result = this.save(migrated.profile, { note: `migration: ${migrated.added.join(", ")}` });
+    return result.ok ? this._read() : data;
+  }
+
   /** Version numbers newest first, with their timestamp; no profile bodies (cheap to list). */
   history() {
     return this._ensure()
-      .history.map(({ version, timestamp }) => ({ version, timestamp }))
+      .history.map(({ version, timestamp, note }) => (note ? { version, timestamp, note } : { version, timestamp }))
       .sort((a, b) => b.version - a.version);
   }
 
@@ -99,7 +122,7 @@ export class ProfileStore {
    * exactly what would be persisted. Returns {ok: true, profile} on success or
    * {ok: false, errors} on failure, writing nothing either way but on success.
    */
-  save(profile) {
+  save(profile, { note } = {}) {
     const data = this._ensure();
     const nextVersion = data.history[data.history.length - 1].version + 1;
     const candidate = {
@@ -110,7 +133,7 @@ export class ProfileStore {
     };
     const errors = validateProfile(candidate, this.schema);
     if (errors.length) return { ok: false, errors };
-    data.history.push({ version: nextVersion, timestamp: candidate.updated_at, profile: candidate });
+    data.history.push({ version: nextVersion, timestamp: candidate.updated_at, profile: candidate, ...(note ? { note } : {}) });
     this._write(data);
     return { ok: true, profile: candidate };
   }
