@@ -190,7 +190,7 @@ body {
 .story-credit {
   display: block;
   overflow: hidden;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
   white-space: nowrap;
   text-overflow: ellipsis;
   text-align: right;
