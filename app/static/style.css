@@ -1462,3 +1462,125 @@ body {
 .reader-thumb-icon {
   fill: currentColor;
 }
+
+/* S12: the why-this sheet, opened by the overflow menu's own item into the same
+   reusable sheet (js/sheet.js). No card, no shadow, no color coding: the sign reads
+   from the +/- glyph and the bar's own brightness, the same tonal language the diff
+   view (profile.css) already uses for added and removed lines. */
+.why-headline {
+  margin: 2px var(--space-gutter) 14px;
+  font-family: var(--font-serif);
+  font-size: 16.5px;
+  line-height: 21px;
+  font-weight: 700;
+  color: var(--color-headline);
+}
+
+.why-scale-note {
+  margin: 0 var(--space-gutter) 16px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-meta-tertiary);
+}
+
+.why-rows {
+  margin: 0 var(--space-gutter);
+}
+
+.why-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: 12px;
+  padding: 10px 0;
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.why-rows .why-row:first-child {
+  border-top-style: none;
+}
+
+.why-row-label {
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  line-height: 19px;
+  color: var(--color-headline);
+}
+
+.why-row-value {
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-headline);
+}
+
+.why-row-value--neg {
+  color: var(--color-meta);
+}
+
+.why-row-bar {
+  grid-column: 1 / -1;
+  height: 3px;
+  margin-top: 8px;
+  background: var(--color-pressed);
+}
+
+.why-row-bar-fill {
+  height: 100%;
+  background: var(--color-headline);
+}
+
+.why-row-bar-fill--neg {
+  background: var(--color-meta-tertiary);
+}
+
+.why-total {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  margin: 0 var(--space-gutter);
+  padding: 12px 0 18px;
+  border-top: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-headline);
+}
+
+.why-passes {
+  margin: 0 var(--space-gutter) 18px;
+  padding-top: 14px;
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.why-pass {
+  margin: 0 0 10px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 19px;
+  color: var(--color-meta);
+}
+
+.why-pass:last-child {
+  margin-bottom: 0;
+}
+
+.why-edit-link {
+  display: block;
+  margin: 4px var(--space-gutter) 4px;
+  padding: 12px 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-headline);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.why-edit-link:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}

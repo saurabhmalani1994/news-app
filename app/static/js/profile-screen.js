@@ -117,7 +117,7 @@ function main(schema) {
       }),
     ]);
 
-    return el("div", { class: "setting-group" }, [header, affinityRow, halfLifeRow]);
+    return el("div", { class: "setting-group", id: `topic-${id}` }, [header, affinityRow, halfLifeRow]);
   }
 
   function renderTopics() {
@@ -125,6 +125,17 @@ function main(schema) {
     for (const [id, setting] of Object.entries(draft.topics)) {
       topicsList.appendChild(renderTopicRow(id, setting));
     }
+  }
+
+  // S12's why-this sheet links here as "profile.html#topic-<id>" or "#raw-json": the
+  // field that drove a story's largest term. Topic rows exist only after this fetch
+  // resolves, so the browser's own fragment scroll (which only fires once, at load)
+  // never reaches them; this runs it by hand, once, after the first render.
+  function scrollToHash() {
+    const target = location.hash && document.getElementById(location.hash.slice(1));
+    if (!target) return;
+    const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "center" });
   }
 
   function renderVersions() {
@@ -250,6 +261,7 @@ function main(schema) {
   compareTo.addEventListener("change", renderDiff);
 
   renderAll();
+  scrollToHash();
 }
 
 loadSchema()

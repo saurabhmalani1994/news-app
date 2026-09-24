@@ -16,16 +16,17 @@ import { buildDefaultProfile } from "./profile/default-profile.js";
 import { nowIso } from "./profile/time.js";
 import { rankPages } from "./passes.js";
 import { retier, placeOtherSide } from "./tiers.js";
-import { storyAttributes } from "./actions/context.js";
+import { storyAttributes, domPlacement } from "./actions/context.js";
 import { savesStore, thumbsStore } from "./actions/store.js";
 import { toggleSave, undoSave } from "./actions/saves.js";
 import { toggleThumb, undoThumb } from "./actions/thumbs.js";
 import { withSourceMuted, withTopicMuted, withTopicBoosted } from "./actions/mute-boost.js";
 import { anchoredRerender } from "./actions/scroll-anchor.js";
+import { renderWhyContent } from "./why-this.js";
 
-// S12's why-this sheet is not built yet; the item stays in the DOM, hidden, so the
-// menu's shape does not change again when it lands.
-const WHY_THIS_ENABLED = false;
+// S12: the why-this sheet reads the same rankPages() output the device re-rank and the
+// build already agree on, so the item can stay on from here.
+const WHY_THIS_ENABLED = true;
 
 // Generic geometric glyphs (Material-style single path, no text, no brand marks), the
 // same filled-icon convention as the bottom nav and the reader bar (app/build.py).
@@ -153,7 +154,65 @@ function handleAction(action, ctx) {
   if (action === "mute-source") return doMuteSource(ctx);
   if (action === "mute-topic") return doMuteTopic(ctx);
   if (action === "boost-topic") return doBoostTopic(ctx);
-  return null; // "why": flagged off, nothing to wire yet
+  if (action === "why") return doWhy(ctx);
+  return null;
+}
+
+/** S12: the story on the tab it is shown on, ranked with the device's current profile
+ * (the same call rerenderAfterProfileChange makes after a mute or boost), so the sheet
+ * reads identically whether the page is fresh off the build or already re-ranked. A
+ * section tab only ever runs its own SECTION_PASSES (passes.js), so a story's pass
+ * entries here are the ones that actually placed it on the tab it was opened from. */
+async function storyForWhy(li, sid) {
+  const input = getInput();
+  let profile;
+  try {
+    profile = (await getStore()).current();
+  } catch {
+    profile = buildDefaultProfile(input.now);
+  }
+  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health });
+  const { tab } = domPlacement(li);
+  const list = tab === "today" ? pages.today : pages.sections.find((s) => s.id === tab)?.stories || pages.today;
+  const story = list.find((s) => s.id === sid) || pages.today.find((s) => s.id === sid);
+  return { story, profile, input };
+}
+
+// A taller sheet swapped in while the shorter one is still on screen would change the
+// panel's own rendered height mid-frame: a real reflow, not the transform-only slide,
+// so it would count as layout shift. Waiting for #sheet-root to actually go hidden
+// (sheet.js's dismiss() sets that only once the close transition has fully run, or
+// straight away under reduced motion) means the why-this sheet's first paint is a
+// fresh appearance, never a visible one changing shape. That flag flipping true is not
+// enough by itself: setting it and reopening can both happen before the browser ever
+// paints a frame with the sheet actually gone, which the layout-shift tracker reads
+// the same as one visible box silently changing shape. The extra double rAF (the same
+// wait sheet.js's own reveal uses to guarantee a paint lands first) makes sure a hidden
+// frame is actually painted before the next sheet opens.
+function paint() {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
+async function sheetClosed() {
+  const root = document.getElementById("sheet-root");
+  if (!root.hidden) {
+    await new Promise((resolve) => {
+      const check = () => (root.hidden ? resolve() : requestAnimationFrame(check));
+      requestAnimationFrame(check);
+    });
+  }
+  await paint();
+}
+
+async function doWhy({ li, sid, facts }) {
+  const opener = li.querySelector(".story-overflow");
+  const { story, profile, input } = await storyForWhy(li, sid);
+  closeSheet();
+  if (!story) return;
+  const nowMs = typeof input.now === "number" ? input.now : Date.parse(input.now) || Date.now();
+  const content = renderWhyContent({ story, profile, nowMs, names: input.names || {}, headline: facts.title });
+  await sheetClosed();
+  openSheet({ title: "Why this", content, opener });
 }
 
 async function doSave({ sid, attrs, facts }) {
