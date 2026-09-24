@@ -15,8 +15,13 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": 
 // T1: every wait below is bounded so a wedged Chrome fails fast with a clear message
 // instead of hanging node --test (and the CI job) until the outer timeout kills it.
 const LAUNCH_TIMEOUT_MS = Number(process.env.CDP_LAUNCH_TIMEOUT_MS) || 15000; // chrome.exe -> a debuggable page target
-const CONNECT_TIMEOUT_MS = Number(process.env.CDP_CONNECT_TIMEOUT_MS) || 10000; // WebSocket handshake to that target
-const COMMAND_TIMEOUT_MS = Number(process.env.CDP_COMMAND_TIMEOUT_MS) || 20000; // one CDP command's round trip
+const CONNECT_TIMEOUT_MS = Number(process.env.CDP_CONNECT_TIMEOUT_MS) || 15000; // WebSocket handshake to that target
+// T1: generous. The hand-run proofs share this module and run many CDP commands across
+// several real Chrome launches on a developer's own loaded machine, not a clean CI
+// runner; a bound tight enough to be a fast CI failure was tripping on ordinary local
+// system load, not a hang. Still well under CI's 5-minute job budget even if several
+// commands in a row each needed the full wait, and every consumer can override it.
+const COMMAND_TIMEOUT_MS = Number(process.env.CDP_COMMAND_TIMEOUT_MS) || 45000; // one CDP command's round trip
 
 /** Reject `promise` with `message` if it has not settled within `ms`. */
 function withTimeout(promise, ms, message) {
