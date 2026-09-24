@@ -10,6 +10,10 @@ name: publish
 # B1: a manual run can also upload the pre-cap candidate list for gold-set labeling
 # (tests/fixtures/bundles/README.md). Only a workflow_dispatch with dump_candidates true
 # does; the hourly schedule and pushes never make an artifact, so storage stays free.
+# C1: the trigger input lets the cron/ Worker ask for an hourly run by name (R44,
+# GitHub's own `schedule:` below is best effort and was observed firing only twice in
+# about ten hourly slots). A dispatch with trigger=cron skips the test job exactly like
+# `schedule` does, so a cron-shaped run never installs Python packages either.
 on:
   workflow_dispatch:
     inputs:
@@ -17,6 +21,10 @@ on:
         description: "B1: also upload the pre-cap candidate list as a 7-day artifact"
         type: boolean
         default: false
+      trigger:
+        description: "C1: set to cron by the cron Worker; skips the test job like schedule does"
+        type: string
+        default: "manual"
   push:
     branches: [main]
     paths-ignore:
@@ -33,7 +41,9 @@ concurrency:
 
 jobs:
   test:
-    if: github.event_name != 'schedule'
+    # C1: skips on the GitHub-native schedule and on a cron-shaped dispatch (the Worker's
+    # trigger=cron) alike, so neither path installs Python packages (R30).
+    if: github.event_name != 'schedule' && inputs.trigger != 'cron'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
