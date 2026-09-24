@@ -174,6 +174,14 @@ def source_leans(pool, sources_path=SOURCES_JSON):
     return _source_field(pool, "lean", sources_path)
 
 
+def source_ownership(pool, sources_path=SOURCES_JSON):
+    """{source_id: ownership label} for the pool's sources that carry one (S14 coverage
+    view): state-owned, state-funded and so on (fetcher/taxonomy.py OWNERSHIP_LABELS).
+    Ownership is a separate, optional fact from lean (R10); most sources have none, and
+    those are simply absent here."""
+    return _source_field(pool, "ownership", sources_path)
+
+
 def source_names(pool):
     """{source_id: name} from the pool's own source records, sorted by id, so a pass can
     name an outlet in a story's explanation."""
