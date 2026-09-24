@@ -1,0 +1,73 @@
+name: deploy-cron
+
+# C1: deploys the Almanac cron Worker (cron/), which fires publish.yml's
+# workflow_dispatch once an hour because GitHub's own `schedule:` trigger is best
+# effort (R44). Runs on a push that touches cron/**, or manually. Uses
+# CLOUDFLARE_WORKERS_TOKEN, the same Workers-scoped token deploy-relay.yml uses,
+# separate from the CLOUDFLARE_API_TOKEN publish.yml uses for Pages. After deploying
+# the Worker, copies the repository secret DISPATCH_TOKEN into the Worker secret
+# GH_DISPATCH_TOKEN, piped through stdin so it is never printed, never logged, and
+# never an environment variable dumped anywhere. The owner creates DISPATCH_TOKEN
+# himself; this workflow only checks whether it exists (`gh secret list` shows names
+# only) and copies its value across without ever displaying it. If it does not exist
+# yet, the Worker still deploys; it just has no token, so its scheduled() handler logs
+# "no token, skipping" and dispatches nothing until the owner adds the secret.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cron/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Cloudflare secrets are present
+        id: cf
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Cloudflare secrets not set"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.cf.outputs.ok == 'true'
+        with:
+          node-version: '22'
+
+      - name: Deploy cron Worker
+        if: steps.cf.outputs.ok == 'true'
+        working-directory: cron
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: npx --yes wrangler@4.137.0 deploy
+
+      - name: Set the Worker's GH_DISPATCH_TOKEN secret from the repo secret
+        if: steps.cf.outputs.ok == 'true'
+        working-directory: cron
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
+          WRANGLER_SEND_METRICS: 'false'
+          DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+        run: |
+          if [ -n "$DISPATCH_TOKEN" ]; then
+            printf '%s' "$DISPATCH_TOKEN" | npx --yes wrangler@4.137.0 secret put GH_DISPATCH_TOKEN
+            echo "GH_DISPATCH_TOKEN set on the Worker"
+          else
+            echo "::notice::DISPATCH_TOKEN repo secret is not set yet; the Worker has no token and will log 'no token, skipping' until the owner creates it"
+          fi
