@@ -122,10 +122,17 @@ export function silenceNotices(stories, profile, nowMs, opts = {}) {
     const own = Object.keys(buckets).filter((id) => def.buckets.includes(buckets[id])).sort((a, b) => byStr(name(a), name(b)) || byStr(a, b));
     const failing = own.filter((id) => Object.hasOwn(health, id));
     const answering = own.filter((id) => !Object.hasOwn(health, id));
-    const how = (id) => {
-      const h = health[id];
-      const runs = Number.isInteger(h.runs) && h.runs > 0 ? `, ${h.runs} fetches in a row` : "";
-      return `${name(id)} (${STATE_WORDS[h.state] || "failing"}${runs})`;
+    // Failing sources grouped by how they fail, so five feeds down the same way read as
+    // one clause: "A, B and C (HTTP errors, 6 fetches in a row)".
+    const how = (ids) => {
+      const groups = new Map();
+      for (const id of ids) {
+        const h = health[id];
+        const runs = Number.isInteger(h.runs) && h.runs > 0 ? `, ${h.runs} fetches in a row` : "";
+        const key = `${STATE_WORDS[h.state] || "failing"}${runs}`;
+        groups.set(key, [...(groups.get(key) || []), name(id)]);
+      }
+      return listWords([...groups].map(([key, names]) => `${listWords(names)} (${key})`));
     };
     const gap = age === null ? `No ${def.label} coverage in the last ${plural(hours, "hour", "hours")}` : `No new ${def.label} coverage in ${plural(hours, "hour", "hours")}`;
     let kind = "no-coverage";
@@ -134,9 +141,9 @@ export function silenceNotices(stories, profile, nowMs, opts = {}) {
     if (own.length && !answering.length) {
       kind = "sources-failing";
       head = `Your ${def.label} sources are failing`;
-      text = `${gap}, and every ${def.label} source is failing: ${listWords(failing.map(how))}.`;
+      text = `${gap}, and every ${def.label} source is failing: ${how(failing)}.`;
     } else if (failing.length) {
-      text = `${listWords(answering.map(name))} ${answering.length === 1 ? "is" : "are"} answering; ${listWords(failing.map(how))} ${failing.length === 1 ? "is" : "are"} failing. None of your sources has run a new ${def.label} story.`;
+      text = `${listWords(answering.map(name))} ${answering.length === 1 ? "is" : "are"} answering; ${how(failing)} ${failing.length === 1 ? "is" : "are"} failing. None of your sources has run a new ${def.label} story.`;
     } else if (own.length) {
       text = `Your ${plural(own.length, `${def.label} source is`, `${def.label} sources are`)} answering, so this is a gap in coverage, not a broken feed.`;
     } else {

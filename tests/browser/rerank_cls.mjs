@@ -98,7 +98,7 @@ const results = {};
 let ok = true;
 for (const [name, store, scheme] of [["default-dark", null, "dark"], ["custom-dark", stored, "dark"], ["custom-light", stored, "light"], ["muted-dark", mutedStore, "dark"]]) {
   const r = await visit(store, scheme, shot(`rerank-${name}.png`));
-  const opts = { buckets: r.input.buckets, leans: r.input.leans, names: r.input.names };
+  const opts = { buckets: r.input.buckets, leans: r.input.leans, names: r.input.names, health: r.input.health };
   const page = rankPages(r.input.pool, expectFor(store), r.input.now, opts);
   const expected = page.today.map((s) => s.id);
   const expectedOthers = page.today.filter((s) => s.other_side).map((s) => [s.id, s.other_side.article_id]);

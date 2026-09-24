@@ -93,7 +93,7 @@ def test_silence_notice_sources_failing_names_them_escaped():
     assert 'data-kind="sources-failing"' in box
     assert "Your Sudan sources are failing" in box
     # A source name is a feed-side string: escaped, never markup (R26).
-    assert "AllAfrica &lt;Sudan&gt; (HTTP errors, 17 fetches in a row)" in box
+    assert "AllAfrica &lt;Sudan&gt; and Radio Dabanga (HTTP errors, 17 fetches in a row)." in box
     assert "<Sudan>" not in box
     # The device gets the same health to draw the same notice after a re-rank.
     data = json.loads(html.unescape(re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)))

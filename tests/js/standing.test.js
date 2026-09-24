@@ -152,6 +152,9 @@ test("silence alarm: failing sources say so, and which", () => {
   assert.equal(sudan.kind, "sources-failing");
   assert.equal(sudan.head, "Your Sudan sources are failing");
   assert.equal(sudan.text, "No new Sudan coverage in 40 hours, and every Sudan source is failing: Radio Dabanga (HTTP errors, 4 fetches in a row) and ReliefWeb Sudan (unreadable feed, 17 fetches in a row).");
+  // Feeds down the same way read as one clause.
+  const same = rankPages(poolOf([...AI, old]), profile(), NOW, { buckets: BUCKETS, names: NAMES, health: { dabanga: health.dabanga, reliefweb: health.dabanga } });
+  assert.equal(same.notices.find((n) => n.id === "sudan").text, "No new Sudan coverage in 40 hours, and every Sudan source is failing: Radio Dabanga and ReliefWeb Sudan (HTTP errors, 4 fetches in a row).");
   // Some failing, some answering: still a coverage gap, and it names both.
   const partly = rankPages(poolOf([...AI, old]), profile(), NOW, { buckets: BUCKETS, names: NAMES, health: { reliefweb: health.reliefweb } });
   const p = partly.notices.find((n) => n.id === "sudan");
