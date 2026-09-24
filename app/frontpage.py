@@ -125,7 +125,7 @@ def build_stories(pool):
     return stories
 
 
-RANK_ARTICLE_FIELDS = ("id", "source_id", "title", "published_at", "topics")
+RANK_ARTICLE_FIELDS = ("id", "source_id", "title", "published_at", "topics", "geo")
 RANK_CLUSTER_FIELDS = ("id", "article_ids", "near_duplicates", "independent_sources", "lean_buckets")
 
 

@@ -83,6 +83,9 @@ function makeStory(id, members, { independent, lean }) {
     article_ids: members.map((a) => a.id).sort(byStr),
     source_ids: uniqSorted(members.map((a) => a.source_id)),
     topics: uniqSorted(members.flatMap((a) => a.topics || [])),
+    // G1: the union of the members' own geo tags. Each member's tags come from its
+    // own text (fetcher/geo.py), so a region counts only when some member names it.
+    geo: uniqSorted(members.flatMap((a) => a.geo || [])),
     titles: members.map((a) => a.title || "").sort(byStr),
     latest_ms: Math.max(...members.map((a) => epochMs(a.published_at))),
     independent_sources: independent,

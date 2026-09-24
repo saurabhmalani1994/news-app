@@ -4,6 +4,10 @@
 // one of the section's pool topic tags, or comes from a source in one of its source
 // buckets (sources.json, repo owned). So US Politics works either way: the fetcher's
 // US-specific `us_politics` tag when an article has it, the source bucket otherwise.
+// G1: Singapore and Asia are geography, not outlets. They take a story when any member
+// article's own title or dek names the region (the pool's per-article `geo` tags,
+// fetcher/geo.py), never from the source bucket, so a Singapore outlet's White House
+// story stays out of Singapore. Asia holds every Singapore story too (sg implies asia).
 // Pure: the build runs it under Node (app/rank_cli.mjs) and the device runs it on the
 // page's own embedded input (tabs.js), so both sides filter the same way.
 //
@@ -15,8 +19,8 @@ export const SECTIONS = Object.freeze([
   { id: "live", label: "Live", slot: "live" },
   { id: "us-politics", label: "US Politics", tags: ["us_politics"], buckets: ["us_politics"] },
   { id: "world", label: "World", tags: ["world"], buckets: ["general", "israel_gaza", "sudan"] },
-  { id: "singapore", label: "Singapore", tags: ["singapore"], buckets: ["singapore"] },
-  { id: "asia", label: "Asia", tags: ["asia"], buckets: ["asia"] },
+  { id: "singapore", label: "Singapore", geo: ["sg"] },
+  { id: "asia", label: "Asia", geo: ["asia"] },
   { id: "ai", label: "AI", tags: ["ai"], buckets: ["ai"] },
   { id: "biotech", label: "Biotech", tags: ["biotech"], buckets: ["biotech"] },
 ].map((s) => Object.freeze(s)));
@@ -26,14 +30,16 @@ export function bucketMap(sources) {
   return Object.fromEntries((sources || []).filter((s) => s && s.id && s.bucket).map((s) => [s.id, s.bucket]));
 }
 
-/** Whether a story ({topics, source_ids}, as ranker.js storiesFromPool builds it)
+/** Whether a story ({topics, geo, source_ids}, as ranker.js storiesFromPool builds it)
  * belongs to a section. A slot section holds nothing until its own slice fills it. */
 export function inSection(story, section, buckets) {
   if (section.all) return true;
   if (section.slot) return false;
   const tags = section.tags || [];
   const wanted = section.buckets || [];
+  const geo = section.geo || [];
   return (story.topics || []).some((t) => tags.includes(t))
+    || (story.geo || []).some((g) => geo.includes(g))
     || (story.source_ids || []).some((id) => Object.hasOwn(buckets || {}, id) && wanted.includes(buckets[id]));
 }
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from app.frontpage import rank_input
 from fetcher.geo import GeoError, geo_signals, load_geo, tag_geo
 from fetcher.topics import load_topics, tag_article
 
@@ -123,3 +124,9 @@ def test_bad_geo_json_is_refused(tmp_path):
     with pytest.raises(GeoError):
         load_geo(path)
 
+
+def test_rank_input_carries_geo_for_build_and_device():
+    pool = {"articles": [{"id": "a1", "source_id": "mothership", "title": "t", "published_at": "2026-09-24T00:00:00Z",
+                          "topics": ["world"], "geo": ["us"], "dek": "not ranked"}], "clusters": []}
+    assert rank_input(pool)["articles"] == [{"id": "a1", "source_id": "mothership", "title": "t",
+                                             "published_at": "2026-09-24T00:00:00Z", "topics": ["world"], "geo": ["us"]}]
