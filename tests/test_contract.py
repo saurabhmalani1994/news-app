@@ -134,3 +134,134 @@ def test_cli_gate_fails_broken_pool(tmp_path):
     broken = copy.deepcopy(GOLDEN)
     del broken["articles"][2]["title"]
     assert _cli(broken, tmp_path) == 1
+
+
+# B3: bundle-contract additive fields (DESIGN-bundles.md sections 3, 4, 4a, 7).
+# Nothing below writes these fields at runtime; that is B4, B8 and B9's job.
+# The golden pool carries none of them, and test_golden_valid_under_jsonschema
+# / test_golden_valid_under_stdlib_validator already prove a pool without the
+# new fields still validates under both engines.
+
+
+def _pool_with_cluster():
+    """A copy of GOLDEN with one valid two-article cluster, so cluster-level
+    bundle fields (story_countries, primary_source) have somewhere to live."""
+    pool = copy.deepcopy(GOLDEN)
+    a0, a1 = pool["articles"][0]["id"], pool["articles"][1]["id"]
+    pool["clusters"] = [{
+        "id": "cluster1",
+        "method": "cosine_entity",
+        "article_ids": [a0, a1],
+        "near_duplicates": [],
+        "independent_sources": 2,
+        "lean_buckets": ["center-left"],
+    }]
+    return pool
+
+
+def test_bundle_fields_accept_valid_values():
+    # source: country, roster, paywall, exile_of; article: countries, locality,
+    # bv; cluster: story_countries, primary_source. All at once, both engines.
+    pool = _pool_with_cluster()
+    pool["sources"][0].update(
+        country="US", roster="core", paywall=False, exile_of="SD",
+    )
+    pool["articles"][0].update(
+        countries=["US", "CN"],
+        locality="local",
+        bv=[20, 15, 10, 20, 15, 10, 0, 0],
+    )
+    pool["clusters"][0].update(
+        story_countries=["US", "CN"],
+        primary_source={"url": "https://trumpstruth.org/posts/12345"},
+    )
+    assert JS.is_valid(pool)
+    assert validate(pool) == []
+
+
+@pytest.mark.parametrize("bad_locality", ["regional", "Local", "LOCAL", "", "domestic"])
+def test_locality_outside_enum_fails_both(bad_locality):
+    pool = copy.deepcopy(GOLDEN)
+    pool["articles"][0]["locality"] = bad_locality
+    assert not JS.is_valid(pool)
+    assert validate(pool)
+
+
+@pytest.mark.parametrize("length", [0, 1, 7, 9, 12])
+def test_bv_wrong_length_fails_both(length):
+    pool = copy.deepcopy(GOLDEN)
+    pool["articles"][0]["bv"] = [0] * length
+    assert not JS.is_valid(pool)
+    assert validate(pool)
+
+
+def test_bv_right_length_accepted():
+    pool = copy.deepcopy(GOLDEN)
+    pool["articles"][0]["bv"] = [10, -5, 3, -10, 15, 10, -5, -15]
+    assert JS.is_valid(pool)
+    assert validate(pool) == []
+
+
+@pytest.mark.parametrize("bad_url", [
+    "http://trumpstruth.org/posts/12345",
+    "trumpstruth.org/posts/12345",
+    "ftp://trumpstruth.org/posts/12345",
+])
+def test_primary_source_non_https_fails_both(bad_url):
+    pool = _pool_with_cluster()
+    pool["clusters"][0]["primary_source"] = {"url": bad_url}
+    assert not JS.is_valid(pool)
+    assert validate(pool)
+
+
+def test_primary_source_missing_url_fails_both():
+    pool = _pool_with_cluster()
+    pool["clusters"][0]["primary_source"] = {}
+    assert not JS.is_valid(pool)
+    assert validate(pool)
+
+
+@pytest.mark.parametrize("bad_code", ["us", "USA", "U", "sg", "hk ", "C1"])
+def test_country_code_bad_shape_fails_both(bad_code):
+    pool = copy.deepcopy(GOLDEN)
+    pool["sources"][0]["country"] = bad_code
+    assert not JS.is_valid(pool)
+    assert validate(pool)
+
+
+@pytest.mark.parametrize("field", ["country", "exile_of"])
+def test_source_country_fields_accept_valid_code(field):
+    pool = copy.deepcopy(GOLDEN)
+    pool["sources"][0][field] = "HK"
+    assert JS.is_valid(pool)
+    assert validate(pool) == []
+
+
+def test_roster_outside_enum_fails_both():
+    pool = copy.deepcopy(GOLDEN)
+    pool["sources"][0]["roster"] = "wire"
+    assert not JS.is_valid(pool)
+    assert validate(pool)
+
+
+def test_story_countries_over_two_fails_both():
+    pool = _pool_with_cluster()
+    pool["clusters"][0]["story_countries"] = ["US", "CN", "SG"]
+    assert not JS.is_valid(pool)
+    assert validate(pool)
+
+
+def test_story_countries_empty_fails_both():
+    pool = _pool_with_cluster()
+    pool["clusters"][0]["story_countries"] = []
+    assert not JS.is_valid(pool)
+    assert validate(pool)
+
+
+def test_article_countries_accepts_more_than_two():
+    # Unlike cluster.story_countries, one article's own raw extraction is not
+    # capped at 2 (section 4): only the derived story_countries is.
+    pool = copy.deepcopy(GOLDEN)
+    pool["articles"][0]["countries"] = ["US", "CN", "SG", "HK"]
+    assert JS.is_valid(pool)
+    assert validate(pool) == []

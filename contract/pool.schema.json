@@ -64,7 +64,23 @@
       "properties": {
         "id": {"$ref": "#/$defs/id"},
         "name": {"type": "string", "minLength": 1, "maxLength": 200},
-        "feed_url": {"$ref": "#/$defs/http_url"}
+        "feed_url": {"$ref": "#/$defs/http_url"},
+        "country": {
+          "description": "DESIGN-bundles section 3 and 4: the outlet's home country, hand-entered, ISO 3166-1 alpha-2. Feeds section 4a's locality term. Optional and additive (B3); B4 starts writing it.",
+          "$ref": "#/$defs/country_code"
+        },
+        "roster": {
+          "description": "DESIGN-bundles section 3: provenance only, why the source was added. Optional and additive (B3); B4 starts writing it.",
+          "$ref": "#/$defs/roster"
+        },
+        "paywall": {
+          "description": "DESIGN-bundles section 3 and 4a: hand-entered, true when the outlet meters or blocks its articles. Feeds section 4a's paywall term. Optional and additive (B3); B4 starts writing it.",
+          "type": "boolean"
+        },
+        "exile_of": {
+          "description": "DESIGN-bundles section 4 and R42: for an exile newsroom, the country it reports for (distinct from country, where it is based), ISO 3166-1 alpha-2. The pair (outlet, exile_of) counts as intermediate. Optional and additive (B3); B4 starts writing it for any exile newsroom in sources.json.",
+          "$ref": "#/$defs/country_code"
+        }
       }
     },
     "topic": {
@@ -76,6 +92,30 @@
       "description": "S08: closed set from fetcher/taxonomy.py. Lean is a shared, repo-owned claim about a source (R10); trust is personal and lives on the device, never here.",
       "type": "string",
       "enum": ["center", "center-left", "center-right", "left", "non-us", "right", "state"]
+    },
+    "country_code": {
+      "description": "DESIGN-bundles section 4: ISO 3166-1 alpha-2, upper case. This checks the shape only (two upper-case letters), not membership in the real ISO list; a lowercase or three-letter code is rejected.",
+      "type": "string",
+      "pattern": "^[A-Z]{2}$"
+    },
+    "roster": {
+      "description": "DESIGN-bundles section 3: provenance only, why a source was added. Nothing reads it for ranking, leading or publishing (R40 answer 3).",
+      "type": "string",
+      "enum": ["core", "perspective"]
+    },
+    "locality_tier": {
+      "description": "DESIGN-bundles section 4, R40 answer 5, R42: local when the outlet's country is a story country; intermediate for a listed pair (HK or MO on CN, MY and SG on each other, or an exile newsroom's exile_of country); overseas otherwise, including Taiwan on China stories.",
+      "type": "string",
+      "enum": ["local", "intermediate", "overseas"]
+    },
+    "primary_source": {
+      "description": "DESIGN-bundles section 3 and B9: a plain link out to the trumpstruth.org archive, never an embed. Shape choice (B3): the design doc guarantees only an https archive URL ('at least an archive URL'); this object is additive like the rest of the contract, so B9 can add more facts to it later without breaking this shape.",
+      "type": "object",
+      "required": ["url"],
+      "additionalProperties": false,
+      "properties": {
+        "url": {"$ref": "#/$defs/https_url"}
+      }
     },
     "article": {
       "type": "object",
@@ -103,6 +143,22 @@
         "has_body": {
           "description": "S22: true only when bodies/<id>.json was written this run (R12). Optional and false-by-omission so pools from before this slice stay valid; the reader (S25) treats a missing has_body the same as false.",
           "type": "boolean"
+        },
+        "countries": {
+          "description": "DESIGN-bundles section 4 (G1): ISO 3166-1 alpha-2 countries this article's own title and dek name, never the outlet. No cap here; section 4's at-most-2 cap is a property of a cluster's derived story_countries, not of one article's raw extraction. Optional and additive (B3); B4 starts writing it.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/country_code"}
+        },
+        "locality": {
+          "description": "DESIGN-bundles section 4: this version's tier against the story's country or countries, a fact computed in the cron. Omitted (no label) when the story has no country or more than 2. Optional and additive (B3); B4 starts writing it.",
+          "$ref": "#/$defs/locality_tier"
+        },
+        "bv": {
+          "description": "DESIGN-bundles section 4a: best-version fact terms, fixed order (original, complete, depth, headline, locality, first, health, paywall; trust is added on the device, never here), one integer each, published only for stories with 2+ outlets. Shape choice (B3): the section 4a table lists 9 rows but says 'every term but trust is a fact... published per article as bv', so bv excludes trust, fixing the length at 8; values are left unbounded since per-term floors and caps are B8's to compute, not this contract's to police. Optional and additive (B3); B8 starts writing it.",
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 8,
+          "items": {"type": "integer"}
         }
       }
     },
@@ -144,6 +200,17 @@
           "type": "array",
           "minItems": 1,
           "items": {"$ref": "#/$defs/lean_bucket"}
+        },
+        "story_countries": {
+          "description": "DESIGN-bundles section 4: countries named by at least half of the story's versions, at most 2 (bilateral stories such as US and CN), a fact computed in the cron and used to derive each version's locality. Shape choice (B3): section 4 states the at-most-2 cap directly; a zero-country story is unlabeled rather than an empty list, so minItems is 1 when the field is present at all. Optional and additive (B3); B4 starts writing it.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {"$ref": "#/$defs/country_code"}
+        },
+        "primary_source": {
+          "description": "DESIGN-bundles section 3 and B9: the trumpstruth.org archive link for a matched Truth Social quote. Optional and additive (B3); B9 starts writing it.",
+          "$ref": "#/$defs/primary_source"
         }
       }
     },

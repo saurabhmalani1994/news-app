@@ -17,7 +17,7 @@ BODY_SCHEMA_PATH = Path(__file__).with_name("body.schema.json")
 ANNOTATIONS = {"$schema", "$id", "$defs", "$comment", "title", "description"}
 ASSERTIONS = {
     "$ref", "type", "const", "required", "properties", "additionalProperties",
-    "items", "minItems", "pattern", "minLength", "maxLength", "minimum", "enum",
+    "items", "minItems", "maxItems", "pattern", "minLength", "maxLength", "minimum", "enum",
 }
 
 
@@ -106,6 +106,8 @@ def _check(value, schema, root, path, errors):
     if isinstance(value, list):
         if "minItems" in schema and len(value) < schema["minItems"]:
             errors.append(f"{path}: fewer than {schema['minItems']} items")
+        if "maxItems" in schema and len(value) > schema["maxItems"]:
+            errors.append(f"{path}: more than {schema['maxItems']} items")
         if "items" in schema:
             for i, item in enumerate(value):
                 _check(item, schema["items"], root, f"{path}[{i}]", errors)
