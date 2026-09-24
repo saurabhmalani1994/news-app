@@ -45,7 +45,7 @@ def test_rows_carry_a_fitted_two_line_dek():
     rows = [(d, t) for d, t in zip(parsed.deks, parsed.tiers) if t in ("river", "text-only")]
     assert rows and all(d for d, _ in rows)
     for dek, tier in rows:
-        assert len(dek) <= dek_budget(tier.replace("-", "_")) == 80
+        assert len(dek) <= dek_budget(tier.replace("-", "_")) == 64
         assert dek.endswith(".") or dek.endswith(ELLIPSIS)
         assert "Opponents" not in dek  # two lines hold the first sentence only
 

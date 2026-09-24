@@ -1207,6 +1207,19 @@ body {
   color: transparent;
 }
 
+/* U1: a hero photo that fails to load (another outlet's CDN may refuse it) shows the
+   quiet placeholder tint, as a card photo does, never the broken-image icon. */
+.reader-hero-img {
+  position: relative;
+}
+
+.reader-hero-img::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--color-image-placeholder);
+}
+
 .reader-credit,
 .reader-body figcaption {
   padding: 8px var(--space-gutter) 0;

@@ -30,10 +30,11 @@ DEK_LINES = {"hero": 4, "secondary": 3}
 CHARS_PER_LINE = 38
 # U1: river and text-only rows carry a two-line summary too (the owner's "none of the
 # news shows texts"), unless the profile's display.summaries is "top". Their measure is
-# 280px beside the overflow gutter (320px under a thumbnail); 44 characters filled a
-# 280px line on the emulator, so 40 stays conservative.
+# 280px beside the overflow gutter (320px under a thumbnail), about 34 characters a line
+# at 360dp; 32 leaves room for capitals and long words, so a fitted row dek does not
+# meet the 2-line clamp (tests/browser/u1_check.mjs counts clamped deks on the live pool).
 ROW_DEK_LINES = {"river": 2, "text_only": 2}
-ROW_CHARS_PER_LINE = 40
+ROW_CHARS_PER_LINE = 32
 
 
 def dek_budget(tier):
