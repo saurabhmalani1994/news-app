@@ -10,12 +10,16 @@
 //   A. the fixed build, fresh profile: first load, reload under SW control, /profile,
 //      /health, then offline reloads of all three. Every one renders with content,
 //      nothing in the shell cache is redirected, the offline line shows at CLS 0, and
-//      there are zero CSP violations;
+//      there are zero CSP violations; and pool.json behind a login redirect falls back
+//      to the cached pool instead of storing the login page;
 //   B. an upgrade: the broken S18 build (default ref 1de9f5b, the last main before H1)
 //      is served first and shown to blank on the second launch; then the fixed build
 //      is deployed at the same URL and Chrome is closed and relaunched on the same
 //      profile, with no site data cleared. The fixed worker must take over and the page
-//      render, counting the launches it takes.
+//      render, counting the launches it takes (2: the broken worker still answers the
+//      first launch after the deploy, and that launch's update check installs the fix).
+// Live mode, after a deploy: `node tests/browser/sw_pretty_urls.mjs https://<site>` runs
+// only a fresh-profile load, reload, /profile, /health and offline reload on that site.
 // Exits 1 on any failure.
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
@@ -124,7 +128,8 @@ async function sessionA() {
   const dist = join(TMP, "fixed-a");
   build(ROOT, dist);
   const text = readFileSync(join(dist, "_headers"), "utf-8");
-  const site = await serve(dist, parseHeaders(text), {}, { "/sw.js": parseHeaders(text, "/sw.js") });
+  const extra = {};
+  const site = await serve(dist, parseHeaders(text), extra, { "/sw.js": parseHeaders(text, "/sw.js") });
   const chrome = await launch("h1-a");
   const consoleErrors = [];
   chrome.on((m) => {
@@ -152,6 +157,22 @@ async function sessionA() {
 
   const sw = await fetch(site.origin + "/sw.js");
   check("A7_sw_js_is_served_no_cache", sw.headers.get("cache-control") === "no-cache", { cacheControl: sw.headers.get("cache-control") });
+
+  // pool.json behind a login redirect (a later Cloudflare Access slice): once cached,
+  // a redirect to a login page counts as a network failure, the cached pool answers,
+  // and the login page is never stored in its place.
+  const readPool = `fetch("/pool.json").then(async (r) => JSON.stringify({ ok: r.ok, redirected: r.redirected,
+    type: r.headers.get("content-type"), articles: ((await r.json()).articles || []).length })).catch((e) => JSON.stringify({ error: String(e) }))`;
+  const poolFresh = JSON.parse(await chrome.evaluate(readPool));
+  extra["/pool.json"] = (req, res, headers) => res.writeHead(302, { ...headers, location: "/login" }).end();
+  extra["/login"] = "<!doctype html><title>Sign in</title><p>Sign in";
+  const poolBehindLogin = JSON.parse(await chrome.evaluate(readPool));
+  const poolStored = await chrome.evaluate(`caches.open("almanac-pool-v1").then((c) => c.match("/pool.json")).then((r) => r ? r.text() : "").then((t) => t.slice(0, 1))`);
+  delete extra["/pool.json"];
+  delete extra["/login"];
+  check("A7b_pool_json_behind_a_login_redirect_falls_back_to_the_cached_pool",
+    poolFresh.articles > 0 && poolBehindLogin.articles === poolFresh.articles && !poolBehindLogin.redirected && poolStored === "{",
+    { poolFresh, poolBehindLogin, poolStoredStartsWith: poolStored });
 
   await chrome.send("Network.enable");
   await chrome.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
@@ -243,11 +264,42 @@ async function sessionB() {
   same.close();
 }
 
+// ---- Live: the deployed site, fresh profile ------------------------------------
+
+async function sessionLive(origin) {
+  const chrome = await launch("h1-live");
+  const first = await open(chrome, origin, "/");
+  await waitForWorker(chrome);
+  const reload = await go(chrome, origin, "/");
+  const profile = await go(chrome, origin, "/profile");
+  const health = await go(chrome, origin, "/health");
+  const entries = await shellEntries(chrome);
+  await chrome.send("Network.enable");
+  await chrome.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
+  const offHome = await go(chrome, origin, "/");
+  await chrome.send("Page.reload", {});
+  await sleep(900);
+  const offReload = await state(chrome, origin, "/");
+  const brief = (s) => ({ rendered: s.rendered, controlled: s.controlled, content: s.content, errorText: s.errorText, offline: s.offline, line: s.line, cls: s.cls, csp: s.csp.length });
+  check("L1_load", first.rendered, brief(first));
+  check("L2_reload_under_sw_control", reload.rendered && reload.controlled, brief(reload));
+  check("L3_profile", profile.rendered && profile.controlled, brief(profile));
+  check("L4_health", health.rendered && health.controlled, brief(health));
+  check("L5_nothing_redirected_in_the_shell_cache", entries.length > 0 && !entries.some((e) => e.redirected),
+    { entries: entries.length, redirected: entries.filter((e) => e.redirected).map((e) => e.url) });
+  check("L6_offline_reload", offHome.rendered && offReload.rendered && offReload.offline && offReload.cls === 0, brief(offReload));
+  chrome.close();
+}
+
 rmSync(TMP, { recursive: true, force: true });
 mkdirSync(TMP, { recursive: true });
 try {
-  await sessionA();
-  await sessionB();
+  if (/^https?:/.test(process.argv[2] || "")) {
+    await sessionLive(process.argv[2].replace(/\/$/, ""));
+  } else {
+    await sessionA();
+    await sessionB();
+  }
 } finally {
   rmSync(TMP, { recursive: true, force: true });
 }

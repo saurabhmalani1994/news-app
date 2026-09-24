@@ -91,6 +91,10 @@ function pageKey(url) {
   return new URL(path, self.location.origin).href;
 }
 
+/** Only the app's own pages (the precached ones) are ever stored from a navigation, so
+ * a login or error page some other same-origin URL answers with never lands in the cache. */
+const PAGE_KEYS = new Set(PRECACHE_URLS.map((url) => new URL(url, self.location.origin).href));
+
 async function cachedPage(cache, url) {
   const cached = (await cache.match(pageKey(url))) || (await cache.match(HOME_URL));
   return cached ? withoutRedirect(cached) : undefined;
@@ -103,7 +107,7 @@ async function pageNetworkFirst(event) {
   const { request } = event;
   const key = pageKey(request.url);
   const network = fetch(request).then(async (response) => {
-    if (response.type !== "basic" || !response.ok) return response;
+    if (response.type !== "basic" || !response.ok || !PAGE_KEYS.has(key)) return response;
     const page = await withoutRedirect(response);
     const cache = await caches.open(SHELL_CACHE);
     await cache.put(key, page.clone());
@@ -127,17 +131,24 @@ async function shellCacheFirst(request) {
   return fetch(request);
 }
 
+/** pool.json: the network first, the cached copy when the network fails. H1: a
+ * redirect counts as a network failure. pool.json never moves, so a redirected answer
+ * is a login page (Cloudflare Access, should a later slice add it) or a captive
+ * portal, never the pool: it is not cached, and the cached pool answers instead. */
 async function poolNetworkFirst(request) {
   const cache = await caches.open(POOL_CACHE);
+  let response;
   try {
-    const response = await fetch(request);
-    if (isCacheable(response) && response.ok) cache.put(request, response.clone());
-    return response;
-  } catch (err) {
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    throw err;
+    response = await fetch(request);
+  } catch {
+    response = undefined;
   }
+  const failed = !response || response.redirected || response.type === "opaqueredirect";
+  if (!failed) {
+    if (isCacheable(response) && response.ok) await cache.put(request, response.clone());
+    return response;
+  }
+  return (await cache.match(request)) || Response.error();
 }
 
 async function readImageIndex(cache) {

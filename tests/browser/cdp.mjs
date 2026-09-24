@@ -32,7 +32,8 @@ export function parseHeaders(text, rule = "/*") {
  * carrying `headers` (plus `pathHeaders[path]` for one exact path). H1: including Pages'
  * pretty URLs, since S18's proof missed a blank screen by serving `.html` files as is:
  * `/x.html` answers 308 to `/x` (`/index.html` to `/`), and `/x` serves `x.html`.
- * `extra` maps a path to a body, served as is.
+ * `extra` maps a path to a body, served as is, or to a `(req, res, headers)` handler
+ * that answers the request itself (H1: a redirect to a login page).
  */
 export async function serve(dir, headers = {}, extra = {}, pathHeaders = {}) {
   const root = resolve(dir);
@@ -40,6 +41,7 @@ export async function serve(dir, headers = {}, extra = {}, pathHeaders = {}) {
     const url = new URL(req.url, "http://x");
     const pathname = decodeURIComponent(url.pathname);
     const own = { ...headers, ...(pathHeaders[pathname] || {}) };
+    if (typeof extra[pathname] === "function") { extra[pathname](req, res, own); return; }
     if (extra[pathname] !== undefined) {
       res.writeHead(200, { ...own, "content-type": TYPES[extname(pathname) || ".html"] }).end(extra[pathname]);
       return;

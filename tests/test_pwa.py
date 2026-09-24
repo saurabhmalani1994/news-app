@@ -164,6 +164,18 @@ def test_worker_never_stores_or_serves_a_redirected_page_and_pages_are_network_f
     # activate deletes every other almanac-shell-* cache and claims open pages.
     assert 'key.startsWith("almanac-shell-") && key !== SHELL_CACHE' in text
     assert "self.clients.claim()" in text
+    # Only the app's own pages are stored from a navigation, never a login page.
+    assert "!PAGE_KEYS.has(key)" in text
+
+
+def test_pool_json_treats_a_redirect_as_a_network_failure_and_never_caches_it():
+    # A later slice may put Cloudflare Access in front: a redirect to its login page
+    # must fall back to the cached pool, not replace it.
+    text = (ROOT / "app" / "sw_template.js").read_text(encoding="utf-8")
+    pool = text[text.index("async function poolNetworkFirst"):text.index("async function readImageIndex")]
+    assert 'const failed = !response || response.redirected || response.type === "opaqueredirect";' in pool
+    assert pool.index("if (!failed)") < pool.index("cache.put(")
+    assert "(await cache.match(request)) || Response.error()" in pool
 
 
 def test_sw_js_is_served_no_cache_so_an_update_check_always_reaches_the_origin(tmp_path):
