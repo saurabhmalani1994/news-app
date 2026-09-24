@@ -115,18 +115,72 @@ def test_cache_version_changes_when_a_shell_file_changes(tmp_path):
     assert v1 != v2
 
 
-def test_build_writes_a_module_service_worker_with_fetch_install_activate_and_no_skip_waiting(tmp_path):
+def test_build_writes_a_module_service_worker_with_fetch_install_activate_and_skip_waiting(tmp_path):
     out = _build(tmp_path)
     sw = (out / "sw.js").read_text(encoding="utf-8")
     assert 'import { STRATEGY, strategyFor } from "./js/sw-routes.js";' in sw
     for handler in ('addEventListener("install"', 'addEventListener("activate"', 'addEventListener("fetch"'):
         assert handler in sw
-    assert "skipWaiting" not in sw  # update flow: next launch only, never mid-session
+    # H1 reverses S18's no-skipWaiting rule: a phone stuck on a broken worker must be
+    # taken over by the fixed one at once, not after every tab closes.
+    assert "self.skipWaiting()" in sw
     assert "clients.claim()" in sw
     # The cache name is tied to the build: SHELL_CACHE is a template literal over VERSION,
     # itself a hash of the precached files' own bytes (app/serviceworker.py).
     assert re.search(r'const VERSION = "[0-9a-f]{16}";', sw)
     assert 'const SHELL_CACHE = `almanac-shell-${VERSION}`;' in sw
+
+
+# ---- H1: precache and serve the URLs Cloudflare Pages serves, never a redirect --
+
+@pytest.mark.parametrize("rel, url", [
+    ("index.html", "/"), ("profile.html", "/profile"), ("health.html", "/health"),
+    ("sub/index.html", "/sub/"), ("style.css", "/style.css"), ("icons/icon-192.png", "/icons/icon-192.png"),
+])
+def test_page_url_is_the_pretty_url_pages_serves(rel, url):
+    from app.serviceworker import page_url
+    assert page_url(rel) == url
+
+
+def test_precache_list_names_pretty_page_urls_never_an_html_file(tmp_path):
+    # Pages 308s "/index.html" to "/" and "/x.html" to "/x"; a precached redirect is a
+    # response Chrome refuses for a navigation, the blank screen H1 fixed.
+    out = _build(tmp_path)
+    sw = (out / "sw.js").read_text(encoding="utf-8")
+    listed = re.search(r"const PRECACHE_URLS = \[(.*?)\];", sw, re.S).group(1)
+    urls = re.findall(r'"([^"]+)"', listed)
+    for page in ("/", "/profile", "/health"):
+        assert page in urls, page
+    assert not [u for u in urls if u.endswith(".html")]
+
+
+def test_worker_never_stores_or_serves_a_redirected_page_and_pages_are_network_first():
+    text = (ROOT / "app" / "sw_template.js").read_text(encoding="utf-8")
+    assert "cache.addAll(" not in text  # addAll stores redirected responses as they come
+    assert "if (!response.redirected) return response;" in text
+    assert "new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers })" in text
+    assert re.search(r"NAVIGATION_TIMEOUT_MS = 3000;", text)
+    assert "STRATEGY.PAGE) { event.respondWith(pageNetworkFirst(event))" in text
+    # activate deletes every other almanac-shell-* cache and claims open pages.
+    assert 'key.startsWith("almanac-shell-") && key !== SHELL_CACHE' in text
+    assert "self.clients.claim()" in text
+
+
+def test_sw_js_is_served_no_cache_so_an_update_check_always_reaches_the_origin(tmp_path):
+    out = _build(tmp_path)
+    text = (out / "_headers").read_text(encoding="utf-8")
+    assert "/sw.js\n  Cache-Control: no-cache\n" in text
+
+
+def test_pages_link_each_other_by_pretty_url_never_an_html_file(tmp_path):
+    out = _build(tmp_path)
+    for name in ("index.html", "profile.html", "health.html"):
+        html = (out / name).read_text(encoding="utf-8")
+        hrefs = re.findall(r'href="([^"]+)"', html)
+        assert not [h for h in hrefs if ".html" in h and not h.startswith("http")], name
+    js = (STATIC / "js" / "why-this.js").read_text(encoding="utf-8")
+    assert "profile.html" not in js
+    assert '"/sw.js"' in (STATIC / "js" / "sw-register.js").read_text(encoding="utf-8")
 
 
 def test_service_worker_is_syntactically_valid_javascript(tmp_path):

@@ -127,7 +127,7 @@ function main(schema) {
     }
   }
 
-  // S12's why-this sheet links here as "profile.html#topic-<id>" or "#raw-json": the
+  // S12's why-this sheet links here as "/profile#topic-<id>" or "#raw-json": the
   // field that drove a story's largest term. Topic rows exist only after this fetch
   // resolves, so the browser's own fragment scroll (which only fires once, at load)
   // never reaches them; this runs it by hand, once, after the first render.

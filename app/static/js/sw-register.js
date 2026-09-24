@@ -3,11 +3,12 @@
 // first paint. A module worker, so sw.js can import js/sw-routes.js unchanged from its
 // own Node unit test.
 //
-// No update prompt: sw.js never calls skipWaiting(), so a newly installed worker only
-// takes over once no page is still controlled by the previous one, the browser's own
-// lifecycle. Nothing here polls for an update or nags the reader to reload.
+// H1: an absolute "/sw.js" (pages now live at "/profile", "/health"), and
+// updateViaCache "none", so neither sw.js nor the module it imports is ever read from
+// the HTTP cache during an update check. The worker itself skips waiting and claims
+// open pages, so a fixed deploy takes over on the next launch. No update prompt.
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js", { type: "module" }).catch(() => {});
+    navigator.serviceWorker.register("/sw.js", { type: "module", updateViaCache: "none" }).catch(() => {});
   });
 }

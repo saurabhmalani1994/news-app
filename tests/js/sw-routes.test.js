@@ -13,11 +13,21 @@ function req(url, destination = "") {
 }
 
 test("the app shell (html, css, js, fonts, manifest, icons) is the precached strategy", () => {
-  for (const path of ["/", "/index.html", "/profile.html", "/tokens.css", "/style.css",
+  for (const path of ["/", "/profile", "/health", "/tokens.css", "/style.css",
     "/js/tabs.js", "/js/sw-routes.js", "/fonts/Newsreader-Bold-latin.woff2",
     "/manifest.webmanifest", "/icons/icon-192.png"]) {
     assert.equal(strategyFor(req(ORIGIN + path), ORIGIN), STRATEGY.SHELL, path);
   }
+});
+
+test("H1: a navigation to any page of the app is the network-first page strategy", () => {
+  for (const path of ["/", "/profile", "/health", "/index.html", "/profile.html", "/?x=1"]) {
+    assert.equal(strategyFor({ url: ORIGIN + path, destination: "document", mode: "navigate" }, ORIGIN), STRATEGY.PAGE, path);
+  }
+  // A cross-origin navigation (a source link) is never intercepted.
+  assert.equal(strategyFor({ url: "https://example.com/a", destination: "document", mode: "navigate" }, ORIGIN), STRATEGY.BYPASS);
+  // bodies/* stays S25's even if something ever navigates to one.
+  assert.equal(strategyFor({ url: ORIGIN + "/bodies/a1.json", mode: "navigate" }, ORIGIN), STRATEGY.BYPASS);
 });
 
 test("pool.json is the network-first strategy, at the root or nested", () => {

@@ -17,6 +17,10 @@ S18: manifest-src and worker-src are both 'self', so the web app manifest and th
 service worker script (both same-origin, both external files) are the only ones the
 browser will ever fetch for those roles.
 
+H1: sw.js gets its own rule, `Cache-Control: no-cache`, so a browser always asks the
+origin for it when it checks for a new worker. That check is how a phone stuck on a
+broken worker picks up the fix.
+
 `headers_file` refuses (ValueError) a page that this policy would break, an inline
 script, an inline <style> or an on* handler attribute, so the build fails instead of
 deploying a page the browser would block.
@@ -116,5 +120,8 @@ def headers_file(pages):
         f"  Referrer-Policy: {REFERRER_POLICY}",
         "  X-Content-Type-Options: nosniff",
         f"  Permissions-Policy: {permissions_policy()}",
+        "",
+        "/sw.js",
+        "  Cache-Control: no-cache",
     ]
     return "\n".join(lines) + "\n"

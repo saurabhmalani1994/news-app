@@ -12,10 +12,19 @@ ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = ROOT / "tests" / "fixtures" / "golden_pool.json"
 
 
-def _rules(text):
-    lines = text.splitlines()
-    assert lines[0] == "/*"
-    return dict(line.strip().split(": ", 1) for line in lines[1:])
+def _rules(text, path="/*"):
+    """The headers of one Cloudflare Pages _headers rule (the catch-all by default)."""
+    rules, current = {}, None
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        if not line.startswith((" ", "	")):
+            current = rules.setdefault(line.strip(), {})
+            continue
+        name, value = line.strip().split(": ", 1)
+        current[name] = value
+    assert text.splitlines()[0] == "/*"
+    return rules[path]
 
 
 def _directives(csp):

@@ -114,16 +114,16 @@ test("edit link: follows whichever term actually drove the score the most", () =
   // Affinity dominates (ai's default affinity 0.6 beats recency at 5h old): the link
   // opens the ai topic's own row.
   const pages1 = rankPages(poolOf([art("a", "s1", 5, ["ai"])]), p, NOW);
-  assert.equal(explainStory(pages1.today[0], p, NOW_MS).editHref, "profile.html#topic-ai");
+  assert.equal(explainStory(pages1.today[0], p, NOW_MS).editHref, "/profile#topic-ai");
   // No followed topic at all and no trust override: recency is all there is, but it
   // used the default half-life, so there is no topic field to point at.
   const pages2 = rankPages(poolOf([art("b", "s1", 5, [])]), p, NOW);
-  assert.equal(explainStory(pages2.today[0], p, NOW_MS).editHref, "profile.html");
+  assert.equal(explainStory(pages2.today[0], p, NOW_MS).editHref, "/profile");
   // A trust override large enough to dominate points at the raw editor, the only place
   // trust is actually edited.
   const p2 = profile((x) => { x.trust = { s1: 4 }; });
   const pages3 = rankPages(poolOf([art("c", "s1", 5, [])]), p2, NOW);
-  assert.equal(explainStory(pages3.today[0], p2, NOW_MS).editHref, "profile.html#raw-json");
+  assert.equal(explainStory(pages3.today[0], p2, NOW_MS).editHref, "/profile#raw-json");
 });
 
 test("row order matches the ranker's own explanation order, term for term", () => {

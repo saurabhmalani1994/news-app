@@ -9,11 +9,19 @@
 // that changes nothing in the shell reuses the same cache name and installs nothing
 // new, which is correct too.
 //
-// Update flow: install never fast-forwards activation. A newly installed worker sits
-// waiting until no page is still controlled by the previous one, the standard browser
-// lifecycle, so an open tab is never swapped under the reader mid-session; the new
-// version takes over the next time the app is launched with no other tab open. No
-// update prompt, nothing polling for a new version.
+// H1: pages are precached at the URLs Cloudflare Pages serves ("/", "/profile"), never
+// their file names, which Pages answers with a 308. Chrome refuses a redirected
+// response for a navigation, so the S18 worker, which precached "/index.html", blanked
+// every launch after the first. Nothing redirected is ever stored or served for a page
+// now (withoutRedirect below), whatever the precache list says.
+//
+// Pages (navigations) are network-first with a short timeout: the HTML carries the
+// build-time ranked news, so a cache-first page would show old news while online. The
+// cached copy is the offline fallback. Everything else in the shell stays cache-first.
+//
+// Update flow: install calls skipWaiting() and activate claims every open page, so a
+// fixed worker replaces a broken one at once instead of waiting for every tab to
+// close. That is what lets a phone stuck on the S18 worker heal on its own.
 import { STRATEGY, strategyFor } from "./js/sw-routes.js";
 
 const VERSION = "@@CACHE_VERSION@@";
@@ -24,11 +32,31 @@ const IMAGE_INDEX_URL = new URL("/__sw-image-index__", self.location.origin).hre
 const IMAGE_MAX_ENTRIES = 60;
 const IMAGE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const PRECACHE_URLS = @@PRECACHE_URLS@@;
+const NAVIGATION_TIMEOUT_MS = 3000;
+
+/** A response Chrome will accept for a navigation. A fetch that followed a redirect
+ * carries `redirected: true`, and Chrome fails a navigation answered with one
+ * (net::ERR_FAILED, a blank page). Rebuilt from its own body, status and headers, the
+ * copy is an ordinary response with no redirect in its history. */
+async function withoutRedirect(response) {
+  if (!response.redirected) return response;
+  const body = await response.arrayBuffer();
+  return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+}
+
+/** Precache every shell URL. Not cache.addAll: that stores whatever the fetch resolved
+ * to, redirects included. Any failure fails the install, as addAll would. */
+async function precache() {
+  const cache = await caches.open(SHELL_CACHE);
+  await Promise.all(PRECACHE_URLS.map(async (url) => {
+    const response = await fetch(new Request(url, { cache: "no-cache" }));
+    if (!response.ok) throw new Error(`precache ${url}: HTTP ${response.status}`);
+    await cache.put(url, await withoutRedirect(response));
+  }));
+}
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(SHELL_CACHE).then((cache) => cache.addAll(PRECACHE_URLS)),
-  );
+  event.waitUntil(precache().then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -50,24 +78,53 @@ function isCacheable(response) {
   return Boolean(response) && response.type !== "error";
 }
 
-const SHELL_INDEX_URL = new URL("/index.html", self.location.origin).href;
+const HOME_URL = new URL("/", self.location.origin).href;
+
+/** The key a page is cached under: the canonical pretty URL Pages serves it at, with
+ * no query, so "/index.html" and "/?x=1" both find "/", and "/profile.html" finds
+ * "/profile". */
+function pageKey(url) {
+  const u = new URL(url);
+  let path = u.pathname;
+  if (path.endsWith("/index.html")) path = path.slice(0, -"index.html".length);
+  else if (path.endsWith(".html")) path = path.slice(0, -".html".length);
+  return new URL(path, self.location.origin).href;
+}
+
+async function cachedPage(cache, url) {
+  const cached = (await cache.match(pageKey(url))) || (await cache.match(HOME_URL));
+  return cached ? withoutRedirect(cached) : undefined;
+}
+
+/** Pages: the network first, for up to NAVIGATION_TIMEOUT_MS, then the cached copy.
+ * A fresh page from the network also refreshes the cached copy. A redirect (an old
+ * "/profile.html" link) passes straight through for the browser to follow, uncached. */
+async function pageNetworkFirst(event) {
+  const { request } = event;
+  const key = pageKey(request.url);
+  const network = fetch(request).then(async (response) => {
+    if (response.type !== "basic" || !response.ok) return response;
+    const page = await withoutRedirect(response);
+    const cache = await caches.open(SHELL_CACHE);
+    await cache.put(key, page.clone());
+    return page;
+  });
+  event.waitUntil(network.catch(() => {}));
+  let timer;
+  const timedOut = new Promise((resolve) => { timer = setTimeout(resolve, NAVIGATION_TIMEOUT_MS); });
+  const first = await Promise.race([network.catch(() => undefined), timedOut]);
+  clearTimeout(timer);
+  if (first && (first.ok || first.type === "opaqueredirect")) return first;
+  const cached = await cachedPage(await caches.open(SHELL_CACHE), request.url);
+  if (cached) return cached;
+  return first || network; // nothing cached: the network's own answer, or its error
+}
 
 async function shellCacheFirst(request) {
   const cache = await caches.open(SHELL_CACHE);
-  // A navigation to "/" never matches the precached "/index.html" key by exact URL, so
-  // it gets the same fallback a real offline navigation to any other path gets below.
-  let cached = await cache.match(request);
-  if (!cached && request.mode === "navigate") cached = await cache.match(SHELL_INDEX_URL);
+  const cached = await cache.match(request);
   if (cached) return cached;
-  try {
-    return await fetch(request);
-  } catch (err) {
-    if (request.mode === "navigate") {
-      const shell = await cache.match(SHELL_INDEX_URL);
-      if (shell) return shell;
-    }
-    throw err;
-  }
+  return fetch(request);
 }
 
 async function poolNetworkFirst(request) {
@@ -136,6 +193,7 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const strategy = strategyFor(request, self.location.origin);
   if (strategy === STRATEGY.BYPASS) return; // bodies/* (S25's IndexedDB cache) and anything else: untouched
+  if (strategy === STRATEGY.PAGE) { event.respondWith(pageNetworkFirst(event)); return; }
   if (strategy === STRATEGY.SHELL) { event.respondWith(shellCacheFirst(request)); return; }
   if (strategy === STRATEGY.POOL) { event.respondWith(poolNetworkFirst(request)); return; }
   if (strategy === STRATEGY.IMAGE) { event.respondWith(imageCacheFirst(request)); return; }

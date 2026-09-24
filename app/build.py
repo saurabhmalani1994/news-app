@@ -113,7 +113,8 @@ PANEL = ('<section class="panel" id="section-{id}" role="tabpanel" aria-labelled
 # stroke weight (style.css .nav-icon), outlined when inactive; the current item fills its
 # `nav-shape` parts, as NYT's bar does. Each glyph spans about 20dp of the 24dp box (the
 # measured icon size). The label under each is text only. You opens the S10 profile
-# screen, the entry NYT puts on its You tab (it left the masthead here).
+# screen, the entry NYT puts on its You tab (it left the masthead here). H1: links name the
+# pretty URL Cloudflare Pages serves ("/profile"), never the file, which Pages 308s.
 NAV_ICONS = {
     "home": '<path class="nav-shape" d="M3.6 10.1 12 3.3l8.4 6.8V20.9h-5.9v-6h-5v6H3.6z"></path>',
     "following": ('<path class="nav-shape" d="M12 3.2 20.9 8 12 12.8 3.1 8z"></path>'
@@ -123,7 +124,7 @@ NAV_ICONS = {
             '<path class="nav-shape" d="M4 20.9c0-4.3 3.6-6.6 8-6.6s8 2.3 8 6.6z"></path>'),
 }
 NAV_ITEMS = (("home", "Home", "#home"), ("following", "Following", "#following"),
-             ("saved", "Saved", "#saved"), ("you", "You", "profile.html"))
+             ("saved", "Saved", "#saved"), ("you", "You", "/profile"))
 NAV_ITEM = ('<a class="nav-item" href="{href}" data-screen="{id}"{current}>'
             '<svg class="nav-icon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">'
             '{icon}</svg><span class="nav-label">{label}</span></a>')
@@ -135,7 +136,7 @@ def bottom_nav(current):
     items = []
     for key, label, href in NAV_ITEMS:
         if current == "you" and href.startswith("#"):
-            href = "index.html" + href
+            href = "/" + href
         items.append(NAV_ITEM.format(href=href, id=key, icon=NAV_ICONS[key], label=label,
                                      current=' aria-current="page"' if key == current else ""))
     return '<nav class="bottom-nav" aria-label="Primary">\n' + "\n".join(items) + "\n</nav>"

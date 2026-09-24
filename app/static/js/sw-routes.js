@@ -7,14 +7,15 @@
 // intercepts or double-caches a body file.
 
 export const STRATEGY = Object.freeze({
-  SHELL: "shell", // precached app shell: HTML, CSS, JS, fonts, manifest, icons
+  PAGE: "page", // H1: a navigation to one of this app's pages: network-first, cached copy offline
+  SHELL: "shell", // precached app shell: CSS, JS, fonts, manifest, icons (and pages, as data)
   POOL: "pool", // pool.json: network-first, cached copy as the offline fallback
   IMAGE: "image", // article photos: cache-first, size-capped, expiring
   BYPASS: "bypass", // not intercepted: bodies/*, and anything else off this app's CSP
 });
 
 /**
- * `request` is `{url, destination}` (a real FetchEvent's `request` duck-types this).
+ * `request` is `{url, destination, mode}` (a real FetchEvent's `request` duck-types this).
  * `origin` is the app's own origin (`self.location.origin` in the worker).
  */
 export function strategyFor(request, origin) {
@@ -22,6 +23,7 @@ export function strategyFor(request, origin) {
   const sameOrigin = url.origin === origin;
   if (sameOrigin && /(?:^|\/)bodies\//.test(url.pathname)) return STRATEGY.BYPASS;
   if (sameOrigin && /(?:^|\/)pool\.json$/.test(url.pathname)) return STRATEGY.POOL;
+  if (sameOrigin && request.mode === "navigate") return STRATEGY.PAGE;
   if (request.destination === "image") return STRATEGY.IMAGE;
   if (sameOrigin) return STRATEGY.SHELL;
   return STRATEGY.BYPASS; // no other cross-origin request is expected under this app's CSP

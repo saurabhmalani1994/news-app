@@ -256,7 +256,7 @@ PAGE = """<!doctype html>
 </head>
 <body>
 <header class="masthead">
-<a class="masthead-back" href="profile.html" aria-label="Back to profile">
+<a class="masthead-back" href="/profile" aria-label="Back to profile">
 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
 </a>
 <h1 class="wordmark">Feed health</h1>
@@ -277,10 +277,10 @@ PAGE = """<!doctype html>
 <footer class="colophon"><p class="colophon-text">Read from the pool generated <time datetime="{generated_at}">{generated_label}</time>.</p></footer>
 <script src="js/health-age.js"></script>
 <nav class="bottom-nav bottom-nav--fixed" aria-label="Primary">
-<a class="nav-item" href="index.html#home" data-screen="home"><svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.2 2.6 11.3h2.8v9.5h5.1v-6h3v6h5.1v-9.5h2.8z"></path></svg><span class="nav-label">Home</span></a>
-<a class="nav-item" href="index.html#following" data-screen="following"><svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 2.6 2.4 7.8 12 13l9.6-5.2zM4.7 11.2l-2.3 1.3L12 17.7l9.6-5.2-2.3-1.3L12 15.1zM4.7 15.9l-2.3 1.3L12 22.4l9.6-5.2-2.3-1.3L12 19.8z"></path></svg><span class="nav-label">Following</span></a>
-<a class="nav-item" href="index.html#saved" data-screen="saved"><svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6.2 2.6h11.6c.5 0 .9.4.9.9v18.1L12 17.1l-6.7 4.5V3.5c0-.5.4-.9.9-.9z"></path></svg><span class="nav-label">Saved</span></a>
-<a class="nav-item" href="profile.html" data-screen="you" aria-current="page"><svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 11.6a4.3 4.3 0 1 0 0-8.6 4.3 4.3 0 0 0 0 8.6zm0 2.1c-4.8 0-8.4 2.6-8.4 6.2v1.5h16.8v-1.5c0-3.6-3.6-6.2-8.4-6.2z"></path></svg><span class="nav-label">You</span></a>
+<a class="nav-item" href="/#home" data-screen="home"><svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.2 2.6 11.3h2.8v9.5h5.1v-6h3v6h5.1v-9.5h2.8z"></path></svg><span class="nav-label">Home</span></a>
+<a class="nav-item" href="/#following" data-screen="following"><svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 2.6 2.4 7.8 12 13l9.6-5.2zM4.7 11.2l-2.3 1.3L12 17.7l9.6-5.2-2.3-1.3L12 15.1zM4.7 15.9l-2.3 1.3L12 22.4l9.6-5.2-2.3-1.3L12 19.8z"></path></svg><span class="nav-label">Following</span></a>
+<a class="nav-item" href="/#saved" data-screen="saved"><svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6.2 2.6h11.6c.5 0 .9.4.9.9v18.1L12 17.1l-6.7 4.5V3.5c0-.5.4-.9.9-.9z"></path></svg><span class="nav-label">Saved</span></a>
+<a class="nav-item" href="/profile" data-screen="you" aria-current="page"><svg class="nav-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 11.6a4.3 4.3 0 1 0 0-8.6 4.3 4.3 0 0 0 0 8.6zm0 2.1c-4.8 0-8.4 2.6-8.4 6.2v1.5h16.8v-1.5c0-3.6-3.6-6.2-8.4-6.2z"></path></svg><span class="nav-label">You</span></a>
 </nav>
 </body>
 </html>"""

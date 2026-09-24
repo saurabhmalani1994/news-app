@@ -9,6 +9,11 @@ that changes nothing ships nothing new.
 
 `bodies/` and `pool.json` are never in the precache list (bodies/ is the reader's
 IndexedDB cache, S25; pool.json is served network-first with its own runtime cache).
+
+H1: pages are precached under the URL Cloudflare Pages actually serves them at, never
+their file name. Pages answers `/index.html` with a 308 to `/` and `/profile.html` with
+a 308 to `/profile`, so precaching the file names stored redirected responses, which
+Chrome refuses for a navigation: every launch after the first went blank.
 """
 import hashlib
 from pathlib import Path
@@ -40,6 +45,18 @@ def precache_files(dist: Path):
     return sorted(paths)
 
 
+def page_url(rel: str) -> str:
+    """The canonical URL Cloudflare Pages serves a built file at: `index.html` is `/`,
+    `x/index.html` is `/x/`, any other `x.html` is `/x`, and everything else is itself."""
+    if rel == "index.html":
+        return "/"
+    if rel.endswith("/index.html"):
+        return "/" + rel[: -len("index.html")]
+    if rel.endswith(".html"):
+        return "/" + rel[: -len(".html")]
+    return "/" + rel
+
+
 def cache_version(dist: Path, rel_paths):
     digest = hashlib.sha256()
     for rel in rel_paths:
@@ -52,7 +69,7 @@ def cache_version(dist: Path, rel_paths):
 def build_service_worker(dist: Path) -> str:
     rel_paths = precache_files(dist)
     version = cache_version(dist, rel_paths)
-    urls = "[\n" + "".join(f'  "/{p}",\n' for p in rel_paths) + "]"
+    urls = "[\n" + "".join(f'  "{page_url(p)}",\n' for p in rel_paths) + "]"
     text = TEMPLATE.read_text(encoding="utf-8")
     # count=1: the template's own header comment must never mention these sentinels
     # (it would then get rewritten too, the bug that shipped once already), but count=1

@@ -326,7 +326,7 @@ def test_section_tabs_and_bottom_nav_are_text_only_labels():
     assert [label for _, _, label in tabs] == ["Today", "Live", "US Politics", "World", "Singapore", "Asia", "AI", "Biotech"]
     assert [sid for sid, rest, _ in tabs if "hidden" in rest] == ["live"]
     assert re.findall(r'<span class="nav-label">([^<]*)</span>', page) == ["Home", "Following", "Saved", "You"]
-    assert '<a class="nav-item" href="profile.html" data-screen="you">' in page
+    assert '<a class="nav-item" href="/profile" data-screen="you">' in page
     assert 'class="masthead-action"' not in page  # the gear moved to the You tab
     for view in ("following", "saved"):
         assert f'id="screen-{view}"' in page and "empty-head" in page

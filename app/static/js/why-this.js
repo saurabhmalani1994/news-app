@@ -60,33 +60,33 @@ function trustSource(profile, sourceIds) {
 function describeTerm(term, story, profile, names) {
   if (term.term === "recency") {
     const topic = strongestTopic(profile, story.topics_matched, "half_life_hours");
-    return { label: `Recency, ${hoursText(story.ageHours)}`, editHref: topic ? `profile.html#topic-${topic}` : "profile.html" };
+    return { label: `Recency, ${hoursText(story.ageHours)}`, editHref: topic ? `/profile#topic-${topic}` : "/profile" };
   }
   if (term.term === "affinity") {
     const matched = story.topics_matched || [];
     const topic = strongestTopic(profile, matched, "affinity");
     const label = matched.length ? `Your ${listWords(matched.map((id) => topicLabel(profile, id)))} interest` : "No followed topic";
-    return { label, editHref: topic ? `profile.html#topic-${topic}` : "profile.html" };
+    return { label, editHref: topic ? `/profile#topic-${topic}` : "/profile" };
   }
   if (term.term === "importance") {
     const n = story.independent_sources;
-    return { label: `Covered by ${n} independent ${n === 1 ? "outlet" : "outlets"}`, editHref: "profile.html" };
+    return { label: `Covered by ${n} independent ${n === 1 ? "outlet" : "outlets"}`, editHref: "/profile" };
   }
   if (term.term === "trust") {
     const source = trustSource(profile, story.source_ids);
     const value = (profile.trust || {})[source];
     const name = names[source] || source;
     const label = value && value !== 1 ? `Trust, ×${value} for ${name}` : "Trust, no override on this story's sources";
-    return { label, editHref: "profile.html#raw-json" };
+    return { label, editHref: "/profile#raw-json" };
   }
   // S15 seen penalty (R17): term.detail is already the finished plain-words label
   // ("You opened this 2 hours ago"), computed per story by history/penalty.js, since
   // only it knows which signal (or both) fired and how long ago.
   if (term.term === "seen_penalty") {
-    return { label: term.detail || "Seen before, on this device", editHref: "profile.html#raw-json" };
+    return { label: term.detail || "Seen before, on this device", editHref: "/profile#raw-json" };
   }
   // boost:<id>: term.detail is the boost's own label, already plain text (S11).
-  return { label: `Boost: ${term.detail}`, editHref: "profile.html#raw-json" };
+  return { label: `Boost: ${term.detail}`, editHref: "/profile#raw-json" };
 }
 
 /**
@@ -112,7 +112,7 @@ export function explainStory(story, profile, nowMs, names = {}) {
   const total = rows.reduce((sum, r) => sum + r.points, 0);
   const passEntries = story.passes.map((p) => p.text);
   const largest = rows.reduce((best, r) => (best === null || r.value > best.value ? r : best), null);
-  return { rows, total, passEntries, editHref: largest ? largest.editHref : "profile.html" };
+  return { rows, total, passEntries, editHref: largest ? largest.editHref : "/profile" };
 }
 
 // --- DOM rendering (browser only). Every value reaches the DOM through textContent. ---
