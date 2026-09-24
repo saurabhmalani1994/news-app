@@ -29,12 +29,22 @@ test("buildSaveSnapshot is the light card, not the full body", () => {
     image: "https://example.com/a.jpg",
     time: "2026-09-24T00:00:00Z",
     has_body: true,
+    article_id: "s1",
   });
 });
 
 test("buildSaveSnapshot prefers source_name over a bare source id", () => {
   const record = buildSaveSnapshot("s1", { ...ATTRS, source: "straitstimes", source_name: "The Straits Times" }, () => "t");
   assert.equal(record.source, "The Straits Times");
+});
+
+test("buildSaveSnapshot keeps the lead article id for a clustered story, not the cluster id", () => {
+  // A clustered story's own id (sid) is the cluster id; the reader only ever opens the
+  // cluster's lead article (app/build.py body_id), so S26 has to remember that id, not
+  // the story id, or a saved cluster's reader link and offline pin would target nothing.
+  const record = buildSaveSnapshot("cluster-7", { ...ATTRS, article_id: "a42" }, () => "t");
+  assert.equal(record.article_id, "a42");
+  assert.equal(record.id, "cluster-7");
 });
 
 test("toggle: saving twice removes it", async () => {

@@ -2,6 +2,14 @@
 // saved and whether the reader can open it offline (has_body), never the full body
 // (S25's reader cache already owns that, keyed the same way). `store` is
 // {get(id), put(record), delete(id)}, actions/store.js in the browser.
+//
+// S26: `article_id` is the id the reader opens (app/build.py body_id, S25's data-body):
+// the story's own id for an unclustered story, the cluster's lead article otherwise
+// (actions/context.js storyAttributes already computes this into `attributes.article_id`
+// for every save call site). The pool that would answer "which article fronted this
+// story" rotates out after 72h, long before a save does, so it has to be kept here at
+// save time, not looked up later. Falls back to `id` itself, correct for the common
+// unclustered case even when a caller forgot to pass it.
 
 export function buildSaveSnapshot(id, attributes, now) {
   const time = typeof now === "function" ? now() : now;
@@ -13,6 +21,7 @@ export function buildSaveSnapshot(id, attributes, now) {
     image: attributes.image || null,
     time,
     has_body: Boolean(attributes.has_body),
+    article_id: attributes.article_id || id,
   };
 }
 
