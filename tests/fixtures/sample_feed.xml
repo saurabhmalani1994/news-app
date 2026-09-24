@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
+  <channel>
+    <title>Sample News</title>
+    <link>https://example.org/news</link>
+    <description>Synthetic feed shaped like NPR 1001 for tests.</description>
+    <item>
+      <title>City council approves new transit budget</title>
+      <description>The vote was 7 to 2 after a long public hearing.</description>
+      <pubDate>Wed, 23 Sep 2026 23:19:45 -0400</pubDate>
+      <link>https://example.org/2026/09/23/transit-budget</link>
+      <guid>https://example.org/2026/09/23/transit-budget</guid>
+      <content:encoded><![CDATA[<p>FULL BODY TEXT that must never reach the pool.</p><p>More body.</p>]]></content:encoded>
+      <dc:creator>Staff</dc:creator>
+    </item>
+    <item>
+      <title>Court weighs reporters&apos; access to briefing room</title>
+      <description>&lt;p&gt;Lawyers for both sides argued on Wednesday.&lt;/p&gt;</description>
+      <pubDate>Wed, 23 Sep 2026 18:40:39 -0400</pubDate>
+      <link>https://example.org/2026/09/23/court-access</link>
+    </item>
+    <item>
+      <title>Storm season forecast revised upward</title>
+      <description>Forecasters now expect more named storms.</description>
+      <pubDate>Wed, 23 Sep 2026 17:05:00 -0400</pubDate>
+      <link>https://example.org/2026/09/23/storm-forecast</link>
+    </item>
+    <item>
+      <title>Researchers map a new enzyme pathway</title>
+      <pubDate>Wed, 23 Sep 2026 15:30:12 -0400</pubDate>
+      <link>https://example.org/2026/09/23/enzyme-pathway</link>
+    </item>
+    <item>
+      <title>Markets close mixed ahead of rate decision</title>
+      <description>Stocks ended the day little changed.</description>
+      <pubDate>Wed, 23 Sep 2026 16:10:00 -0400</pubDate>
+      <link>https://example.org/2026/09/23/markets-mixed</link>
+    </item>
+    <item>
+      <title>Sixth item beyond the cap</title>
+      <description>Counted as over_cap, never published.</description>
+      <pubDate>Wed, 23 Sep 2026 12:00:00 -0400</pubDate>
+      <link>https://example.org/2026/09/23/sixth</link>
+    </item>
+  </channel>
+</rss>
