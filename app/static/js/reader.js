@@ -1,10 +1,12 @@
 // S25: the in-app reader. A tap on a story with a body file (the build marks its link
 // data-body) opens the story here, set like an NYT article page; every other story
 // links out to its source as before (reader/core.js readerChoice). U1: any outlet in the
-// story's cluster with full text qualifies, not only the lead; the member opened is
-// re-picked at tap time with the stored profile's trust (reader/core.js bestMember),
-// and when it is not the card's own outlet the reader shows that article's own headline
-// and a quiet "Full text from ..." credit.
+// story's cluster with full text qualifies, not only the lead, and when it is not the
+// card's own outlet the reader shows that article's own headline and a quiet "Full text
+// from ..." credit. R43: the member opened is exactly the row's data-body, the choice
+// its "Read here · <outlet>" names (reader/core.js readChoice: the build's pick, remade
+// by rerank.js before first paint for a stored profile's trust); only when that
+// member's body file turns out missing does the reader fall back to the next one.
 //
 // The reader is one layer over the app (#reader, static markup from build.py). Home is
 // never touched underneath: its tab, its pager and each panel's scroll stay exactly
@@ -19,9 +21,12 @@
 import { sanitizeBody } from "./sanitize.js";
 import { bodyCache } from "./reader/cache.js";
 import {
-  BODY_ID, EMOJI_IMAGE, NOTES, TRAILER, bestMember, creditLine, formatPublished, imageStem, loadBody, readerChoice, sameText,
+  BODY_ID, EMOJI_IMAGE, NOTES, TRAILER, creditLine, formatPublished, imageStem, loadBody, readChoice, readerChoice, sameText,
   smartQuotes, tinyImage,
 } from "./reader/core.js";
+// L1: the lean marker after the byline's source name, a button into the lean sheet
+// (js/lean-view.js opens it from data-lean-source).
+import { leanMark, leanMarker } from "./lean.js";
 import { STORAGE_KEY } from "./profile/store.js";
 // S24: thumbs at the end of the reader, the same record and toggle as the card's own
 // overflow sheet (story-actions.js), keyed the same way (storyIdForArticle) so a thumb
@@ -113,7 +118,8 @@ function cardLead(data, sid) {
 }
 
 /** U1: the stored profile's trust map, read the way rank-gate.js reads the profile;
- * {} (every outlet at 1.0) when there is none or it cannot be read. */
+ * {} (every outlet at 1.0) when there is none or it cannot be read. R43: the same trust
+ * rerank.js made the row's choice with, for the fallback past a missing body file. */
 function storedTrust() {
   try {
     const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null")?.history;
@@ -124,11 +130,14 @@ function storedTrust() {
   }
 }
 
-/** U1: the article a tap on the card for `sid` opens: the build's data-body pick
- * (`fallback`), re-made with the stored profile's trust. */
-function memberFor(sid, fallback) {
+/** R43: the next member with full text when member `id`'s body file is missing (the
+ * row's own choice, less every member tried), or null. */
+function fallbackMember(id, facts) {
+  if (!facts.sid) return null;
   const data = pageInput();
-  return bestMember(sid && data.bodies?.[sid], cardLead(data, sid), storedTrust()) || fallback;
+  facts.tried = facts.tried || new Set();
+  facts.tried.add(id);
+  return readChoice(data.bodies?.[facts.sid], cardLead(data, facts.sid), storedTrust(), facts.tried)?.id || null;
 }
 
 /** What the page knows about the story before its body arrives. */
@@ -153,6 +162,7 @@ function storyFacts(id, link) {
     dek: own && deks[0] && !/…\s*$/.test(deks[0]) ? deks[0] : "",
     credit: own ? "" : creditLine(record.source_id, data.byId.get(lead)?.source_id, source),
     source,
+    sourceId: record.source_id || "",
     published: record.published_at || "",
     photo: (data.reader || {})[id] || null,
     href: WEB.test(href) ? href : "",
@@ -335,6 +345,13 @@ function fill(id, facts) {
   loadBody(id, { cache: bodyCache }).then(async (result) => {
     if (mine !== token || current?.id !== id) return;
     body.removeAttribute("aria-busy");
+    if (result.state === "missing") {
+      const next = fallbackMember(id, facts);
+      if (next) {
+        swapTo(next, facts);
+        return;
+      }
+    }
     if (result.state !== "ready") {
       body.replaceChildren(showNote(result.state, facts, id, fill));
       const end = linkOut(facts.href, facts.source);
@@ -365,6 +382,39 @@ function fill(id, facts) {
   });
 }
 
+/** R43: opens member `next` in place of one whose body file is missing: its own
+ * headline and "Full text from" credit (storyFacts), the address following it. */
+function swapTo(next, facts) {
+  const link = current.link;
+  const nextFacts = storyFacts(next, link);
+  nextFacts.tried = facts.tried;
+  if (location.hash === `#read-${current.id}`) {
+    history.replaceState(history.state?.almanacReader ? { almanacReader: next } : history.state, "", `#read-${next}`);
+  }
+  current.id = next;
+  render(next, nextFacts);
+  fill(next, nextFacts);
+}
+
+/** L1: the byline's source name, then its lean marker as a button into the lean sheet
+ * (none for an outlet outside the US scale). */
+function sourceLine(facts) {
+  const line = el("p", "reader-source", facts.source);
+  const lean = (pageInput().leans || {})[facts.sourceId];
+  const mark = leanMark(lean);
+  const marker = mark && leanMarker(lean);
+  if (marker) {
+    const button = el("button", "lean-open");
+    button.type = "button";
+    button.dataset.leanSource = facts.sourceId;
+    button.setAttribute("aria-haspopup", "dialog");
+    button.setAttribute("aria-label", mark.label);
+    button.append(marker);
+    line.append(button);
+  }
+  return line;
+}
+
 function render(id, facts) {
   const head = el("header", "reader-head");
   if (facts.credit) head.append(el("p", "reader-via", facts.credit));
@@ -376,7 +426,7 @@ function render(id, facts) {
   const figure = hero(facts.photo);
   if (figure) parts.push(figure);
   const byline = el("div", "reader-byline");
-  if (facts.source) byline.append(el("p", "reader-source", facts.source));
+  if (facts.source) byline.append(sourceLine(facts));
   const when = formatPublished(facts.published);
   if (when) {
     const line = el("p", "reader-time");
@@ -441,8 +491,9 @@ function linkFor(id) {
   const direct = document.querySelector(`#section-today a.story-link[data-body="${id}"]`)
     || document.querySelector(`a.story-link[data-body="${id}"]`);
   if (direct) return direct;
-  // U1: a member the device re-picked by trust is not the build's data-body; find its
-  // story's card instead. Ids are BODY_ID-checked before they reach a selector.
+  // U1: a member the device re-picked (rerank.js, for trust) or fell back to (a missing
+  // body file) is not the build's data-body; find its story's card instead. Ids are
+  // BODY_ID-checked before they reach a selector.
   const sid = Object.entries(pageInput().bodies || {}).find(([, list]) => list.some((c) => c[0] === id))?.[0];
   if (!sid || !BODY_ID.test(sid)) return null;
   return document.querySelector(`#section-today li.story[data-sid="${sid}"] a.story-link[data-body]`)
@@ -463,7 +514,7 @@ document.addEventListener("click", (event) => {
     return;
   }
   event.preventDefault();
-  open(memberFor(link.closest("li.story[data-sid]")?.dataset.sid, id), link, true);
+  open(id, link, true);
 });
 
 back.addEventListener("click", goBack);

@@ -232,6 +232,24 @@ export function bestMember(candidates, leadId, trust = {}) {
 }
 
 /**
+ * R43: the one choice a "Read here" row names and the reader opens, so the two always
+ * agree: bestMember over the story's candidates with the profile's trust, returned with
+ * that member's source id ({id, source_id}, or null). The build makes it for the
+ * default profile (app/build.py best_member, the row's data-body and "Read here ·
+ * <outlet>"), rerank.js remakes it before first paint for a stored profile's trust, and
+ * the reader opens the row's data-body as is. `tried` (a Set of ids) leaves out members
+ * whose body file turned out missing, for the reader's fallback to the next one.
+ */
+export function readChoice(candidates, leadId, trust = {}, tried = null) {
+  const left = (Array.isArray(candidates) ? candidates : [])
+    .filter((c) => Array.isArray(c) && !(tried && tried.has(c[0])));
+  const id = bestMember(left, leadId, trust);
+  if (!id) return null;
+  const member = left.find((c) => c[0] === id);
+  return { id, source_id: typeof member[1] === "string" ? member[1] : "" };
+}
+
+/**
  * U1: the quiet credit line the reader shows when the text it opened comes from an
  * outlet other than the one the card named ("Full text from Axios"), else "".
  */

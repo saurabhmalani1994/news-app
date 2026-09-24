@@ -27,6 +27,11 @@
     // U1: display.summaries "top" keeps summaries to the hero and the two lead blocks
     // (NYT's own layout); set before first paint, so no row ever changes height.
     if (p && p.display && p.display.summaries === "top") root.classList.add("summaries-top");
+    // L1: lean markers are on and grey unless the owner turned them off or colored
+    // them (You > Display). Classes before first paint: an off marker is never drawn,
+    // so turning it off moves nothing (style.css .lean-off, .lean-color).
+    if (p && p.display && p.display.lean_markers === false) root.classList.add("lean-off");
+    if (p && p.display && p.display.lean_color === true) root.classList.add("lean-color");
     var sameProfile = !p || canonical([p.topics, p.trust, p.boosts, p.mutes, p.seen_penalty, p.passes, p.standing_stories]) === root.getAttribute("data-rank-key");
 
     var summary = null;
