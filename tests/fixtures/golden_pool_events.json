@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-24T04:00:00Z",
+  "sources": [
+    {
+      "id": "npr",
+      "name": "NPR",
+      "feed_url": "https://feeds.npr.org/1001/rss.xml"
+    },
+    {
+      "id": "bbc",
+      "name": "BBC News",
+      "feed_url": "https://feeds.bbci.co.uk/news/rss.xml"
+    }
+  ],
+  "articles": [
+    {
+      "id": "art-shutdown-npr",
+      "source_id": "npr",
+      "url": "https://example.org/2026/09/24/shutdown-npr",
+      "title": "Congress races toward a shutdown deadline",
+      "published_at": "2026-09-24T03:00:00Z"
+    },
+    {
+      "id": "art-shutdown-bbc",
+      "source_id": "bbc",
+      "url": "https://example.org/2026/09/24/shutdown-bbc",
+      "title": "US government shutdown looms as talks stall",
+      "published_at": "2026-09-24T03:10:00Z"
+    },
+    {
+      "id": "art-rates-npr",
+      "source_id": "npr",
+      "url": "https://example.org/2026/09/24/rates-npr",
+      "title": "Central bank holds rates steady",
+      "published_at": "2026-09-24T02:00:00Z"
+    },
+    {
+      "id": "art-rates-bbc",
+      "source_id": "bbc",
+      "url": "https://example.org/2026/09/24/rates-bbc",
+      "title": "Rate decision leaves markets little changed",
+      "published_at": "2026-09-24T02:20:00Z"
+    }
+  ],
+  "clusters": [
+    {
+      "id": "c-shutdown",
+      "method": "cosine_entity",
+      "article_ids": ["art-shutdown-npr", "art-shutdown-bbc"],
+      "near_duplicates": [],
+      "independent_sources": 2,
+      "lean_buckets": ["center", "center-left"]
+    },
+    {
+      "id": "c-rates",
+      "method": "cosine_entity",
+      "article_ids": ["art-rates-npr", "art-rates-bbc"],
+      "near_duplicates": [],
+      "independent_sources": 2,
+      "lean_buckets": ["center", "center-left"]
+    }
+  ],
+  "counts": {
+    "fetched": 4,
+    "published": 4,
+    "drops": {},
+    "leniency": {}
+  },
+  "events": [
+    {
+      "id": "ev-shutdown",
+      "label": "Government shutdown standoff",
+      "cluster_ids": ["c-shutdown"],
+      "hype": 6,
+      "eligible": true,
+      "live": true,
+      "hold_state": "holding"
+    },
+    {
+      "id": "ev-rates",
+      "label": "Central bank rate decision",
+      "cluster_ids": ["c-rates"],
+      "hype": 2,
+      "eligible": false,
+      "live": false,
+      "hold_state": "none"
+    }
+  ]
+}
