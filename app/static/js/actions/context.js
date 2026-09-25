@@ -6,11 +6,13 @@
 /** {id, topics, source, source_name, lean, cluster_size} for story `sid`. `source` is
  * the source id (for Mute source); `topics` are the lead article's own pool tags (for
  * Mute/Boost topic and the thumb record); cluster_size is R19's "the story's
- * attributes" independent-source count, 1 for an unclustered story. */
-export function storyAttributes(input, sid) {
+ * attributes" independent-source count, 1 for an unclustered story. B5: `face` is the
+ * version the row shows when the device fronted it with another than the build's (the
+ * row's data-face), so "Mute" names the outlet on screen. */
+export function storyAttributes(input, sid, face = null) {
   const byId = new Map((input.pool?.articles || []).map((a) => [a.id, a]));
   const cluster = (input.pool?.clusters || []).find((c) => c.id === sid);
-  const articleId = cluster ? cluster.lead : sid;
+  const articleId = face && byId.has(face) ? face : cluster ? cluster.lead : sid;
   const article = byId.get(articleId) || byId.get(sid) || {};
   const sourceId = article.source_id || null;
   return {

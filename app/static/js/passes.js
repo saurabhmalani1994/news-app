@@ -40,7 +40,7 @@ import { rank, HARD_NEWS, TAG_TO_TOPIC } from "./ranker.js";
 import { SECTIONS, inSection } from "./sections.js";
 import { standingStories, qualifies, silenceNotices } from "./standing.js";
 import { currentLiveEvent } from "./live.js";
-import { wordKey } from "./versions.js";
+import { wordKey, versionsContext, faceOf, versionScore, bvOf } from "./versions.js";
 
 export const PASS_ORDER = Object.freeze(["mute", "dedup", "repeat-cap", "lean-quota", "exploration", "other-side", "must-know", "standing-story"]);
 export const TODAY_PASSES = Object.freeze(["repeat-cap", "lean-quota", "exploration", "other-side", "must-know", "standing-story"]);
@@ -78,14 +78,16 @@ function settings(profile) {
 const listWords = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
 const note = (story, pass, text, extra = {}) => story.passes.push({ pass, text, ...extra });
 
-/** The article that fronts a story's card: the build's lead (app/frontpage.py _lead,
- * carried on the cluster as `lead`), or the story's only article. */
+/** The article that fronts a story's card: its face for this profile (B5: versions.js
+ * faceOf, the best version for a scored story, never a muted source's; the build's
+ * lead, carried on the cluster as `lead`, for any other), or the story's only article. */
 function leadOf(story, ctx) {
   const lead = ctx.leads.get(story.id);
   return lead && story.article_ids.includes(lead) ? lead : story.article_ids[0];
 }
 
-/** The lean of the outlet a card shows: its lead's source lean (sources.json), or null. */
+/** The lean of the outlet a card shows: its face's source lean (sources.json), or null.
+ * B5 (R40 answer 7): the lean quota reads this, so it counts the outlet the row shows. */
 export function cardLean(story, ctx) {
   const article = ctx.articles.get(leadOf(story, ctx));
   return (article && ctx.leans[article.source_id]) || null;
@@ -369,8 +371,9 @@ function exploration(list, ctx) {
 
 // 6. Other side. The first `per_page` cards whose cluster has at least 3 independent
 // sources across at least 2 lean buckets each get one attached link: that cluster's
-// newest article from the lean least represented among the page's first `window`
-// cards, other than the card's own lean and any muted source. Between equally rare
+// best-scored article (B5: section 4a's score with trust, then the newest) from the
+// lean least represented among the page's first `window` cards, other than the card's
+// own lean, from any unmuted source (R40 answer 7). Between equally rare
 // leans, the one furthest across the US spectrum from the card's own lean wins, so a
 // left-led card gets the right before the center. Nothing moves.
 const SPECTRUM = ["left", "center-left", "center", "center-right", "right"];
@@ -391,8 +394,13 @@ function otherSide(list, ctx) {
     const count = (l) => mix.get(l) || 0;
     const far = (l) => (SPECTRUM.includes(l) && SPECTRUM.includes(own) ? Math.abs(SPECTRUM.indexOf(l) - SPECTRUM.indexOf(own)) : 0);
     const lean = [...new Set(candidates.map((a) => ctx.leans[a.source_id]))].sort((a, b) => count(a) - count(b) || far(b) - far(a) || byStr(a, b))[0];
+    // B5 (R40 answer 7): within that lean, the best version by section 4a's score,
+    // trust included; the newest only breaks a tie (an unscored story ties at 0).
+    const trust = ctx.profile.trust || {};
+    const scoreOf = (a) => versionScore({ sourceId: a.source_id, bv: bvOf(a.id, ctx.versions) }, { trust });
     const pick = candidates.filter((a) => ctx.leans[a.source_id] === lean)
-      .sort((a, b) => b.ms - a.ms || byStr(a.id, b.id))[0];
+      .map((a) => ({ a, s: scoreOf(a) }))
+      .sort((x, y) => y.s.score - x.s.score || y.s.base - x.s.base || y.a.ms - x.a.ms || byStr(x.a.id, y.a.id))[0].a;
     given += 1;
     const out = { ...story, passes: [...story.passes], other_side: { article_id: pick.id, source_id: pick.source_id, lean } };
     note(out, "other-side", `Other side attached: ${nameOf(ctx, pick.source_id)} (${lean}) on this story, the least represented lean in this page's first ${window} cards (${count(lean)} of ${Math.min(window, list.length)}); the card itself leads with ${own || "an outlet of no listed lean"}`, { from: i + 1, to: i + 1 });
@@ -506,6 +514,9 @@ export const PASSES = Object.freeze({
 /** The context every pass reads, from the ranker's own compact pool. */
 function passContext(pool, profile, opts) {
   const epoch = (iso) => { const t = Date.parse(iso); return Number.isFinite(t) ? t : 0; };
+  // B5: each story's face for this profile, from the page's best-version terms (bv).
+  const versions = versionsContext({ pool, bv: opts.bv });
+  const face = { muted: (profile.mutes && profile.mutes.sources) || [], trust: profile.trust || {} };
   return {
     profile,
     settings: settings(profile),
@@ -514,7 +525,8 @@ function passContext(pool, profile, opts) {
     hardNews: HARD_NEWS,
     standing: standingStories(profile),
     articles: new Map((pool.articles || []).map((a) => [a.id, { ...a, ms: epoch(a.published_at) }])),
-    leads: new Map((pool.clusters || []).filter((c) => c.lead).map((c) => [c.id, c.lead])),
+    versions,
+    leads: new Map((pool.clusters || []).map((c) => [c.id, faceOf(c, versions, face)]).filter(([, id]) => id)),
     events: opts.events || [],
     removed: [],
   };
@@ -539,19 +551,21 @@ export function applyPasses(names, pool, profile, now, opts = {}) {
 export function pageOptions(input, extra = {}) {
   return {
     buckets: input.buckets || {}, leans: input.leans || {}, names: input.names || {},
-    health: input.health || {}, events: input.events || [], ...extra,
+    health: input.health || {}, events: input.events || [], bv: input.bv || {}, ...extra,
   };
 }
 
 /**
  * The pages for a profile: Today and every section tab, each after its passes.
- * Returns {today, removed, sections: [{id, label, slot, stories}], notices}; `today` and
+ * Returns {today, removed, sections: [{id, label, slot, stories}], notices, faces}; `today` and
  * each `stories` are ranker records plus their pass entries (and `other_side` where one
  * is attached); `removed` holds what mute and dedup took, each saying why; `notices` is
  * S28's silence alarm for Today (standing.js silenceNotices).
- * opts: {buckets, leans, names, health, terms, events} (buckets and leans from
+ * opts: {buckets, leans, names, health, terms, events, bv} (buckets and leans from
  * sources.json, R10; health is the unhealthy sources from the pool's S06
- * source_health; events is the pool's S31/S32 events array for the S33 Live tab).
+ * source_health; events is the pool's S31/S32 events array for the S33 Live tab; bv is
+ * the page's best-version terms, {article_id: [8 ints]}, from which each story's face
+ * is picked, B5).
  *
  * S33: the "live" slot section is not a topic filter like the others (sections.js's
  * inSection always refuses a slot section, on purpose: it holds nothing until its own
@@ -598,5 +612,7 @@ export function rankPages(pool, profile, now, opts = {}) {
   });
   const nowMs = typeof now === "number" ? now : Date.parse(now) || 0;
   const notices = silenceNotices(scored, profile, nowMs, { buckets: opts.buckets, names: opts.names, health: opts.health });
-  return { today, removed: ctx.removed, sections, notices };
+  // B5: `faces` is each story's face for this profile ({cluster id: article id}), what
+  // the passes read and what rerank.js and story-actions.js draw each row with.
+  return { today, removed: ctx.removed, sections, notices, faces: Object.fromEntries([...ctx.leads].sort((a, b) => byStr(a[0], b[0]))) };
 }

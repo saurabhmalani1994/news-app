@@ -55,7 +55,7 @@
     var AGE_RE = /\d+(?: min|[hd]) ago$/;
     document.querySelectorAll("li.story[data-sid]").forEach(function (li) {
       var sid = li.dataset.sid;
-      var article = articleById[leadOf[sid] || sid];
+      var article = articleById[li.dataset.face || leadOf[sid] || sid]; // B5: a row the device re-fronted
       if (!article) return;
       var fresh = relativeAge(article.published_at, now);
       if (!fresh) return;

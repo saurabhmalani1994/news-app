@@ -110,9 +110,11 @@ function arrow() {
   return svg;
 }
 
-/** The article the card for story `sid` shows: its cluster's lead, or the story's own
- * id for a single-article story. */
-function cardLead(data, sid) {
+/** The article the card for story `sid` shows: the version the device fronted it with
+ * (B5: the row's `data-face`, tiers.js placeFace) when it is not the build's, else its
+ * cluster's lead, or the story's own id for a single-article story. */
+function cardLead(data, sid, face = null) {
+  if (face) return face;
   const cluster = (data.pool?.clusters || []).find((c) => c.id === sid);
   return cluster?.lead || sid || null;
 }
@@ -137,7 +139,7 @@ function fallbackMember(id, facts) {
   const data = pageInput();
   facts.tried = facts.tried || new Set();
   facts.tried.add(id);
-  return readChoice(data.bodies?.[facts.sid], cardLead(data, facts.sid), storedTrust(), facts.tried)?.id || null;
+  return readChoice(data.bodies?.[facts.sid], cardLead(data, facts.sid, facts.face), storedTrust(), facts.tried)?.id || null;
 }
 
 /** What the page knows about the story before its body arrives. */
@@ -146,14 +148,16 @@ function storyFacts(id, link) {
   const record = data.byId.get(id) || {};
   const li = link?.closest("li.story");
   const sid = li?.dataset.sid;
-  const lead = cardLead(data, sid);
+  const face = li?.dataset.face || null;
+  const lead = cardLead(data, sid, face);
   const own = !sid || id === lead;
-  const deks = (sid && data.deks?.[sid]) || [];
+  const deks = (face ? data.fronts?.[face]?.d : sid && data.deks?.[sid]) || [];
   const member = (sid && (data.bodies?.[sid] || []).find((c) => c[0] === id)) || null;
   const href = own ? link?.getAttribute("href") || "" : member?.[3] || "";
   const source = (data.names || {})[record.source_id] || (own ? link?.querySelector(".meta-source")?.textContent : "") || "";
   return {
     sid,
+    face,
     // The card's own headline for its own outlet; another outlet's article keeps its
     // own headline, typeset as the build sets titles.
     title: own ? link?.querySelector(".headline")?.textContent || record.title || "" : smartQuotes(record.title || ""),

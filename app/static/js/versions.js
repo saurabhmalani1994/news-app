@@ -15,7 +15,8 @@
 // Order: the lead version first (the row's own article, the one the row opens), then
 // the others by the best-version score (B8, DESIGN-bundles section 4a): the sum of the
 // cron's fact terms, published per article as `bv` and embedded by the build, plus the
-// device's trust term (trustTerm, B5's seam, 0 until then). Ties go to the higher sum
+// device's trust term (trustTerm, B5). For a scored story the row's own article is the
+// best version (faceOf, B5), so the lead is also the highest score. Ties go to the higher sum
 // without trust, then the earlier report, then source id and article id. A version the
 // cron did not score (no `bv`) sums to 0. orderVersions is the one place that order is
 // decided. Lean is never an input, nor is any source's provenance (R40).
@@ -98,14 +99,22 @@ export function bvOf(articleId, ctx) {
   return Array.isArray(bv) && bv.length === BV_TERMS.length && bv.every(Number.isInteger) ? bv : null;
 }
 
+/** The owner's trust in a source (profile trust, R10): a finite number, 1.0 when unset. */
+export function trustOf(sourceId, trust = {}) {
+  const t = trust && typeof trust === "object" ? trust[sourceId] : undefined;
+  return typeof t === "number" && Number.isFinite(t) ? t : 1;
+}
+
 /**
- * B5's seam: section 4a's ninth term, the owner's trust in the version's outlet, added
- * on the device to the cron's base sum. Until B5 lands it adds nothing, whatever the
- * profile says; B5 makes it (trust - 1) x base, floored at 0, and nothing else here
- * changes.
+ * B5: section 4a's ninth term, the owner's trust in the version's outlet, added on the
+ * device to the cron's base sum: (trust - 1) x base, the base floored at 0, rounded to
+ * an integer like every other term so the listed terms sum exactly to the score. The
+ * default 1.0 adds nothing; a trust under 1.0 takes points away.
  */
-export function trustTerm(_version, _base, _trust = {}) {
-  return 0;
+export function trustTerm(version, base, trust = {}) {
+  const t = trustOf(version?.sourceId, trust);
+  const value = Math.round((t - 1) * Math.max(0, base));
+  return value === 0 ? 0 : value; // never -0
 }
 
 /** One version's best-version score: `base`, the sum of its fact terms (0 when the
@@ -185,6 +194,73 @@ export function buildVersions(cluster, ctx, { leadId = null, muted = [], trust =
   // A lead folded into another slide's "more" still leads: its slide goes first.
   const leadSlide = slides.find((s) => s.id === leadId || s.more.some((m) => m.id === leadId));
   return orderVersions(slides, { ...opts, leadId: leadSlide ? leadSlide.id : null });
+}
+
+// --- The face (B5, DESIGN-bundles section 4a) -----------------------------------------
+
+/** True when the cron scored any member of `cluster` (the page embeds `bv` only for
+ * stories of 2+ independent outlets, app/frontpage.py version_bv). Only a scored story
+ * picks its face by best version; any other keeps the build's own lead rule. */
+export function isScored(cluster, ctx) {
+  return (cluster?.article_ids || []).some((id) => bvOf(id, ctx) !== null);
+}
+
+/**
+ * The article a story's card shows for this profile: for a scored story, the first
+ * slide of its carousel (buildVersions with no lead forced), so the row, the carousel's
+ * first slide and the reader's "Read here" all start from the same version; a muted
+ * source never faces. Any other story, or one whose every outlet is muted (the mute pass
+ * removes it), keeps the build's lead (`cluster.lead`, app/frontpage.py _lead). The
+ * build computes the same pick for the default profile (app/frontpage.py face_of) and
+ * embeds it as `cluster.lead`, so with no trust set and nothing muted the two agree
+ * (tests/js/rank-parity.test.js).
+ */
+export function faceOf(cluster, ctx, { muted = [], trust = {} } = {}) {
+  if (!cluster) return null;
+  if (!isScored(cluster, ctx)) return cluster.lead || null;
+  const [first] = buildVersions(cluster, ctx, { leadId: null, muted, trust });
+  return first ? first.id : cluster.lead || null;
+}
+
+// Plain words for each term, fixed phrases (no AI text, R13). `why` is the short phrase
+// "Leads because" joins; `label` names the term's row in the full list.
+const TERM_WORDS = {
+  original: () => ({ why: "original reporting", label: "Original reporting" }),
+  complete: (v) => (v >= 15 ? { why: "full text", label: "Full text" } : { why: "a summary", label: "Summary" }),
+  depth: () => ({ why: "depth", label: "Depth of reporting" }),
+  headline: (v) => (v > 0 ? { why: "a specific headline", label: "Headline names who and how many" }
+    : { why: "", label: "Headline teases" }),
+  locality: (v) => (v >= 15 ? { why: "local outlet", label: "Local outlet" } : { why: "regional outlet", label: "Regional outlet" }),
+  first: (v) => (v >= 10 ? { why: "first to report", label: "First to report" } : { why: "an early report", label: "Early report" }),
+  health: () => ({ why: "", label: "Feed failing lately" }),
+  paywall: () => ({ why: "", label: "Paywalled, no full text" }),
+};
+
+/**
+ * The terms that make a version's score, as the why-this sheet lists them: each
+ * nonzero fact term in `bv` order, then the trust term, [{term, value, label, why}].
+ * Their values sum exactly to versionScore(version, {trust}).score.
+ */
+export function leadTerms(version, { trust = {}, names = {} } = {}) {
+  const bv = version?.bv || [];
+  const out = [];
+  BV_TERMS.forEach((term, i) => {
+    const value = bv[i] || 0;
+    if (value) out.push({ term, value, ...TERM_WORDS[term](value) });
+  });
+  const { trust: t } = versionScore(version, { trust });
+  if (t) {
+    const name = names[version.sourceId] || version.sourceName || version.sourceId;
+    out.push({ term: "trust", value: t, label: `Trust, ×${trustOf(version.sourceId, trust)} for ${name}`, why: t > 0 ? `your trust in ${name}` : "" });
+  }
+  return out;
+}
+
+/** "Leads because": the top three positive terms as their fixed phrases, largest
+ * first, ties in list order. [] when none is positive. */
+export function leadsBecause(terms) {
+  return terms.map((t, i) => ({ ...t, i })).filter((t) => t.value > 0 && t.why)
+    .sort((a, b) => b.value - a.value || a.i - b.i).slice(0, 3).map((t) => t.why);
 }
 
 // --- Word marks ---------------------------------------------------------------------

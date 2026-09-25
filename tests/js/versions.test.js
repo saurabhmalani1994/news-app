@@ -92,9 +92,10 @@ test("the lead comes first, then the best-version score (B8); the facts come fro
   const bbc = slides.find((s) => s.id === "bbc");
   assert.equal(bbc.hasBody, true);
   assert.equal(bbc.headline, "US Senate passes $1.2tn spending bill");
-  // The trust term is B5's: until it lands, a profile's trust moves nothing.
+  // B5's trust term: Kyodo at 2.0 doubles its 29 to 58 and passes the BBC's 51; the
+  // lead stays first when it is forced, whatever its trust.
   const trusted = buildVersions(CLUSTER, CTX, { ...OPTS, trust: { kyodo_news: 2, npr: 0.1 } });
-  assert.deepEqual(trusted.map((s) => s.id), slides.map((s) => s.id));
+  assert.deepEqual(trusted.map((s) => s.id), ["lead", "kyodo", "bbc", "wire1", "fox1"]);
 });
 
 test("a muted source is never shown and never counted, even inside a syndicated group", () => {
@@ -133,8 +134,8 @@ test("orderVersions is the one ordering: lead, bv sum, earlier report, source id
   assert.deepEqual(orderVersions(list, { leadId: "l" }).map((x) => x.id), ["l", "c", "e", "a", "b", "n"]);
   assert.deepEqual(orderVersions([...list].reverse(), { leadId: "l" }).map((x) => x.id), ["l", "c", "e", "a", "b", "n"]);
   const s = versionScore(v("x", "s1", 12, [20, 15, 4, -4, 8, 10, -5, 0]), { trust: { s1: 1.5 } });
-  assert.deepEqual(s, { base: 48, trust: 0, score: 48 });
-  assert.equal(trustTerm(v("x", "s1", 1), 48, { s1: 1.5 }), 0); // B5 fills this seam
+  assert.deepEqual(s, { base: 48, trust: 24, score: 72 }); // B5: (1.5 - 1) x 48
+  assert.equal(trustTerm(v("x", "s1", 1), 48, { s1: 1.5 }), 24);
   assert.equal(versionScore(v("y", "s1", 1)).score, 0);
 });
 

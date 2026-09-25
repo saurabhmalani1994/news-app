@@ -21,7 +21,7 @@
 // Settling on any other version records `compared` (history/compared.js), which feeds
 // no ranking term.
 import {
-  MIN_MARK_VERSIONS, buildVersions, markSegments, uniqueWords, versionsContext, withWordMarks, wordMarksOn,
+  MIN_MARK_VERSIONS, buildVersions, faceOf, markSegments, uniqueWords, versionsContext, withWordMarks, wordMarksOn,
 } from "./versions.js";
 import { leanMark, leanMarker } from "./lean.js";
 import { relativeAge } from "./offline-format.js";
@@ -409,9 +409,11 @@ export function openVersions(sid, opener = null, push = true) {
   const cluster = ctx.clusters.get(sid);
   if (!cluster) return false;
   const profile = storedProfile();
-  const slides = buildVersions(cluster, ctx, {
-    leadId: cluster.lead || null, muted: profile?.mutes?.sources || [], trust: profile?.trust || {}, nowMs: Date.now(),
-  });
+  // B5: the lead slide is the row's face for this profile (faceOf), the version the
+  // row itself shows, so the row and the carousel's first slide always agree.
+  const muted = profile?.mutes?.sources || [];
+  const trust = profile?.trust || {};
+  const slides = buildVersions(cluster, ctx, { leadId: faceOf(cluster, ctx, { muted, trust }), muted, trust, nowMs: Date.now() });
   if (!slides.length) return false;
   clearTimeout(hideTimer);
   current = { sid, slides, index: null, opener, pushed: push, leadId: slides[0].id, seen: new Set() };

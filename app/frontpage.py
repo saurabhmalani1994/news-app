@@ -9,6 +9,7 @@ here under Node with the shipped default profile at the pool's generated_at. The
 runs the same module again only when its stored profile differs (rank-gate.js).
 """
 import json
+import math
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -139,8 +140,85 @@ def _lead(members):
     return min(members, key=key)
 
 
+BV_LENGTH = 8  # contract/pool.schema.json article `bv`: fetcher/best_version.py TERMS
+
+
+def _valid_bv(value):
+    return (isinstance(value, list) and len(value) == BV_LENGTH
+            and all(isinstance(x, int) and not isinstance(x, bool) for x in value))
+
+
+def version_bv(pool):
+    """B8: {article_id: bv} for every article of a cluster of 2 or more independent
+    sources, the eight best-version fact terms the cron published
+    (fetcher/best_version.py). The page embeds exactly this (versions.js bvOf reads it),
+    the ranker gets it (B5: each story's face), and face_of reads it, so all three see
+    the same terms. An article without a valid `bv` is absent; sorted by id for a
+    byte-stable page."""
+    by_id = {a["id"]: a for a in pool.get("articles", [])}
+    ids = {aid for c in pool.get("clusters", []) if c.get("independent_sources", 0) > 1
+           for aid in c.get("article_ids", [])}
+    return {aid: by_id[aid]["bv"] for aid in sorted(ids) if aid in by_id and _valid_bv(by_id[aid].get("bv"))}
+
+
+def _trust_term(source_id, base, trust):
+    """versions.js trustTerm: (trust - 1) x base floored at 0, rounded half up."""
+    t = trust.get(source_id, 1.0) if trust else 1.0
+    if not isinstance(t, (int, float)) or isinstance(t, bool) or not math.isfinite(t):
+        t = 1.0
+    return int(math.floor((t - 1) * max(0, base) + 0.5))
+
+
+def face_of(members, near_duplicates, bv, trust=None, muted=()):
+    """B5 (DESIGN-bundles section 4a): the article a scored story's card shows, the first
+    slide of its versions carousel (app/static/js/versions.js faceOf over buildVersions),
+    ported here so the page is built with the same face the device picks. Each S07
+    near-duplicate group is one version, fronted by its best member; every other outlet
+    is one version, fronted by its best piece, unless that outlet already fronts a group
+    (its own pieces fold into that slide). The best of those wins: the higher score (the
+    bv sum plus the trust term), then the higher sum without trust, then the earlier
+    report, then source id, then article id. A muted source never faces. None when
+    every member is muted. Lean and provenance are never read (R40)."""
+    muted = set(muted)
+    present = [a for a in members if (a.get("source_id") or "") not in muted]
+
+    def key(a):
+        base = sum(bv.get(a["id"]) or ())
+        score = base + _trust_term(a.get("source_id") or "", base, trust or {})
+        return (-score, -base, _epoch(a.get("published_at")), a.get("source_id") or "", a["id"])
+
+    ids = {a["id"] for a in present}
+    group_of = {}
+    for index, group in enumerate(near_duplicates or []):
+        for aid in group:
+            if aid in ids and aid not in group_of:
+                group_of[aid] = index
+    groups, by_source = {}, {}
+    for a in present:
+        if a["id"] in group_of:
+            groups.setdefault(group_of[a["id"]], []).append(a)
+        else:
+            by_source.setdefault(a.get("source_id") or "", []).append(a)
+    faces = [min(group, key=key) for group in groups.values()]
+    fronting = {(f.get("source_id") or "") for f in faces}
+    faces += [min(lst, key=key) for src, lst in by_source.items() if src not in fronting]
+    return min(faces, key=key) if faces else None
+
+
+def _face(members, cluster, bv):
+    if any(a["id"] in bv for a in members):
+        face = face_of(members, cluster.get("near_duplicates", []), bv)
+        if face is not None:
+            return face
+    return _lead(members)
+
+
 def build_stories(pool):
+    """One Story per cluster (and per unclustered article). B5: a scored cluster (the
+    cron gave any member `bv`, version_bv) is fronted by its best version (face_of, the
+    default profile: no trust set, nothing muted); any other by the D1 lead rule."""
     by_id = {a["id"]: a for a in pool["articles"]}
+    bv = version_bv(pool)
     clustered = set()
     stories = []
     for cluster in pool.get("clusters", []):
@@ -150,7 +228,7 @@ def build_stories(pool):
         clustered.update(a["id"] for a in members)
         stories.append(Story(
             id=cluster["id"],
-            lead=_lead(members),
+            lead=_face(members, cluster, bv),
             article_ids=tuple(sorted(a["id"] for a in members)),
             independent_sources=independent_source_count(members, cluster.get("near_duplicates", [])),
             latest=max((a["published_at"] for a in members), key=_epoch),
@@ -283,9 +361,10 @@ def pass_input(pool):
     """What the S13 passes read beside the compact pool: buckets, leans and names,
     S28's failing sources for the silence alarm, and S33's events array for the Live
     tab (the pool's own field, carried through unchanged; empty when the pool predates
-    S32 or the fetcher found no event this run)."""
+    S32 or the fetcher found no event this run). B5: `bv`, the best-version terms each
+    story's face is picked from (version_bv), for the build's ranker and the device alike."""
     return {"buckets": source_buckets(pool), "leans": source_leans(pool), "names": source_names(pool),
-            "health": failing_sources(pool), "events": pool.get("events", [])}
+            "health": failing_sources(pool), "events": pool.get("events", []), "bv": version_bv(pool)}
 
 
 def run_ranker(pool):
@@ -313,6 +392,11 @@ def ranked_stories(pool, ranking=None):
     removed = [r["id"] for r in ranking.get("removed", [])]
     if len(set(order)) != len(order) or sorted(order + removed) != sorted(stories):
         raise RuntimeError("ranker and build_stories disagree on the story set")
+    # B5: the page is drawn with face_of's pick and the device reads passes.js's; they
+    # must be one choice (R2 parity), so a disagreement fails the build loudly.
+    for sid, face in (ranking.get("faces") or {}).items():
+        if sid in stories and stories[sid].lead["id"] != face:
+            raise RuntimeError(f"face mismatch on {sid}: build {stories[sid].lead['id']}, ranker {face}")
     return [stories[i] for i in order]
 
 

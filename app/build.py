@@ -25,7 +25,7 @@ from app.health import render as render_health
 from app.dek import fit_dek
 from app.frontpage import (CHARS_PER_LINE, DEK_LINES, ROW_DEK_LINES, clean_dek, dek_budget, dek_clamp, front_page,
                            pass_input, rank_input, run_ranker, source_countries, source_ownership,
-                           visible_source_count)
+                           version_bv, visible_source_count)
 from app.images import THUMB_PX, credit_text, hero_box, hero_media, hero_worthy, image_url, media_for, thumb_ok
 from app.lean import hit_html as lean_hit_html, marker_html as lean_marker_html
 from app.serviceworker import write_service_worker
@@ -363,21 +363,6 @@ def version_locality(pool):
            for aid in c.get("article_ids", [])}
     return {aid: by_id[aid]["locality"] for aid in sorted(ids)
             if aid in by_id and by_id[aid].get("locality") in LOCALITY_TIERS}
-
-
-BV_LENGTH = 8  # contract/pool.schema.json article `bv`: fetcher/best_version.py TERMS
-
-
-def version_bv(pool):
-    """B8: {article_id: bv} for the same carousel members as version_locality, the eight
-    best-version fact terms the cron published (fetcher/best_version.py), which
-    versions.js orderVersions sums to order the slides. An article without `bv` is
-    absent; sorted by id for a byte-stable page."""
-    by_id = {a["id"]: a for a in pool.get("articles", [])}
-    ids = {aid for c in pool.get("clusters", []) if c.get("independent_sources", 0) > 1
-           for aid in c.get("article_ids", [])}
-    return {aid: by_id[aid]["bv"] for aid in sorted(ids)
-            if aid in by_id and isinstance(by_id[aid].get("bv"), list) and len(by_id[aid]["bv"]) == BV_LENGTH}
 
 
 def coverage_articles(pool):
@@ -758,19 +743,53 @@ def _render_story(story, tier, source_names, now, by_id, other="", coverage="", 
     )
 
 
+def _fitted_deks(article):
+    """An article's fitted dek for the hero, a lead block and a row (river or text-only,
+    U1), in that order, trailing repeats dropped ([hero] when all three agree); None when
+    it has no dek worth showing."""
+    dek = clean_dek(article)
+    if not dek:
+        return None
+    fitted = [smart_quotes(fit_dek(dek, dek_budget(t), dek_clamp(t))) for t in ("hero", "secondary", "river")]
+    while len(fitted) > 1 and fitted[-1] == fitted[-2]:
+        fitted.pop()
+    return fitted
+
+
 def _dek_pairs(stories):
-    """Each story's fitted dek for the hero, a lead block and a row (river or text-only,
-    U1), in that order, trailing repeats dropped ([hero] when all three agree), so the
-    device can move any row to any tier without re-fitting text (js/tiers.js dekFor)."""
+    """Each story's fitted deks (_fitted_deks of its lead), so the device can move any
+    row to any tier without re-fitting text (js/tiers.js dekFor)."""
     pairs = {}
     for story in stories:
-        dek = clean_dek(story.lead)
-        if dek:
-            fitted = [smart_quotes(fit_dek(dek, dek_budget(t), dek_clamp(t))) for t in ("hero", "secondary", "river")]
-            while len(fitted) > 1 and fitted[-1] == fitted[-2]:
-                fitted.pop()
+        fitted = _fitted_deks(story.lead)
+        if fitted:
             pairs[story.id] = fitted
     return pairs
+
+
+def face_records(stories, by_id, source_names, now, bv):
+    """B5: {article_id: {t, a, d?, i?}} for every member of each shown scored story (one
+    whose face is picked by best version, frontpage.face_of), so the device can front
+    the row with any of them before first paint when the stored profile's trust or
+    mutes pick another face (js/tiers.js placeFace): the headline typeset as the build
+    sets it (t), the row's age (a), the fitted deks (d, as _dek_pairs) and the photo
+    record (i, as _image_records: the hero may borrow another outlet's photo, D2). The
+    same bytes the build would have written for that face. Sorted by id."""
+    out = {}
+    for story in stories:
+        members = _members(story, by_id)
+        if not any(a["id"] in bv for a in members):
+            continue
+        for article in members:
+            record = {"t": smart_quotes(article.get("title", "")), "a": relative_age(article.get("published_at"), now)}
+            deks = _fitted_deks(article)
+            if deks:
+                record["d"] = deks
+            media = media_for(hero_media(members, article, source_names), article.get("image"))
+            if media:
+                record["i"] = media
+            out[article["id"]] = record
+    return dict(sorted(out.items()))
 
 
 def _image_records(stories, by_id, source_names):
@@ -785,7 +804,7 @@ def _image_records(stories, by_id, source_names):
     return records
 
 
-def _rank_input_json(pool, stories, by_id, source_names, links, chars=None):
+def _rank_input_json(pool, stories, by_id, source_names, links, chars=None, now=None):
     """The device's ranking input as template text. Only &, < and > are escaped, so no
     feed string can close the template or open a tag (R26); JSON quotes stay readable.
     S13: buckets, leans and names for the passes, and the other-side link data. S14:
@@ -797,7 +816,8 @@ def _rank_input_json(pool, stories, by_id, source_names, links, chars=None):
             "reader": reader_photos(stories, by_id), "bodies": reader_bodies(stories, by_id, chars or {}),
             "ownership": source_ownership(pool), "countries": source_countries(pool),
             "coverage": coverage_articles(pool), "vdeks": version_deks(pool),
-            "locality": version_locality(pool), "bv": version_bv(pool)}
+            "locality": version_locality(pool),
+            "fronts": face_records(stories, by_id, source_names, now, version_bv(pool))}
     return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
 
 
@@ -864,7 +884,7 @@ def render(pool, ranking=None, chars=None):
         toast=TOAST,
         rank_key=escape(ranking["key"], quote=True),
         notices=render_notices(ranking.get("notices", [])),
-        rank_input=_rank_input_json(pool, shown_stories, by_id, source_names, links, chars),
+        rank_input=_rank_input_json(pool, shown_stories, by_id, source_names, links, chars, now),
         preloads=preloads,
         top=rows(("hero", "secondary", "river")),
         more=more,

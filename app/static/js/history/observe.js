@@ -39,8 +39,8 @@ function getInput() {
 function cardAttrs(li) {
   const sid = li.dataset.sid;
   const input = getInput();
-  const attrs = storyAttributes(input, sid);
-  const image = input.images?.[sid];
+  const attrs = storyAttributes(input, sid, li.dataset.face || null);
+  const image = li.dataset.face ? input.fronts?.[li.dataset.face]?.i : input.images?.[sid];
   const link = li.querySelector("a.story-link");
   return {
     ...attrs,

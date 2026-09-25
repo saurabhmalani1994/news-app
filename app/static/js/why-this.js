@@ -14,6 +14,7 @@
 // from profile.json and the pool.
 
 import { isPhraseTopic } from "./phrase.js";
+import { buildVersions, isScored, leadTerms, leadsBecause, versionScore, versionsContext } from "./versions.js";
 
 const HOUR_MS = 3_600_000;
 
@@ -131,23 +132,46 @@ export function explainStory(story, profile, nowMs, names = {}) {
   return { rows, total, passEntries, editHref: largest ? largest.editHref : "/profile" };
 }
 
+/**
+ * B5 (DESIGN-bundles section 4a): why the row's version leads its story, or null when
+ * the story has no best-version pick to explain (not scored by the cron, or one
+ * version only). {name, because, rows, total}: `because` is the top three positive
+ * terms as fixed phrases ("full text", "local outlet", "first to report"); `rows` every
+ * nonzero term of the lead's score in order, trust last, [{term, label, value}]; `total`
+ * the lead's score, which the rows sum to exactly. The lead is the carousel's first
+ * slide for this profile's mutes and trust, the same version the row shows (faceOf).
+ * `input` is the page's #rank-input.
+ */
+export function explainLead(input, sid, profile) {
+  const ctx = versionsContext(input);
+  const cluster = ctx.clusters.get(sid);
+  if (!cluster || !isScored(cluster, ctx)) return null;
+  const trust = (profile && profile.trust) || {};
+  const muted = (profile && profile.mutes && profile.mutes.sources) || [];
+  const slides = buildVersions(cluster, ctx, { leadId: null, muted, trust });
+  if (slides.length < 2) return null;
+  const lead = slides[0];
+  const rows = leadTerms(lead, { trust, names: ctx.names }).map(({ term, label, value, why }) => ({ term, label, value, why }));
+  return { id: lead.id, name: lead.sourceName, because: leadsBecause(rows), rows, total: versionScore(lead, { trust }).score };
+}
+
 // --- DOM rendering (browser only). Every value reaches the DOM through textContent. ---
 
-function row(text, value, maxAbs) {
+function row(text, value, maxAbs, cls = "why-row") {
   const node = document.createElement("div");
-  node.className = "why-row";
+  node.className = cls;
   const label = document.createElement("span");
-  label.className = "why-row-label";
+  label.className = `${cls}-label`;
   label.textContent = text;
   const val = document.createElement("span");
-  val.className = "why-row-value" + (value < 0 ? " why-row-value--neg" : "");
+  val.className = `${cls}-value` + (value < 0 ? ` ${cls}-value--neg` : "");
   val.textContent = (value < 0 ? "−" : "+") + Math.abs(value);
   node.append(label, val);
   if (maxAbs > 0) {
     const track = document.createElement("div");
-    track.className = "why-row-bar";
+    track.className = `${cls}-bar`;
     const fill = document.createElement("div");
-    fill.className = "why-row-bar-fill" + (value < 0 ? " why-row-bar-fill--neg" : "");
+    fill.className = `${cls}-bar-fill` + (value < 0 ? ` ${cls}-bar-fill--neg` : "");
     fill.style.width = `${Math.round((Math.abs(value) / maxAbs) * 100)}%`;
     track.append(fill);
     node.append(track);
@@ -155,10 +179,40 @@ function row(text, value, maxAbs) {
   return node;
 }
 
-/** The sheet body for one story: the headline it was opened from, the scale note
+/** B5: the "Leads because" block, first in the sheet (section 4a): one line naming the
+ * top terms, then every term of the lead's score and the score itself, in the same row
+ * shape as the ranking terms below it. */
+function leadBlock(lead) {
+  const box = document.createElement("div");
+  box.className = "why-lead";
+  const line = document.createElement("p");
+  line.className = "why-lead-because";
+  const label = document.createElement("span");
+  label.className = "why-lead-kicker";
+  label.textContent = "Leads because";
+  line.append(label, `: ${lead.because.length ? listWords(lead.because) : "no other version scores higher"}`);
+  box.append(line);
+  const list = document.createElement("div");
+  list.className = "why-lead-rows";
+  const maxAbs = Math.max(1, ...lead.rows.map((r) => Math.abs(r.value)));
+  for (const r of lead.rows) list.append(row(r.label, r.value, maxAbs, "why-lead-row"));
+  box.append(list);
+  const totalRow = document.createElement("div");
+  totalRow.className = "why-lead-total";
+  const totalLabel = document.createElement("span");
+  totalLabel.textContent = `${lead.name}'s score`;
+  const totalValue = document.createElement("span");
+  totalValue.textContent = (lead.total < 0 ? "−" : "+") + Math.abs(lead.total);
+  totalRow.append(totalLabel, totalValue);
+  box.append(totalRow);
+  return box;
+}
+
+/** The sheet body for one story: the headline it was opened from, B5's "Leads because"
+ * block when the story has a best-version pick (`lead`, explainLead), the scale note
  * (stated once), each term row with its bar, the total, any pass entries, and the
  * edit-the-driving-field link. `headline` is plain text already read off the card. */
-export function renderWhyContent({ story, profile, nowMs, names = {}, headline = "" }) {
+export function renderWhyContent({ story, profile, nowMs, names = {}, headline = "", lead = null }) {
   const { rows, total, passEntries, editHref } = explainStory(story, profile, nowMs, names);
   const maxAbs = Math.max(1, ...rows.map((r) => Math.abs(r.points)));
   const nodes = [];
@@ -168,6 +222,14 @@ export function renderWhyContent({ story, profile, nowMs, names = {}, headline =
     h.className = "why-headline";
     h.textContent = headline;
     nodes.push(h);
+  }
+
+  if (lead) {
+    nodes.push(leadBlock(lead));
+    const rank = document.createElement("p");
+    rank.className = "why-section-label";
+    rank.textContent = "Why it ranks here";
+    nodes.push(rank);
   }
 
   const scale = document.createElement("p");

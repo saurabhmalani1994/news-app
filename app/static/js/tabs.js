@@ -138,7 +138,7 @@ function fillPanel(panel, section, ids, rows, input) {
     }
     panel.append(module);
   }
-  retier([top, more, rest], ids, rows, input.deks || {}, input.images || {});
+  retier([top, more, rest], ids, rows, input.deks || {}, input.images || {}, input.fronts || {});
   if (!ids.length) {
     const empty = el("div", "empty empty--section");
     empty.append(el("p", "empty-head", `No ${section.label} stories right now`),

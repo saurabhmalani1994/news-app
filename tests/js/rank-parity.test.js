@@ -34,9 +34,9 @@ function input() {
 
 test("pageOptions carries every field the build ranks with, and adds the device's own", () => {
   const i = input();
-  assert.deepEqual(Object.keys(pageOptions(i)).sort(), ["buckets", "events", "health", "leans", "names"]);
+  assert.deepEqual(Object.keys(pageOptions(i)).sort(), ["buckets", "bv", "events", "health", "leans", "names"]);
   assert.equal(pageOptions(i).events, i.events);
-  assert.deepEqual(pageOptions({}), { buckets: {}, leans: {}, names: {}, health: {}, events: [] });
+  assert.deepEqual(pageOptions({}), { buckets: {}, leans: {}, names: {}, health: {}, events: [], bv: {} });
   const terms = [() => 0];
   assert.equal(pageOptions(i, { terms }).terms, terms);
 });
@@ -46,6 +46,8 @@ test("the build's order equals the device's for the default profile, the event c
   const built = JSON.parse(execFileSync(process.execPath, [CLI], { input: JSON.stringify(i) }).toString("utf8"));
   const device = rankPages(i.pool, buildDefaultProfile(NOW), NOW, pageOptions(i)).today;
   assert.deepEqual(built.ranked.map((r) => r.id), ids(device));
+  // B5: and each story's face, which app/frontpage.py holds its own pick to.
+  assert.deepEqual(built.faces, rankPages(i.pool, buildDefaultProfile(NOW), NOW, pageOptions(i)).faces);
   // The fixture does exercise the cap: without events the order differs.
   const blind = rankPages(i.pool, buildDefaultProfile(NOW), NOW, { ...pageOptions(i), events: [] }).today;
   assert.notDeepEqual(ids(blind), ids(device));

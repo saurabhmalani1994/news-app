@@ -21,7 +21,7 @@ import { ProfileStore } from "./profile/store.js";
 import { buildDefaultProfile } from "./profile/default-profile.js";
 import { nowIso } from "./profile/time.js";
 import { rankPages, pageOptions } from "./passes.js";
-import { retier, placeOtherSide } from "./tiers.js";
+import { retier, placeFace, placeReadChoice, placeOtherSide } from "./tiers.js";
 import { storyAttributes, domPlacement } from "./actions/context.js";
 import { savesStore, thumbsStore } from "./actions/store.js";
 import { toggleSave, undoSave } from "./actions/saves.js";
@@ -34,7 +34,7 @@ import { loadBody } from "./reader/core.js";
 import { toggleThumb, undoThumb } from "./actions/thumbs.js";
 import { withSourceMuted, withTopicMuted, withTopicBoosted } from "./actions/mute-boost.js";
 import { anchoredRerender } from "./actions/scroll-anchor.js";
-import { renderWhyContent } from "./why-this.js";
+import { explainLead, renderWhyContent } from "./why-this.js";
 // S15: "opened" (R17, R23), and the seen-penalty term (history/penalty.js) so the
 // device re-rank after a mute or boost, and the why-this sheet, agree with what the
 // page already shows.
@@ -139,7 +139,7 @@ function menuItem({ action, icon, text, pressed, hidden, href }) {
  * item: its own DOM row, no ranking input needed. */
 function cardFacts(li, input) {
   const link = li.querySelector(".story-link");
-  const image = input.images?.[li.dataset.sid];
+  const image = li.dataset.face ? input.fronts?.[li.dataset.face]?.i : input.images?.[li.dataset.sid];
   return {
     title: li.querySelector(".headline")?.textContent || "",
     url: link?.getAttribute("href") || "",
@@ -151,7 +151,7 @@ function cardFacts(li, input) {
 async function openStoryMenu(li) {
   const input = getInput();
   const sid = li.dataset.sid;
-  const attrs = storyAttributes(input, sid);
+  const attrs = storyAttributes(input, sid, li.dataset.face || null);
   const facts = cardFacts(li, input);
   const [saved, thumb] = await Promise.all([savesStore.get(sid), thumbsStore.get(sid)]);
 
@@ -248,7 +248,8 @@ async function doWhy({ li, sid, facts }) {
   closeSheet();
   if (!story) return;
   const nowMs = typeof input.now === "number" ? input.now : Date.parse(input.now) || Date.now();
-  const content = renderWhyContent({ story, profile, nowMs, names: input.names || {}, headline: facts.title });
+  const lead = explainLead(input, sid, profile);
+  const content = renderWhyContent({ story, profile, nowMs, names: input.names || {}, headline: facts.title, lead });
   await sheetClosed();
   openSheet({ title: "Why this", content, opener });
 }
@@ -297,7 +298,7 @@ const MORE_SPLIT = 35;
 // serialized) instead of letting them go: applyPanel reclaims one from this cache
 // before falling back to leaving it out. Two panels never share a row (S27 clones one
 // per section), so the cache lives on the panel, not globally.
-function applyPanel(panel, stories, input) {
+function applyPanel(panel, stories, input, faces = {}, trust = {}) {
   const cache = panel.__almanacRemovedRows || (panel.__almanacRemovedRows = new Map());
   const rows = new Map([...panel.querySelectorAll("li.story[data-sid]")].map((li) => [li.dataset.sid, li]));
   for (const [sid, li] of cache) if (!rows.has(sid)) rows.set(sid, li);
@@ -308,7 +309,13 @@ function applyPanel(panel, stories, input) {
     if (li.isConnected) li.remove();
     cache.set(sid, li);
   }
-  retier(panelLists(panel), order, rows, input.deks || {}, input.images || {});
+  // B5: a mute or a trust change can pick another best version for a story; its row
+  // is fronted with that version (tiers.js placeFace) before it is re-tiered.
+  const leads = new Map((input.pool?.clusters || []).map((c) => [c.id, c.lead]));
+  const shown = new Map(order.filter((sid) => rows.has(sid)).map((sid) => [sid, rows.get(sid)]));
+  for (const [sid, li] of shown) placeFace(li, faces[sid], leads.get(sid), input);
+  retier(panelLists(panel), order, rows, input.deks || {}, input.images || {}, input.fronts || {});
+  placeReadChoice(shown, input, trust, faces);
   for (const story of stories) placeOtherSide(rows.get(story.id), story.other_side || null, input);
   const toggle = panel.querySelector(".more-toggle");
   if (toggle) toggle.textContent = `Show ${Math.max(0, order.length - MORE_SPLIT)} more headlines`;
@@ -326,7 +333,7 @@ function rerenderAfterProfileChange(profile, sourcePanel) {
   const storiesFor = (id) => (id === "today" ? pages.today : (pages.sections.find((s) => s.id === id)?.stories || []));
   for (const panel of document.querySelectorAll(".panel")) {
     if (!panel.childElementCount) continue;
-    const run = () => applyPanel(panel, storiesFor(panel.dataset.section), input);
+    const run = () => applyPanel(panel, storiesFor(panel.dataset.section), input, pages.faces, profile.trust || {});
     if (panel === sourcePanel) anchoredRerender(panel, run);
     else run();
   }

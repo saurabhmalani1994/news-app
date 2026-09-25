@@ -1,8 +1,8 @@
 // S11: build-time entry to the one ranker. Reads {pool, now, buckets, leans, names,
-// health} as JSON on stdin, ranks with the shipped default profile
+// health, events, bv} as JSON on stdin, ranks with the shipped default profile
 // (app/static/js/profile/default-profile.js), runs the S13 post-passes
-// (app/static/js/passes.js) and writes {key, ranked, removed, sections, notices} as JSON
-// on stdout for app/frontpage.py. `ranked` is Today in page order, each story with its score,
+// (app/static/js/passes.js) and writes {key, ranked, removed, sections, notices, faces}
+// as JSON on stdout for app/frontpage.py. `ranked` is Today in page order, each story with its score,
 // explanation, pass entries and any other-side link; `removed` is what mute and dedup
 // took, each saying why; `sections` is every section tab's ids after its own passes
 // (S27's one table, app/static/js/sections.js), with their entries and links; `notices`
@@ -31,4 +31,7 @@ process.stdout.write(JSON.stringify({
     ...pages.sections.map((s) => ({ id: s.id, label: s.label, slot: s.slot, ids: s.stories.map((x) => x.id), passes: touched(s.stories), other_side: links(s.stories), event: s.event || null })),
   ],
   notices: pages.notices,
+  // B5: each cluster's face for the default profile, which app/frontpage.py checks
+  // against its own pick (face_of) so the page and the device agree before first paint.
+  faces: pages.faces,
 }));

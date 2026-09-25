@@ -3027,11 +3027,13 @@ body {
   color: var(--color-meta-tertiary);
 }
 
-.why-rows {
+.why-rows,
+.why-lead-rows {
   margin: 0 var(--space-gutter);
 }
 
-.why-row {
+.why-row,
+.why-lead-row {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: baseline;
@@ -3040,18 +3042,21 @@ body {
   border-top: var(--divider-weight) solid var(--color-divider);
 }
 
-.why-rows .why-row:first-child {
+.why-rows .why-row:first-child,
+.why-lead-rows .why-lead-row:first-child {
   border-top-style: none;
 }
 
-.why-row-label {
+.why-row-label,
+.why-lead-row-label {
   font-family: var(--font-sans);
   font-size: 14.5px;
   line-height: 19px;
   color: var(--color-headline);
 }
 
-.why-row-value {
+.why-row-value,
+.why-lead-row-value {
   font-family: var(--font-sans);
   font-size: 14.5px;
   font-weight: 600;
@@ -3059,27 +3064,32 @@ body {
   color: var(--color-headline);
 }
 
-.why-row-value--neg {
+.why-row-value--neg,
+.why-lead-row-value--neg {
   color: var(--color-meta);
 }
 
-.why-row-bar {
+.why-row-bar,
+.why-lead-row-bar {
   grid-column: 1 / -1;
   height: 3px;
   margin-top: 8px;
   background: var(--color-pressed);
 }
 
-.why-row-bar-fill {
+.why-row-bar-fill,
+.why-lead-row-bar-fill {
   height: 100%;
   background: var(--color-headline);
 }
 
-.why-row-bar-fill--neg {
+.why-row-bar-fill--neg,
+.why-lead-row-bar-fill--neg {
   background: var(--color-meta-tertiary);
 }
 
-.why-total {
+.why-total,
+.why-lead-total {
   display: grid;
   grid-template-columns: 1fr auto;
   margin: 0 var(--space-gutter);
@@ -3090,6 +3100,35 @@ body {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--color-headline);
+}
+
+/* B5: "Leads because" (DESIGN-bundles section 4a), first in the sheet: one sans line,
+   the kicker in the headline ink and the phrases in meta grey, then the lead's own term
+   rows and score in the ranking rows' exact shape. A quiet sans label then opens the
+   ranking half, so the two scores never read as one list. */
+.why-lead-because {
+  margin: 0 var(--space-gutter) 6px;
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  line-height: 20px;
+  color: var(--color-meta);
+  text-wrap: pretty;
+}
+
+.why-lead-kicker {
+  font-weight: 700;
+  color: var(--color-headline);
+}
+
+.why-section-label {
+  margin: 6px var(--space-gutter) 4px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-meta);
 }
 
 .why-passes {
