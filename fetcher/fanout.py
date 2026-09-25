@@ -52,6 +52,10 @@ tag saves from the per-source cap, are exempt from that cap but share one byte b
 (fetcher.watch.BUDGET_BYTES), reported in counts.watch. A watch failure of any kind
 publishes the pool without watch items; it never fails the run.
 
+B8: after health, every version of a story with 2+ outlets gets `bv`, the best version's
+fact terms (fetcher/best_version.py, DESIGN-bundles section 4a). Lean and roster are
+never inputs.
+
 B4: every article also carries the ISO countries its own title and dek name
 (fetcher.geo.tag_countries), and after the cap each published cluster gets its
 story_countries and each version its locality tier (fetcher/locality.py). A source may
@@ -83,7 +87,7 @@ from fetcher.events import build_events, parse_previous_events
 from fetcher.images import extract_image, filter_placeholder_logos, tally_found
 from fetcher.taxonomy import validate_sources_taxonomy
 from fetcher.geo import tag_countries, tag_geo
-from fetcher import locality
+from fetcher import best_version, locality
 from fetcher.topics import hard_news_topics, load_topics, tag_article
 from fetcher.health import compute_source_health, fetch_previous_pool, parse_previous_health
 from fetcher.state import DEFAULT_STATE_PATH, embed_budget_from, load_state, write_state
@@ -572,6 +576,10 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                                                 {a["id"] for a in articles}, generated_at,
                                                 hidden=watch_only_ids)
     source_health = compute_source_health(pool_sources, run_states, previous_health, generated_at)
+    # B8: the best version's fact terms, on every version of a story with 2+ outlets.
+    # Section 4a's facts only: a source's lean and provenance are never inputs.
+    best_version.annotate(articles, clusters, pool_sources, bodies=bodies, source_health=source_health,
+                          previous_health=previous_health)
     events = build_events(articles, clusters, pool_sources, now, hard_news_topics(topics_doc),
                           previous_events)
 
@@ -948,6 +956,12 @@ def main(argv=None):
         f"story_countries_clusters={sum(1 for cl in pool['clusters'] if cl.get('story_countries'))}"
         f"/{len(pool['clusters'])} pool_bytes={len(body)}"
     )
+    scored = [a for a in pool["articles"] if "bv" in a]
+    scored_ids = {a["id"] for a in scored}
+    bv_bytes = sum(len(dumps({"bv": a["bv"]})) - 1 for a in scored)  # ,"bv":[...] in the pool
+    print(f"best_version: scored={len(scored)}/{c['published']} "
+          f"stories={sum(1 for cl in pool['clusters'] if any(i in scored_ids for i in cl['article_ids']))} "
+          f"bv_bytes={bv_bytes} pool_bytes={len(body)}")
     ev = pool["events"]
     live = [e for e in ev if e["live"]]
     print(
