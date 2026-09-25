@@ -177,7 +177,10 @@ def check_integrity(pool):
             in_dups |= set(g)
         units = len(c["near_duplicates"]) + len(members - in_dups)
         expected = _cluster_method(units, bool(c["near_duplicates"]))
-        if c["method"] != expected:
+        # B7: "+embedding" says the embedding term was in play; the shape cannot show it,
+        # but only units are ever joined by a score, so it needs 2+ units.
+        allowed = (expected, expected + "+embedding") if units > 1 else (expected,)
+        if c["method"] not in allowed:
             errors.append(f"$.clusters[{i}].method: shape says {expected!r}, not {c['method']!r}")
         if "lean_buckets" in c and len(set(c["lean_buckets"])) != len(c["lean_buckets"]):
             errors.append(f"$.clusters[{i}].lean_buckets: duplicate entries, must be a set")

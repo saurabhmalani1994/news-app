@@ -1,0 +1,65 @@
+name: bakeoff
+
+# B7: the embedding bake-off (DESIGN-bundles section 2(b), fetcher/embed_bakeoff.py).
+# Manual only: no schedule and no push trigger. It first checks the account's Workers
+# plan through the API and stops unless Workers Free is confirmed (on Free, calls past
+# the daily allocation fail rather than bill). Then it embeds the gold fixtures (public
+# test data) with each candidate model, prints only the metric table, and uploads the
+# fixture vectors as a 3-day artifact so the chosen model's quantized set can be
+# committed for CI. The log carries counts and metrics only, never a token.
+# Run: gh workflow run bakeoff.yml --ref <branch>
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bakeoff
+  cancel-in-progress: false
+
+jobs:
+  bakeoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
+      CF_PIPELINE_TOKEN: ${{ secrets.CLOUDFLARE_PIPELINE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Read-only GETs. The pipeline token (Workers AI, Workers KV) may lack Billing Read,
+      # so the other two Cloudflare tokens are tried for the subscriptions list as well.
+      - name: Workers plan and neurons charged today
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_WORKERS_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
+        run: python -m fetcher.embed_bakeoff plan --token-env CF_PIPELINE_TOKEN CF_API_TOKEN CF_WORKERS_TOKEN
+
+      - name: Embed the fixtures with each candidate
+        run: |
+          python -m fetcher.embed_bakeoff embed --model @cf/baai/bge-m3 --out vectors/bge-m3.json
+          python -m fetcher.embed_bakeoff embed --model @cf/qwen/qwen3-embedding-0.6b --out vectors/qwen3.json
+          python -m fetcher.embed_bakeoff embed --model @cf/qwen/qwen3-embedding-0.6b --instruct --out vectors/qwen3-instr.json
+
+      - name: Metric table
+        run: python -m fetcher.embed_bakeoff score --vectors vectors/bge-m3.json vectors/qwen3.json vectors/qwen3-instr.json
+
+      - name: Neurons charged today, after
+        if: always()
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_WORKERS_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
+        run: python -m fetcher.embed_bakeoff plan --token-env CF_PIPELINE_TOKEN CF_API_TOKEN CF_WORKERS_TOKEN || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: bakeoff-vectors
+          path: vectors/
+          retention-days: 3
+          if-no-files-found: ignore

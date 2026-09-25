@@ -1,4 +1,4 @@
-"""S07, B2: near-duplicate detection and story clustering. Standard library only (R30).
+"""S07, B2, B7: near-duplicate detection and story clustering. Standard library only (R30).
 
 Two stages, computed locally from the run's own items, never imported (R8):
 
@@ -37,15 +37,24 @@ Two stages, computed locally from the run's own items, never imported (R8):
      share only common words.
    Stories are the parts of S32's events: fetcher.events groups these clusters into
    events, so every story sits inside at most one event.
+3. embedding (B7, DESIGN-bundles section 2(b)): when the run has sentence vectors
+   (fetcher.embed), a pair whose two articles both have one adds EMBED_WEIGHT times
+   the vectors' cosine above EMBED_FLOOR, rescaled to 0..1, to its lexical cosine
+   before the time decay. It is one term inside stage 2's score, behind all of stage
+   2's gates: blocking, the cross-outlet link, the 36 h span and the thresholds are
+   unchanged. A pair missing a vector scores as B2 does, and a run with no vectors
+   clusters byte for byte as B2.
 
 A near-duplicate group moves as one unit through stage 2, so every article lands in at
 most one cluster. A cluster needs articles from two outlets: one outlet's own copies
-alone are not a story. Each cluster names the stages that built it in `method`.
+alone are not a story. Each cluster names the stages that built it in `method`, with
+"+embedding" when two or more of its units carry a vector, so the term was in play.
 """
 import hashlib
 import heapq
 import json
 import math
+import operator
 import random
 import re
 from datetime import datetime, timezone
@@ -80,7 +89,15 @@ IDF_PLUS = 1.0
 IDF_POWER = 0.75
 GEO_PATH = Path(__file__).resolve().parent.parent / "geo.json"
 
-METHODS = ("minhash", "cosine_entity", "minhash+cosine_entity")
+# B7 embedding term (DESIGN-bundles section 2(b)), tuned on tests/fixtures/bundles/ by the
+# bake-off (fetcher/embed_bakeoff.py). The term is EMBED_WEIGHT * clamp((cos - EMBED_FLOOR)
+# / (1 - EMBED_FLOOR), EMBED_TERM_MIN, 1).
+EMBED_WEIGHT = 0.5
+EMBED_FLOOR = 0.6
+EMBED_TERM_MIN = 0.0
+
+METHODS = ("minhash", "cosine_entity", "minhash+cosine_entity",
+           "cosine_entity+embedding", "minhash+cosine_entity+embedding")
 
 WORD_RE = re.compile(r"[^\W_]+")
 CASED_WORD_RE = re.compile(r"[^\W\d_][^\W_]*")
@@ -100,6 +117,34 @@ day days week first last one two three get gets make makes back time amid
 _MASK64 = (1 << 64) - 1
 _rng = random.Random(20260924)  # fixed seed: the same pool always clusters the same way
 _PERM_MASKS = [_rng.getrandbits(64) for _ in range(NUM_PERM)]
+
+
+_SUMPROD = getattr(math, "sumprod", None)  # Python 3.12+; exact on integers either way
+
+
+def _dot(a, b):
+    if _SUMPROD is not None:
+        return _SUMPROD(a, b)
+    return sum(map(operator.mul, a, b))
+
+
+def _embed_rows(items, vectors):
+    """Per item (vector, norm) or None; None for the whole run when no item has one."""
+    if not vectors:
+        return None
+    rows, any_row = [], False
+    for it in items:
+        v = vectors.get(it["id"])
+        norm = math.sqrt(_dot(v, v)) if v is not None and len(v) else 0.0
+        rows.append((v, norm) if norm else None)
+        any_row = any_row or bool(norm)
+    return rows if any_row else None
+
+
+def _embed_term(a, b):
+    cos = _dot(a[0], b[0]) / (a[1] * b[1])
+    term = (cos - EMBED_FLOOR) / (1 - EMBED_FLOOR)
+    return EMBED_WEIGHT * max(EMBED_TERM_MIN, min(1.0, term))
 
 
 def _epoch(ts):
@@ -381,8 +426,9 @@ def _vectors(feats, n):
 class _Stories:
     """Average-link agglomeration over article pairs, cross-outlet pairs only."""
 
-    def __init__(self, vecs, times, sources, ents, df):
+    def __init__(self, vecs, times, sources, ents, df, emb=None):
         self.vecs, self.times, self.sources, self.ents, self.df = vecs, times, sources, ents, df
+        self.emb = emb  # B7: per article (vector, norm) or None; None when the run has none
         self.cache = {}
         self.span = STORY_SPAN_HOURS * 3600
 
@@ -400,6 +446,9 @@ class _Stories:
                 # Summed in a's own term order, never a set's, so every process adds the
                 # same floats in the same order and a tie never flips between runs.
                 dot = sum(v * b[t] for t, v in a.items() if t in b)
+                emb = self.emb
+                if emb is not None and emb[i] is not None and emb[j] is not None:
+                    dot += _embed_term(emb[i], emb[j])
                 got = dot * math.exp(-dt / (DECAY_HOURS * 3600))
             self.cache[(i, j)] = got
         return got
@@ -480,13 +529,17 @@ def _headline_words(members, title_words):
     return {w for w, c in counts.items() if c >= need}
 
 
-def cluster_items(items):
+def cluster_items(items, vectors=None):
     """Cluster article dicts (id, source_id, title, published_at, optional dek).
 
     Returns a list of clusters with articles from 2+ outlets, each {"article_ids",
     "method", "near_duplicates"}, where near_duplicates lists the minhash groups (2+ ids
     each). Pure and deterministic, and the input order never matters: articles are
     taken in (published_at, id) order.
+
+    B7: vectors, {id: sequence of numbers} (fetcher.embed gives signed 8-bit arrays),
+    adds the embedding term to pairs whose two articles both have one. None or empty
+    gives B2's clustering exactly.
     """
     if not items:
         return []
@@ -505,7 +558,8 @@ def cluster_items(items):
 
     feats = _features(items)
     vecs, df = _vectors(feats, n)
-    stories = _Stories(vecs, times, sources, [f[1] for f in feats], df)
+    emb = _embed_rows(items, vectors)
+    stories = _Stories(vecs, times, sources, [f[1] for f in feats], df, emb)
     span = STORY_SPAN_HOURS * 3600
 
     # Blocking: pairs inside the span that share one very rare key (df <= BLOCK_ONE_DF)
@@ -560,17 +614,21 @@ def cluster_items(items):
             continue
         cluster_units = sorted({unit_of[i] for i in idx})
         dups = sorted(sorted(units[u]) for u in cluster_units if len(units[u]) > 1)
+        embedded = emb is not None and len({unit_of[i] for i in idx if emb[i] is not None}) > 1
         out.append({
             "article_ids": [items[i]["id"] for i in idx],
-            "method": method_for(len(cluster_units), bool(dups)),
+            "method": method_for(len(cluster_units), bool(dups), embedded),
             "near_duplicates": [[items[i]["id"] for i in u] for u in dups],
         })
     return out
 
 
-def method_for(unit_count, has_near_dups):
+def method_for(unit_count, has_near_dups, embedded=False):
     """Units inside one cluster are only ever joined by cosine_entity; articles inside one
-    unit only by minhash. So the method follows from the cluster's shape."""
+    unit only by minhash. So the method follows from the cluster's shape. B7: embedded
+    (two or more units carry a vector) adds "+embedding" to a cluster of 2+ units."""
     if unit_count > 1 and has_near_dups:
-        return "minhash+cosine_entity"
-    return "cosine_entity" if unit_count > 1 else "minhash"
+        method = "minhash+cosine_entity"
+    else:
+        method = "cosine_entity" if unit_count > 1 else "minhash"
+    return method + "+embedding" if embedded and unit_count > 1 else method

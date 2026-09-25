@@ -187,13 +187,13 @@
       }
     },
     "cluster": {
-      "description": "S07: one story, computed locally (R8). article_ids lists published members only; every article belongs to at most one cluster. method names how the members were linked: minhash for syndicated near-duplicate copies, cosine_entity for independently written coverage (TF-IDF cosine plus a shared key entity inside the time window), or both. near_duplicates groups the ids that are copies of one piece of copy, kept and marked rather than dropped, so a later slice can count independent sources (R16). S08: independent_sources counts distinct syndication groups among the cluster's sources, not distinct source_ids, so two outlets carrying the same wire copy count once (fixes the S07 deferral). lean_buckets is the set (no duplicates) of lean buckets those sources cover; R16 must-know eligibility needs at least two.",
+      "description": "S07: one story, computed locally (R8). article_ids lists published members only; every article belongs to at most one cluster. method names how the members were linked: minhash for syndicated near-duplicate copies, cosine_entity for independently written coverage (TF-IDF cosine plus a shared key entity inside the time window), or both; B7 adds +embedding when a sentence-vector term was in play for 2+ of its units (fetcher/embed.py). near_duplicates groups the ids that are copies of one piece of copy, kept and marked rather than dropped, so a later slice can count independent sources (R16). S08: independent_sources counts distinct syndication groups among the cluster's sources, not distinct source_ids, so two outlets carrying the same wire copy count once (fixes the S07 deferral). lean_buckets is the set (no duplicates) of lean buckets those sources cover; R16 must-know eligibility needs at least two.",
       "type": "object",
       "required": ["id", "method", "article_ids", "near_duplicates", "independent_sources", "lean_buckets"],
       "additionalProperties": false,
       "properties": {
         "id": {"$ref": "#/$defs/id"},
-        "method": {"enum": ["minhash", "cosine_entity", "minhash+cosine_entity"]},
+        "method": {"enum": ["minhash", "cosine_entity", "minhash+cosine_entity", "cosine_entity+embedding", "minhash+cosine_entity+embedding"]},
         "article_ids": {
           "type": "array",
           "minItems": 2,
