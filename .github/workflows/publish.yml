@@ -151,6 +151,72 @@ jobs:
         with:
           node-version: '22'
 
+      # W1 (R50): storage for the interests sync. The phone sends its phrase and
+      # standing-story searches to functions/api/interests.js, a Pages Function that keeps
+      # them in the Workers KV namespace "almanac-interests", bound to this Pages project
+      # as INTERESTS (W2's fetcher reads the same namespace by title). Idempotent: the
+      # namespace is found by title, and made only when absent, with
+      # CLOUDFLARE_PIPELINE_TOKEN (Account, Workers KV Storage, Edit); the production
+      # binding is written with CLOUDFLARE_API_TOKEN (Account, Cloudflare Pages, Edit)
+      # only when it differs. Runs before the deploy, so the new deployment carries the
+      # binding. Prints the namespace id and error codes only, never a token or a stored
+      # value. Allowed to fail: without the binding the function answers 503, the site
+      # still publishes, and the warning names the permission that is missing.
+      - name: Ensure the interests KV namespace and its binding (W1)
+        if: steps.cf.outputs.ok == 'true'
+        continue-on-error: true
+        env:
+          KV_TOKEN: ${{ secrets.CLOUDFLARE_PIPELINE_TOKEN }}
+          PAGES_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
+        run: |
+          set -uo pipefail
+          errs='[.errors[]? | {code, message}]'
+          if [ -z "$KV_TOKEN" ]; then
+            echo "::warning::CLOUDFLARE_PIPELINE_TOKEN is not set, so the interests KV namespace cannot be made"
+            exit 1
+          fi
+          kv() { curl -sS -H "Authorization: Bearer $KV_TOKEN" -H "Content-Type: application/json" "$@"; }
+          pages() { curl -sS -H "Authorization: Bearer $PAGES_TOKEN" -H "Content-Type: application/json" "$@"; }
+          base="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT"
+          list=$(kv "$base/storage/kv/namespaces?per_page=100")
+          if [ "$(echo "$list" | jq -r .success)" != "true" ]; then
+            echo "KV list: $(echo "$list" | jq -c "$errs")"
+            echo "::warning::CLOUDFLARE_PIPELINE_TOKEN cannot list KV namespaces; it needs Account, Workers KV Storage, Edit"
+            exit 1
+          fi
+          id=$(echo "$list" | jq -r '[.result[] | select(.title == "almanac-interests") | .id][0] // empty')
+          if [ -z "$id" ]; then
+            made=$(kv -X POST "$base/storage/kv/namespaces" -d '{"title":"almanac-interests"}')
+            echo "KV create: $(echo "$made" | jq -c "{success, errors: $errs}")"
+            id=$(echo "$made" | jq -r '.result.id // empty')
+          fi
+          if [ -z "$id" ]; then
+            echo "::warning::the almanac-interests KV namespace could not be found or made"
+            exit 1
+          fi
+          echo "KV namespace almanac-interests: $id"
+          got=$(pages "$base/pages/projects/almanac")
+          if [ "$(echo "$got" | jq -r .success)" != "true" ]; then
+            echo "Pages read: $(echo "$got" | jq -c "$errs")"
+            exit 1
+          fi
+          bound=$(echo "$got" | jq -r '.result.deployment_configs.production.kv_namespaces.INTERESTS.namespace_id // empty')
+          if [ "$bound" = "$id" ]; then
+            echo "INTERESTS binding: already live on production"
+            exit 0
+          fi
+          body=$(jq -nc --arg id "$id" '{deployment_configs: {production: {kv_namespaces: {INTERESTS: {namespace_id: $id}}}}}')
+          res=$(pages -X PATCH "$base/pages/projects/almanac" -d "$body")
+          echo "INTERESTS binding: $(echo "$res" | jq -c "{success, errors: $errs}")"
+          if [ "$(echo "$res" | jq -r .success)" != "true" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN could not bind INTERESTS; it needs Account, Cloudflare Pages, Edit"
+            exit 1
+          fi
+
+      # W1: run from the repo root, so wrangler also compiles and uploads functions/
+      # (the /api/interests Pages Function) with the static site; its generated routes
+      # send only /api/interests to the function, every other path stays static.
       - name: Deploy to Cloudflare Pages
         if: steps.cf.outputs.ok == 'true'
         env:

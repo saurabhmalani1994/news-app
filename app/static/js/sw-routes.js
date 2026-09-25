@@ -12,7 +12,7 @@ export const STRATEGY = Object.freeze({
   SHELL: "shell", // precached app shell: CSS, JS, fonts, manifest, icons (and pages, as data)
   POOL: "pool", // pool.json: network-first, cached copy as the offline fallback
   IMAGE: "image", // this app's own images: cache-first, size-capped, expiring
-  BYPASS: "bypass", // not intercepted: bodies/*, and anything else off this app's CSP
+  BYPASS: "bypass", // not intercepted: bodies/*, /api/*, and anything else off this app's CSP
 });
 
 /**
@@ -23,6 +23,9 @@ export function strategyFor(request, origin) {
   const url = new URL(request.url, origin);
   const sameOrigin = url.origin === origin;
   if (sameOrigin && /(?:^|\/)bodies\//.test(url.pathname)) return STRATEGY.BYPASS;
+  // W1: the interests sync's own endpoint (a Pages Function) is never cached: its GET is
+  // the caller's live value, and a PUT never reaches the worker's GET-only handler.
+  if (sameOrigin && url.pathname.startsWith("/api/")) return STRATEGY.BYPASS;
   if (sameOrigin && /(?:^|\/)pool\.json$/.test(url.pathname)) return STRATEGY.POOL;
   if (sameOrigin && request.mode === "navigate") return STRATEGY.PAGE;
   // H2: article photos (cross-origin) are never intercepted. The worker runs under the
