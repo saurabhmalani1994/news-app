@@ -91,7 +91,7 @@ function probeProfile() {
   const today = rankPages(built.pool, base, built.now, pageOptions(built)).today;
   const has = (s, w) => s.titles.some((t) => new RegExp(`(?<![\p{L}\p{N}])${w}(?![\p{L}\p{N}])`, "iu").test(t));
   for (const story of today.slice(20)) {
-    for (const word of new Set((story.titles[0] || "").toLowerCase().match(/\p{L}{6,}/gu) || [])) {
+    for (const word of new Set((story.titles[0] || "").toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) || [])) {
       if (today.slice(0, 15).some((s) => has(s, word))) continue;
       const profile = { ...structuredClone(base), standing_stories: [standing("r2_floor", "Floor probe", [word]), quiet], profile_version: 2 };
       const page = rankPages(built.pool, profile, built.now, pageOptions(built));

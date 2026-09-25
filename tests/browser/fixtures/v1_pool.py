@@ -1,10 +1,10 @@
 """R2: the pool tests/browser/v1_check.mjs needs for its 11-or-more-version strip, which
 a real fetch only sometimes holds (H5's pool of 641 articles topped out at fewer).
 
-Takes any built-from pool (a real fanout's, say) and grows Today's largest cluster (by
-versions: one per outlet, a near-duplicate group once, js/versions.js) to 12 versions
-by moving in single-article stories from outlets it does not already have, newest
-first. Those articles leave the events that held them as stories of their own. The
+Takes any built-from pool (a real fanout's, say) and, unless a cluster already has 11
+or more, grows the largest cluster (by versions: one per outlet, a near-duplicate
+group once, js/versions.js) to 12 versions by moving in single-article stories from
+outlets it does not already have, newest first. Those articles leave the events that held them as stories of their own. The
 cluster's independent_sources and lean_buckets are worked out again the fetcher's way
 (fetcher/fanout.py _published_clusters, from sources.json). Every other field is left
 as it came. Prints JSON to stdout:
@@ -13,6 +13,9 @@ as it came. Prints JSON to stdout:
     python -m app.build --pool /tmp/v1_pool.json --out /tmp/dist_v1
     cp -r dist/bodies /tmp/dist_v1/bodies
     node tests/browser/v1_check.mjs /tmp/dist_v1
+
+v1_check.mjs runs this itself on the dist it is given, so the steps above are only for
+looking at the grown pool by hand.
 
 Exits 1 when the pool has no multi-outlet cluster or too few outlets to reach 12.
 """
@@ -26,6 +29,7 @@ sys.path.insert(0, str(ROOT))  # the repo root, for app.*
 from app.frontpage import independent_source_count  # noqa: E402
 
 VERSIONS = 12
+WIDE = 11  # v1_check's "11-or-more-version strip"
 
 
 def main(path):
@@ -42,6 +46,10 @@ def main(path):
         print(f"no multi-outlet cluster in {path}", file=sys.stderr)
         return 1
     target = max(clusters, key=lambda c: (versions(c), len(c["article_ids"]), c["id"]))
+    if versions(target) >= WIDE:
+        print(f"unchanged: {target['id']} already has {versions(target)} versions", file=sys.stderr)
+        json.dump(pool, sys.stdout)
+        return 0
     clustered = {i for c in pool["clusters"] for i in c["article_ids"]}
     have = {by_id[i]["source_id"] for i in target["article_ids"]}
     singles = sorted((a for a in pool["articles"] if a["id"] not in clustered and a["source_id"] not in have),

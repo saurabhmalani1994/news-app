@@ -72,6 +72,28 @@ node tests/browser/tabs_cls.mjs /tmp/dist_lo
 `standing_cls.mjs` still runs fine against golden_pool.json's plain `dist` (its own
 fixed conditional-clear bug, not a size problem — see H4 item 6 below).
 
+R2 added two more, both taking a real pool. `rank_parity_pool.py` puts three of Today's
+top 12 into one event, so H4's per-event repeat cap always moves a card (the pass the
+device re-rank used to skip, see R2 below). `v1_pool.py` grows the largest cluster to 12
+versions from the pool's own single stories; `v1_check.mjs` runs it itself when the
+dist it is given has no 11-version cluster, so a fresh pool's dist is enough.
+
+```
+python tests/browser/fixtures/rank_parity_pool.py dist/pool.json > /tmp/rp_pool.json
+python -m app.build --pool /tmp/rp_pool.json --out /tmp/dist_rp
+node tests/browser/rerank_cls.mjs /tmp/dist_rp
+node tests/browser/standing_cls.mjs /tmp/dist_rp
+```
+
+`standing_cls.mjs` also runs on why_check's `/tmp/dist_why`, whose default profile
+places a Sudan card at build. Its own fourth visit ("probe-dark") needs no fixture: a
+stored standing story keyed to a word from a card below the floor, and one keyed to a
+word nothing carries, so the device always places a card and raises a notice.
+
+`tests/browser/dek_widths.mjs <dist>` is a tool, not a proof: it measures the dek
+face's advance widths and the narrowest dek measure and prints `app/dek_widths.py`.
+Rerun it when the dek font, its size or the gutters change.
+
 `sw_pretty_urls.mjs` and `h2_you_check.mjs` build their own dist(s) internally from git
 refs (including the working tree) and take no dist argument.
 
@@ -85,10 +107,10 @@ refs (including the working tree) and take no dist argument.
 | `actions_check.mjs` (S24) | The overflow sheet opens/dismisses (close button, scrim, browser back), mute keeps scroll anchored at zero CLS, Undo restores the muted rows. | `node tests/browser/actions_check.mjs /tmp/dist_actions` (H4: own fixture, see above) | 2026-09-25 (9/9) |
 | `why_check.mjs` (S12) | Why-this rows sum to the shown total, the point scale is stated once, zero CLS opening it, dismiss by back, a standing-story pass reads in plain words, a quiet story shows no pass section. | `node tests/browser/why_check.mjs /tmp/dist_why` (see fixture above) | 2026-09-25 (10/10) |
 | `saved_check.mjs` (S26) | Saved's empty state, saving through the ordinary overflow-sheet path, newest-first listing with the river's own card, and the pinned has_body story opening offline from cache at zero CLS. | `node tests/browser/saved_check.mjs /tmp/dist_saved sb1` (see fixture above) | 2026-09-25 (6/6) |
-| `standing_cls.mjs` (S28) | The page's silence notices and standing-story placements agree with `standing.js` run again on the page's own embedded input (build and device agree), zero CLS, and switching standing stories off before paint drops the placements cleanly. | `node tests/browser/standing_cls.mjs dist` | 2026-09-25 (3/3 scenarios; H4 fixed a residual-localStorage bug in its own `visit()`) |
+| `standing_cls.mjs` (S28) | The page's silence notices and standing-story placements agree with `standing.js` run again on the page's own embedded input (build and device agree), zero CLS, and switching standing stories off before paint drops the placements cleanly. | `node tests/browser/standing_cls.mjs dist` | 2026-09-25 (R2: 4/4 scenarios on a fresh pool, `/tmp/dist_rp` and `/tmp/dist_why`; the fourth is a probe profile that always places a card and raises a notice) |
 | `csp_check.mjs` (S37) | The CSP header is served and enforced (zero violations on default/section-tab/profile views); the device re-rank loads `rerank.js` and lands on the same order the ranker itself computes; every hostile fixture is neutralized live under the CSP. | `node tests/browser/csp_check.mjs /tmp/dist_csp` (H4: own fixture, see above) | 2026-09-25 (8/8) |
 | `l1_check.mjs` (L1) | Every US-scale row's lean marker (five dots, its own bucket filled), state media and non-US country codes, a centred 48dp tap target that wins over the headline, the lean sheet's cited basis, markers off/color-on in Display, "Read here · outlet" naming the right member with a trust flip and a missing-body fallback, the You page's source picker and its own sheet, zero CLS and CSP violations. | `node tests/browser/l1_check.mjs /tmp/dist_l1` (H4: own fixture, see above, needs real `bodies/`) | 2026-09-25 (all passed) |
-| `v1_check.mjs` (V1) | Behind an Access-like cookie gate with `_headers` applied: every multi-source row's "N sources" opens its versions carousel (lead first), CLS 0 across open, swipe and close, back restores the feed scroll and focus, arrow keys and ARIA roles, an 11-version strip keeps its active chip in view, reduced motion jumps, Read and back, the footer coverage sheet, the word-mark switch, mutes, `#bundle-` addresses, a hostile headline as text; sweep shots light, dark and grayscale. | `node tests/browser/v1_check.mjs dist <shots dir>` | 2026-09-25 (needs a pool with an 11+-version cluster; not guaranteed by any one real fetch, same caveat as why_check/saved_check) |
+| `v1_check.mjs` (V1) | Behind an Access-like cookie gate with `_headers` applied: every multi-source row's "N sources" opens its versions carousel (lead first), CLS 0 across open, swipe and close, back restores the feed scroll and focus, arrow keys and ARIA roles, an 11-version strip keeps its active chip in view, reduced motion jumps, Read and back, the footer coverage sheet, the word-mark switch, mutes, `#bundle-` addresses, a hostile headline as text; sweep shots light, dark and grayscale. | `node tests/browser/v1_check.mjs dist <shots dir>` | 2026-09-25 (R2: grows a pool without an 11-version cluster through `fixtures/v1_pool.py` itself, so any fresh pool's dist runs) |
 
 ## Other proofs in this directory
 
@@ -140,3 +162,27 @@ disagree), `u1_check` (3 clamped summaries, as above) and `v1_check` (no cluster
 or more versions in this pool, its stated caveat). `sw_pretty_urls` session B and
 `h2_you_check`'s old-build phases replay history from before Access, so the gate is
 open for those phases only; see the comments there.
+
+R2 (2026-09-25) found the root cause of each of those five and reran them on a fresh
+real pool (97 sources, 645 articles) and on their fixtures, all green:
+
+- `rerank_cls` and `standing_cls`: **a product bug.** H4's repeat cap reads the pool's
+  events, which the build passes to the ranker and `rerank.js` did not, so the order
+  after the device re-rank (any stored profile or any read history, the owner's usual
+  case) lost the per-event cap and disagreed with the page as built. Both proofs were
+  event-blind the same way, which is why the default-profile visits failed and the
+  re-ranked ones "passed". One `pageOptions()` in `passes.js` now feeds every caller;
+  `tests/js/rank-parity.test.js` holds rank_cli and the device to one order.
+  `rerank_cls` also cleared localStorage only when no profile was stored, so a seen
+  summary left by the previous visit re-ranked the next one (the custom-light
+  `othersMatch` miss); it now clears first, as `standing_cls` does.
+- `coverage_check`: stale. It picked the biggest cluster by the pool's own
+  `independent_sources` (outlets by syndication group), but a row carries the trigger by
+  the page's count (copies, a near-duplicate group once, V1). A pair of outlets running
+  one wire copy is 2 in the pool and one version on the page, rightly with no trigger.
+  It now picks by the page's rule and holds every Today row to it.
+- `u1_check`: **a product bug.** Deks were fitted by character count alone, so wide
+  words and CJK text (one em a character) met the CSS clamp. `fit_dek` now also wraps
+  the dek in Newsreader's measured widths at the narrowest dek measure (280px).
+- `v1_check`: the day's news; `fixtures/v1_pool.py` makes the 11-version strip from any
+  pool, and v1_check applies it itself.

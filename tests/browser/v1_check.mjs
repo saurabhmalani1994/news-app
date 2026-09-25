@@ -25,7 +25,7 @@
 // Screenshots (optional): each swept word-mark treatment in dark and light, the chosen
 // one, a grayscale capture, the row trigger, the 11-version strip. Exits 1 on failure.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
@@ -38,7 +38,7 @@ import { buildDefaultProfile } from "../../app/static/js/profile/default-profile
 import { smartQuotes } from "../../app/static/js/reader/core.js";
 
 const [distArg, shotsArg] = process.argv.slice(2);
-const DIST = resolve(distArg || "dist");
+const GIVEN = resolve(distArg || "dist");
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const UA = "Mozilla/5.0 (Linux; Android 14; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36";
 const TYPES = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".json": "application/json", ".woff2": "font/woff2", ".png": "image/png", ".webmanifest": "application/manifest+json" };
@@ -79,6 +79,26 @@ async function gatedSite(dir) {
   await new Promise((r) => server.on("listening", r));
   return { origin: `http://127.0.0.1:${server.address().port}`, log, close: () => server.close() };
 }
+
+// R2: an 11-or-more-version cluster is a matter of the day's news, so a pool without
+// one gets tests/browser/fixtures/v1_pool.py's: the same pool with its largest cluster
+// grown to 12 versions from the pool's own single stories, built here beside the
+// given dist (its bodies/ copied over). A pool that has one is tested as given.
+function wideDist() {
+  const out = execFileSync(PYTHON, [join(ROOT, "tests/browser/fixtures/v1_pool.py"), join(GIVEN, "pool.json")], { cwd: ROOT, maxBuffer: 1 << 28, stdio: ["ignore", "pipe", "pipe"] });
+  const grown = JSON.parse(out.toString("utf8"));
+  const had = JSON.parse(readFileSync(join(GIVEN, "pool.json"), "utf-8"));
+  if (JSON.stringify(grown.clusters) === JSON.stringify(had.clusters)) return GIVEN;
+  const dir = join(tmpdir(), "almanac-v1-wide");
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "pool.json"), JSON.stringify(grown));
+  execFileSync(PYTHON, ["-m", "app.build", "--pool", join(dir, "pool.json"), "--out", join(dir, "dist")], { cwd: ROOT, stdio: "ignore" });
+  if (existsSync(join(GIVEN, "bodies"))) cpSync(join(GIVEN, "bodies"), join(dir, "dist", "bodies"), { recursive: true });
+  console.log(`  no 11-version cluster in ${GIVEN}: testing v1_pool.py's pool built from it (${join(dir, "dist")})`);
+  return join(dir, "dist");
+}
+const DIST = wideDist();
 
 // --- The hostile build: one version's headline is markup. ---
 const EVIL = '<img src=x onerror="window.__pwned=1"><script>window.__pwned=2</script>"Quoted" & </mark><b>bold</b>';
