@@ -61,18 +61,37 @@ const check = (name, pass, detail) => { results[name] = { pass, ...detail }; ok 
 
 // 0. Loaded; find the biggest cluster on the page by its own button count of rows in
 // the embedded pool, not by rank (importance ranks it high but does not guarantee #1).
+// R2: a row carries the trigger when its cluster holds two or more copies, a
+// near-duplicate group (one syndicated piece) counting once (app/frontpage.py
+// independent_source_count, V1's versions). The pool's own independent_sources counts
+// syndication groups of outlets instead, so a pair of outlets running one wire copy is
+// 2 there and one version on the page; picking by it chose such a cluster on H5's
+// pool, which rightly has no trigger. Every row is held to the page's rule first.
 const biggest = JSON.parse(await evaluate(`(() => {
   const input = JSON.parse(document.getElementById("rank-input").content.textContent);
-  const clusters = input.pool.clusters.filter((c) => c.independent_sources > 1);
-  const top = clusters.slice().sort((a, b) => b.article_ids.length - a.article_ids.length)[0];
-  const dupClusters = clusters.filter((c) => (c.near_duplicates || []).length > 0);
+  const source = new Map(input.pool.articles.map((a) => [a.id, a.source_id]));
+  const copies = (c) => {
+    const group = new Map();
+    (c.near_duplicates || []).forEach((g, i) => g.forEach((id) => group.set(id, i)));
+    return new Set(c.article_ids.map((id) => (group.has(id) ? "g" + group.get(id) : "s" + source.get(id)))).size;
+  };
+  const rows = new Set([...document.querySelectorAll("#section-today li.story[data-sid]")].map((li) => li.dataset.sid));
+  const triggers = new Set([...document.querySelectorAll("#section-today .story-coverage")].map((b) => b.dataset.sid));
+  const multi = input.pool.clusters.filter((c) => rows.has(c.id) && copies(c) > 1);
+  const wrong = [...rows].filter((sid) => triggers.has(sid) !== multi.some((c) => c.id === sid));
+  const top = multi.slice().sort((a, b) => b.article_ids.length - a.article_ids.length)[0];
+  const dupClusters = multi.filter((c) => (c.near_duplicates || []).length > 0);
   return JSON.stringify({
-    sid: top.id, articleCount: top.article_ids.length, independent: top.independent_sources,
-    leans: top.lean_buckets.length, buttonExists: !!document.querySelector('.story-coverage[data-sid="' + top.id + '"]'),
+    rows: rows.size, triggers: triggers.size, multi: multi.length, wrong,
+    sid: top?.id, articleCount: top?.article_ids.length, copies: top && copies(top), independent: top?.independent_sources,
+    leans: top?.lean_buckets.length, buttonExists: !!top && triggers.has(top.id),
     dupSid: dupClusters[0]?.id || null,
   });
 })()`));
+check("every Today row with two or more copies carries a coverage trigger, and no other row does",
+  biggest.multi > 0 && biggest.wrong.length === 0, { rows: biggest.rows, triggers: biggest.triggers, multi: biggest.multi, wrong: biggest.wrong });
 check("the biggest live cluster carries a coverage trigger", biggest.buttonExists, biggest);
+if (!biggest.buttonExists) { console.log(JSON.stringify({ results }, null, 2)); chrome.close(); site.close(); process.exit(1); }
 await shot("initial-dark.png");
 
 // 1. Open the sheet from the biggest cluster's card, through its versions carousel.
