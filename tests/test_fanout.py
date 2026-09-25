@@ -60,6 +60,10 @@ def _fake_fetch(url, timeout=None):
         return SAMPLE
     if "good2" in url:
         return GOOD2
+    # B9: the trumpstruth.org archive lookup main() also fetches; an empty feed
+    # here means every test's own sources are unaffected by it (status ok, no posts).
+    if "trumpstruth.org" in url:
+        return EMPTY_FEED
     raise AssertionError(f"unexpected url in test: {url}")
 
 

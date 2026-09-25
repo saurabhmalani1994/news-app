@@ -79,6 +79,7 @@ from fetcher.geo import tag_geo
 from fetcher.topics import hard_news_topics, load_topics, tag_article
 from fetcher.health import compute_source_health, fetch_previous_pool, parse_previous_health
 from fetcher.state import DEFAULT_STATE_PATH, embed_budget_from, load_state, write_state
+from fetcher.truth_archive import TRUTH_ARCHIVE_URL, link_clusters, load_archive
 from fetcher import watch as wsearch
 from fetcher.fetch import (
     DEK_MAX,
@@ -317,7 +318,8 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                       cluster_extra_cap=CLUSTER_EXTRA_CAP, timings=None, topics_doc=None,
                       previous_health=None, previous_pool_status="absent", bodies_out=None,
                       previous_events=None, candidates_out=None, watch=None,
-                      watch_budget=wsearch.BUDGET_BYTES, embedder=None):
+                      watch_budget=wsearch.BUDGET_BYTES, embedder=None,
+                      truth_archive_posts=None, truth_archive_status="disabled"):
     """Turn fetch results for every source into one pool dict. Pure: no network, no clock.
 
     timings, if a dict is passed, receives the clustering wall time in seconds.
@@ -352,6 +354,14 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     {id: vector} for the clusterer's embedding term (fetcher.embed.run, wrapped by
     main(), is the only network in it). None, or an empty answer, clusters exactly as
     B2. timings also receives embed_seconds.
+
+    B9: truth_archive_posts is fetcher.truth_archive.load_archive's post list (never
+    None from a real run; main() passes [] on a down or broken archive), read as a
+    lookup only, its posts never entering the pool. truth_archive_status is that
+    call's own status word, carried straight into counts.primary_source so a down
+    archive is visible in the ledger without ever failing the run. Matching (section
+    3) runs on the final published clusters and articles, using each full-text body
+    already collected below when the source has one.
     """
     if topics_doc is None:
         topics_doc = load_topics()
@@ -511,6 +521,16 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     clusters = _published_clusters(all_clusters, {a["id"] for a in articles}, by_id,
                                     source_lean, source_syndication, set(vectors or ()))
 
+    # B9: the archive is read as a lookup only; its posts never enter the pool, only
+    # this link. published_by_id restricts matching to the articles this run actually
+    # publishes, same as everything else clusters carries.
+    published_by_id = {a["id"]: a for a in articles}
+    truth_links = link_clusters(clusters, published_by_id, bodies, truth_archive_posts)
+    for cl in clusters:
+        url = truth_links.get(cl["id"])
+        if url:
+            cl["primary_source"] = {"url": url}
+
     generated_at = _utc(now)
     if candidates_out is not None:
         candidates_out["dump"] = candidate_dump(candidates, all_clusters,
@@ -537,6 +557,11 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
         },
         "bodies": body_counts,
         "routes": {r: route_counts.get(r, 0) for r in ROUTES},
+        "primary_source": {
+            "status": truth_archive_status,
+            "posts": len(truth_archive_posts or ()),
+            "linked": len(truth_links),
+        },
     }
     if watch is not None:
         counts["watch"] = {
@@ -696,6 +721,9 @@ def main(argv=None):
     # B1: off unless a path is given. publish.yml sets DUMP_CANDIDATES_PATH only on a
     # workflow_dispatch run with its dump_candidates input true.
     ap.add_argument("--dump-candidates", default=os.environ.get("DUMP_CANDIDATES_PATH", ""))
+    # B9: TRUTH_ARCHIVE_URL mirrors RELAY_BASE_URL's pattern, a one-line override with
+    # no code change if the archive moves.
+    ap.add_argument("--truth-archive-url", default=os.environ.get("TRUTH_ARCHIVE_URL", TRUTH_ARCHIVE_URL))
     args = ap.parse_args(argv)
 
     dump_path = Path(args.dump_candidates) if args.dump_candidates else None
@@ -717,6 +745,10 @@ def main(argv=None):
     watch_input = wsearch.collect(fetch_fn=fetch_feed, timeout=args.timeout, retries=args.retries)
     watch_seconds = time.monotonic() - t0
     fetch_results = fetch_all(sources, timeout=args.timeout, retries=args.retries)
+
+    # B9: a lookup only, read once here; never fails the run (fetcher.truth_archive
+    # catches every transport and parse failure itself and returns no posts).
+    truth_posts, truth_status = load_archive(fetch_feed, args.truth_archive_url, timeout=args.timeout)
 
     # F6: state.json restored by actions/cache is tried first; only when it is
     # absent or corrupt does this run fall back to the live pool.json read S06 has
@@ -758,6 +790,7 @@ def main(argv=None):
             timings=timings, previous_health=previous_health, previous_pool_status=previous_pool_status,
             bodies_out=bodies_out, previous_events=previous_events, candidates_out=candidates_out,
             watch=watch, embedder=_embedder,
+            truth_archive_posts=truth_posts, truth_archive_status=truth_status,
         )
 
     # W2: a pool that watch items broke (an exception, or a pool that fails the
@@ -832,6 +865,8 @@ def main(argv=None):
     )
     routed = sorted(s["id"] for s in sources if _route_for(s) != "direct")
     print(f"routes={json.dumps(c['routes'])} routed_sources={json.dumps(routed)}")
+    ps = c["primary_source"]
+    print(f"truth_archive status={ps['status']} posts={ps['posts']} clusters_linked={ps['linked']}/{len(pool['clusters'])}")
     print(watch_log_line(c.get("watch"), watch_input, watch_seconds))
     with_image = sum(1 for a in pool["articles"] if "image" in a)
     hero_worthy = sum(1 for a in pool["articles"] if a.get("image", {}).get("width", 0) >= 600)

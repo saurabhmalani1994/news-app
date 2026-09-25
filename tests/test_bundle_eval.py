@@ -302,10 +302,18 @@ def test_no_dump_unless_asked():
     assert "candidates" not in pool and "dump" not in pool
 
 
+EMPTY_FEED = b'<rss version="2.0"><channel></channel></rss>'
+
+
 def _offline(monkeypatch, tmp_path):
     sources, results = _feeds()
     feeds = {s["feed_url"]: results[s["id"]][0] for s in sources}
-    monkeypatch.setattr(fanout, "fetch_feed", lambda url, timeout=None: feeds[url])
+    # B9: main() also fetches the trumpstruth.org archive lookup; an empty feed
+    # keeps every offline main() test unaffected by it (status ok, no posts).
+    monkeypatch.setattr(
+        fanout, "fetch_feed",
+        lambda url, timeout=None: EMPTY_FEED if "trumpstruth.org" in url else feeds[url],
+    )
     monkeypatch.delenv("DUMP_CANDIDATES_PATH", raising=False)
     src = tmp_path / "sources.json"
     src.write_text(json.dumps({"schema_version": 1, "sources": sources}), encoding="utf-8")
