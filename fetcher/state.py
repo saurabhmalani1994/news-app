@@ -16,6 +16,11 @@ Because that subset lines up with what fetcher.health.parse_previous_health and
 fetcher.events.parse_previous_events already read out of a full pool document, a
 validated state.json can be handed to both, unchanged.
 
+B7: one optional field, `embed_budget` ({"day": "YYYY-MM-DD", "neurons": n}), carries
+the Workers AI neurons the embedding term charged on that UTC day (fetcher/embed.py's
+daily cap). A state.json without it is still valid, and the budget then starts at the
+account's own measured count, or zero.
+
 Reading order, decided here since the brief leaves it to the fetcher:
 1. The state.json actions/cache restored locally this job (load_state). Fastest, and
    the only path once Access blocks the live pool read.
@@ -34,6 +39,7 @@ SCHEMA_VERSION = 1
 DEFAULT_STATE_PATH = ".cache/state.json"
 
 STATE_FIELDS = frozenset({"schema_version", "generated_at", "source_health", "clusters", "events"})
+OPTIONAL_STATE_FIELDS = frozenset({"embed_budget"})
 CLUSTER_FIELDS = frozenset({"id", "article_ids"})
 EVENT_REQUIRED_FIELDS = frozenset({"id", "cluster_ids", "live"})
 EVENT_ALL_FIELDS = EVENT_REQUIRED_FIELDS | {"live_since"}
@@ -46,12 +52,13 @@ def _state_event(e):
     return out
 
 
-def build_state(pool):
+def build_state(pool, embed_budget=None):
     """The next run's input, built from this run's own freshly published pool.
     Pure: no network, no clock, no filesystem. Only what S06 and S32 read back
     (fetcher.health.parse_previous_health, fetcher.events.parse_previous_events)
-    survives; everything else in pool.json is dropped."""
-    return {
+    survives; everything else in pool.json is dropped. B7: embed_budget, when given,
+    rides along as the optional embed_budget field."""
+    doc = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": pool["generated_at"],
         "source_health": pool["source_health"],
@@ -60,6 +67,9 @@ def build_state(pool):
         ],
         "events": [_state_event(e) for e in pool["events"]],
     }
+    if embed_budget is not None:
+        doc["embed_budget"] = {"day": embed_budget["day"], "neurons": embed_budget["neurons"]}
+    return doc
 
 
 def dumps_state(state):
@@ -74,7 +84,7 @@ def validate_state(doc):
     if not isinstance(doc, dict):
         return ["state: not an object"]
     errors = []
-    unknown = set(doc) - STATE_FIELDS
+    unknown = set(doc) - STATE_FIELDS - OPTIONAL_STATE_FIELDS
     missing = STATE_FIELDS - set(doc)
     if unknown:
         errors.append(f"state: unknown field(s) {sorted(unknown)}")
@@ -112,7 +122,24 @@ def validate_state(doc):
                 errors.append(f"state.events[{i}]: must have id, cluster_ids and live")
             elif not set(e) <= EVENT_ALL_FIELDS:
                 errors.append(f"state.events[{i}]: unknown field(s) {sorted(set(e) - EVENT_ALL_FIELDS)}")
+    if "embed_budget" in doc:
+        b = doc["embed_budget"]
+        if (not isinstance(b, dict) or set(b) != {"day", "neurons"}
+                or not isinstance(b["day"], str)
+                or isinstance(b["neurons"], bool) or not isinstance(b["neurons"], (int, float))
+                or b["neurons"] < 0):
+            errors.append("state.embed_budget: must be {day, neurons >= 0}")
     return errors
+
+
+def embed_budget_from(state_bytes):
+    """B7: the embed_budget field of a validated state.json, or None."""
+    if state_bytes is None:
+        return None
+    try:
+        return json.loads(state_bytes).get("embed_budget")
+    except (ValueError, AttributeError):
+        return None
 
 
 def load_state(path):
@@ -137,10 +164,10 @@ def load_state(path):
     return data, "hit"
 
 
-def write_state(pool, path=DEFAULT_STATE_PATH):
+def write_state(pool, path=DEFAULT_STATE_PATH, embed_budget=None):
     """Write this run's state.json for actions/cache to pick up and restore ahead of
     the next run. Returns the bytes written."""
-    body = dumps_state(build_state(pool)).encode("utf-8")
+    body = dumps_state(build_state(pool, embed_budget)).encode("utf-8")
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(body)

@@ -28,6 +28,7 @@ from pathlib import Path
 
 from fetcher import cluster
 from fetcher import embed
+from fetcher.embed import workers_plan
 from fetcher.bundle_eval import load_fixture, score
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -82,16 +83,6 @@ def _post(url, token, payload, timeout=20):
 
 def _codes(doc):
     return [e.get("code") for e in (doc.get("errors") or []) if isinstance(e, dict)]
-
-
-def workers_plan(subscriptions):
-    """paid when any subscription's rate plan is a Workers Paid one, else free."""
-    for sub in subscriptions:
-        rp = (sub or {}).get("rate_plan") or {}
-        name = f"{rp.get('id', '')} {rp.get('public_name', '')}".lower()
-        if "worker" in name and "free" not in name:
-            return "paid"
-    return "free"
 
 
 def cmd_plan(args):

@@ -1,19 +1,37 @@
 {
- "about": "B1 CI floors: the current clusterer (fetcher.cluster.cluster_items) run on each gold fixture must score at least these. Floors only ratchet up: set a fixture's floors from `python -m fetcher.bundle_eval score <fixture>` (the S07 re-run line), rounded down to 4 decimals, and never lower one. Every gold_*.json needs an entry here.",
+ "about": "B1 CI floors: the current clusterer (fetcher.cluster.cluster_items, with the B7 embedding term fed the fixtures' committed vectors, embeddings_*.json) run on each gold fixture must score at least these. Floors only ratchet up: set a fixture's floors from `python -m fetcher.bundle_eval score <fixture>` (the embedding-term re-run line), rounded down to 4 decimals, and never lower one. Every gold_*.json needs an entry here. `lexical` holds B2's floors for the fallback path (no vectors), which must keep scoring them.",
  "gold_2026-09-24.json": {
-  "pair_precision": 0.9802,
-  "pair_recall": 0.5246,
-  "purity": 0.9375,
-  "bcubed_precision": 0.9939,
-  "bcubed_recall": 0.8903,
-  "bcubed_f1": 0.9393
+  "pair_precision": 0.9935,
+  "pair_recall": 0.5457,
+  "purity": 0.9696,
+  "bcubed_precision": 0.9975,
+  "bcubed_recall": 0.8938,
+  "bcubed_f1": 0.9428
  },
  "gold_2026-09-24b.json": {
-  "pair_precision": 0.9851,
-  "pair_recall": 0.2663,
-  "purity": 0.92,
+  "pair_precision": 0.986,
+  "pair_recall": 0.2837,
+  "purity": 0.923,
   "bcubed_precision": 0.9639,
-  "bcubed_recall": 0.549,
-  "bcubed_f1": 0.6995
+  "bcubed_recall": 0.5632,
+  "bcubed_f1": 0.711
+ },
+ "lexical": {
+  "gold_2026-09-24.json": {
+   "pair_precision": 0.9802,
+   "pair_recall": 0.5246,
+   "purity": 0.9375,
+   "bcubed_precision": 0.9939,
+   "bcubed_recall": 0.8903,
+   "bcubed_f1": 0.9393
+  },
+  "gold_2026-09-24b.json": {
+   "pair_precision": 0.9851,
+   "pair_recall": 0.2663,
+   "purity": 0.92,
+   "bcubed_precision": 0.9639,
+   "bcubed_recall": 0.549,
+   "bcubed_f1": 0.6995
+  }
  }
 }

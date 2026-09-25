@@ -32,6 +32,13 @@ F6: that carry-forward state (S06 health, S32 event holds) is read from a small
 state.json actions/cache restores locally, before the network read fetcher.health
 still falls back to when the cache is absent or corrupt. See fetcher/state.py.
 
+B7: before clustering, main() fetches sentence vectors for the candidates from Workers
+AI (fetcher/embed.py) with the pipeline token, after its own Workers plan check and
+under a daily neuron budget kept in state.json; a cache (.cache/embeddings.json)
+means only new items are embedded. They feed one term of the story score. With no
+token, an unconfirmed plan, the budget spent or any API failure, the run clusters
+exactly as B2 and says so in its embed log line.
+
 B1: --dump-candidates PATH (or DUMP_CANDIDATES_PATH) also writes every candidate the
 clusterer saw, before the per-source cap, to its own file for gold-set labeling
 (fetcher/bundle_eval.py, tests/fixtures/bundles/README.md). It never enters pool.json,
@@ -62,6 +69,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from contract.validate import validate
+from fetcher import embed
 from fetcher.bodies import collect_bodies, extract_body_html, write_bodies
 from fetcher.cluster import cluster_items, method_for
 from fetcher.events import build_events, parse_previous_events
@@ -70,7 +78,7 @@ from fetcher.taxonomy import validate_sources_taxonomy
 from fetcher.geo import tag_geo
 from fetcher.topics import hard_news_topics, load_topics, tag_article
 from fetcher.health import compute_source_health, fetch_previous_pool, parse_previous_health
-from fetcher.state import DEFAULT_STATE_PATH, load_state, write_state
+from fetcher.state import DEFAULT_STATE_PATH, embed_budget_from, load_state, write_state
 from fetcher import watch as wsearch
 from fetcher.fetch import (
     DEK_MAX,
@@ -309,7 +317,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                       cluster_extra_cap=CLUSTER_EXTRA_CAP, timings=None, topics_doc=None,
                       previous_health=None, previous_pool_status="absent", bodies_out=None,
                       previous_events=None, candidates_out=None, watch=None,
-                      watch_budget=wsearch.BUDGET_BYTES):
+                      watch_budget=wsearch.BUDGET_BYTES, embedder=None):
     """Turn fetch results for every source into one pool dict. Pure: no network, no clock.
 
     timings, if a dict is passed, receives the clustering wall time in seconds.
@@ -339,6 +347,11 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     tags that article. When any query ran, the pool gains fetcher.watch.SOURCE (with a
     feed state and health entry) for items from outlets sources.json does not list.
     Watch-only items never enter the candidate dump (its artifact is public).
+
+    B7: embedder, if given, is called once with the final candidate list and returns
+    {id: vector} for the clusterer's embedding term (fetcher.embed.run, wrapped by
+    main(), is the only network in it). None, or an empty answer, clusters exactly as
+    B2. timings also receives embed_seconds.
     """
     if topics_doc is None:
         topics_doc = load_topics()
@@ -417,7 +430,11 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             feed_states[wstate] += 1
             run_states[wsearch.SOURCE["id"]] = (wstate, wcounts["fetched"], wnewest)
     t0 = time.perf_counter()
-    all_clusters = cluster_items(candidates)
+    vectors = embedder(candidates) if embedder is not None else None
+    if timings is not None:
+        timings["embed_seconds"] = time.perf_counter() - t0
+    t0 = time.perf_counter()
+    all_clusters = cluster_items(candidates, vectors=vectors)
     if timings is not None:
         timings["cluster_seconds"] = time.perf_counter() - t0
         timings["cluster_input"] = len(candidates)
@@ -492,7 +509,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     source_lean = {s["id"]: s["lean"] for s in sources if s.get("lean")}
     source_syndication = {s["id"]: s.get("syndication_group") or s["id"] for s in sources}
     clusters = _published_clusters(all_clusters, {a["id"] for a in articles}, by_id,
-                                    source_lean, source_syndication)
+                                    source_lean, source_syndication, set(vectors or ()))
 
     generated_at = _utc(now)
     if candidates_out is not None:
@@ -585,7 +602,8 @@ def _inside(path, directory):
     return p == d or d in p.parents
 
 
-def _published_clusters(all_clusters, published, by_id, source_lean=None, source_syndication=None):
+def _published_clusters(all_clusters, published, by_id, source_lean=None, source_syndication=None,
+                        vector_ids=frozenset()):
     """Restrict clusters to published articles. The id is the earliest published member's,
     so it holds steady as later coverage joins.
 
@@ -593,6 +611,9 @@ def _published_clusters(all_clusters, published, by_id, source_lean=None, source
     sources, not distinct source_ids, so two outlets carrying the same wire copy count
     as one independent source (fixes the S07 deferral). lean_buckets is the deduplicated
     set of lean buckets those sources cover.
+
+    B7: method gains "+embedding" when 2+ of the published units hold an article with a
+    vector (vector_ids), as fetcher.cluster names it for the whole-run cluster.
     """
     source_lean = source_lean or {}
     source_syndication = source_syndication or {}
@@ -605,13 +626,15 @@ def _published_clusters(all_clusters, published, by_id, source_lean=None, source
         dups = [g for g in dups if len(g) > 1]
         in_dups = {i for g in dups for i in g}
         units = len(dups) + sum(1 for i in ids if i not in in_dups)
+        embedded = (sum(1 for g in dups if any(i in vector_ids for i in g))
+                    + sum(1 for i in ids if i not in in_dups and i in vector_ids)) > 1
         seed = min(ids, key=lambda i: (by_id[i]["published_at"], i))
         cluster_source_ids = {by_id[i]["source_id"] for i in ids}
         syn_groups = {source_syndication.get(sid, sid) for sid in cluster_source_ids}
         leans = sorted({source_lean[sid] for sid in cluster_source_ids if sid in source_lean})
         out.append({
             "id": f"c_{seed}",
-            "method": method_for(units, bool(dups)),
+            "method": method_for(units, bool(dups), embedded),
             "article_ids": ids,
             "near_duplicates": dups,
             "independent_sources": len(syn_groups),
@@ -715,12 +738,26 @@ def main(argv=None):
     candidates_out = {} if dump_path is not None else None
     now = datetime.now(timezone.utc)
 
+    # B7: the embedding term's vectors (fetcher/embed.py). Its own plan check, cache and
+    # daily neuron budget; any failure leaves the run lexical, never fails it. _build
+    # can run twice (the watch fallback below), so the budget carries between calls.
+    embed_run = {"budget": embed_budget_from(state_bytes), "stats": None}
+
+    def _embedder(candidates):
+        try:
+            vectors, embed_run["budget"], embed_run["stats"] = embed.run(
+                candidates, now, previous_budget=embed_run["budget"])
+        except Exception as exc:  # noqa: BLE001
+            print(f"embed: failed ({type(exc).__name__}); clustering lexically", file=sys.stderr)
+            vectors = {}
+        return vectors
+
     def _build(watch):
         return build_pool_fanout(
             sources, fetch_results, now, per_source_cap=args.per_source_cap,
             timings=timings, previous_health=previous_health, previous_pool_status=previous_pool_status,
             bodies_out=bodies_out, previous_events=previous_events, candidates_out=candidates_out,
-            watch=watch,
+            watch=watch, embedder=_embedder,
         )
 
     # W2: a pool that watch items broke (an exception, or a pool that fails the
@@ -746,7 +783,7 @@ def main(argv=None):
     write_bodies(bodies_out.get("bodies", {}), out.parent / "bodies")
     # F6: only ever written from a pool that already passed validate() above, so a
     # bad run can never hand the next run bad state either.
-    write_state(pool, args.state_path)
+    write_state(pool, args.state_path, embed_run["budget"])
     if dump_path is not None:
         dump = dumps(candidates_out["dump"]).encode("utf-8")
         dump_path.parent.mkdir(parents=True, exist_ok=True)
@@ -768,6 +805,11 @@ def main(argv=None):
         f"cluster_input={timings['cluster_input']} cluster_seconds={timings['cluster_seconds']:.2f} "
         f"bytes={len(body)} seconds={time.monotonic() - t0:.2f}"
     )
+    if embed_run["stats"] is not None:
+        methods = Counter(cl["method"] for cl in pool["clusters"])
+        print(f"{embed.log_line(embed_run['stats'], embed_run['budget'])} "
+              f"embed_seconds={timings['embed_seconds']:.2f} "
+              f"cluster_methods={json.dumps(dict(sorted(methods.items())))}")
     print(
         f"lean_buckets={json.dumps(dict(sorted(lean_counts.items())))} "
         f"syndication_groups={len(syn_groups)} "

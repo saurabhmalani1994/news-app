@@ -18,6 +18,10 @@ metric show when that happened.
 
 Nothing here runs in the publish path; it is read by tests and by the labeler.
 
+B7: the current clusterer includes the embedding term, so run_s07 takes the fixtures'
+committed vectors (tests/fixtures/bundles/embeddings_*.json, load_fixture_vectors);
+without them it is B2's lexical clusterer, byte for byte.
+
 Usage:
   python -m fetcher.bundle_eval score tests/fixtures/bundles/gold_2026-09-24.json
   python -m fetcher.bundle_eval spotcheck tests/fixtures/bundles/gold_2026-09-24.json
@@ -32,6 +36,7 @@ from itertools import combinations
 from pathlib import Path
 
 from fetcher.cluster import cluster_items
+from fetcher.embed import decode
 
 METRICS = ("pair_precision", "pair_recall", "purity",
            "bcubed_precision", "bcubed_recall", "bcubed_f1")
@@ -151,9 +156,24 @@ def split_stories(articles, clusters):
     return out
 
 
-def run_s07(articles):
-    """The current S07 clusterer on the fixture's articles, as article-id lists."""
-    return [cl["article_ids"] for cl in cluster_items(articles)]
+def run_s07(articles, vectors=None):
+    """The current S07 clusterer on the fixture's articles, as article-id lists. B7:
+    vectors (load_fixture_vectors) add the embedding term; None is B2's lexical run."""
+    return [cl["article_ids"] for cl in cluster_items(articles, vectors=vectors)]
+
+
+VECTORS_GLOB = "embeddings_*.json"
+
+
+def load_fixture_vectors(directory=None):
+    """{article id: vector} from every committed embeddings file beside the fixtures, or
+    {} when there is none."""
+    directory = Path(directory) if directory else Path(__file__).resolve().parent.parent / "tests/fixtures/bundles"
+    out = {}
+    for p in sorted(directory.glob(VECTORS_GLOB)):
+        doc = json.loads(p.read_text(encoding="utf-8"))
+        out.update({k: decode(v) for k, v in doc["items"].items()})
+    return out
 
 
 def stored_clusters(articles):
@@ -324,6 +344,9 @@ def main(argv=None):
         return 0
 
     runs = [("S07 re-run on fixture", run_s07(arts))]
+    vectors = load_fixture_vectors(Path(args.fixture).parent)
+    if any(a["id"] in vectors for a in arts):
+        runs.append(("S07 re-run with the B7 embedding term", run_s07(arts, vectors)))
     stored = stored_clusters(arts)
     if stored:
         runs.insert(0, ("stored S07 clusters", stored))

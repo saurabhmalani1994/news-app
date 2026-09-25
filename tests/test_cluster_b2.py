@@ -140,12 +140,21 @@ def test_gold_fixture_clusters_the_same_under_any_hash_seed():
 
 # Section 1's 21 missed pairs
 
+def _joined(arts, vectors=None):
+    of = {i: n for n, c in enumerate(cluster_items(arts, vectors=vectors)) for i in c["article_ids"]}
+    return sum(1 for p in MISSED["pairs"] if p["ids"][0] in of and of[p["ids"][0]] == of.get(p["ids"][1]))
+
+
 def test_missed_pairs_hold_their_floor():
+    # B7: the current clusterer has the embedding term (the committed fixture vectors);
+    # the lexical fallback keeps B2's floor.
+    from fetcher.bundle_eval import load_fixture_vectors
     arts = load_fixture(BUNDLES / MISSED["fixture"])["articles"]
-    of = {i: n for n, c in enumerate(cluster_items(arts)) for i in c["article_ids"]}
-    joined = sum(1 for p in MISSED["pairs"] if p["ids"][0] in of and of[p["ids"][0]] == of.get(p["ids"][1]))
     assert len(MISSED["pairs"]) == 21
+    joined = _joined(arts, load_fixture_vectors(BUNDLES))
     assert joined >= MISSED["floor_joined"], f"{joined} of 21 joined"
+    lexical = _joined(arts)
+    assert lexical >= MISSED["floor_joined_lexical"], f"lexical: {lexical} of 21 joined"
 
 
 # Timing: the design's benchmark, 10,000 synthetic items under 15 s on the runner.

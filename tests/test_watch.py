@@ -364,9 +364,9 @@ def test_watch_items_go_through_clustering(monkeypatch):
     seen = []
     real = fanout.cluster_items
 
-    def spy(candidates):
+    def spy(candidates, **kw):  # B7 passes vectors= too
         seen.extend(a["id"] for a in candidates)
-        return real(candidates)
+        return real(candidates, **kw)
 
     monkeypatch.setattr(fanout, "cluster_items", spy)
     pool = _pool([(T1, _gn([_item("Distant valley opens a new observatory", "cl1")]))])

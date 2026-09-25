@@ -17,6 +17,7 @@ from fetcher.bundle_eval import (
     FixtureError,
     check_floors,
     floors_from,
+    load_fixture_vectors,
     load_fixture,
     run_s07,
     sample_candidates,
@@ -34,6 +35,7 @@ FIXTURE_1 = BUNDLES / "gold_2026-09-24.json"
 FIXTURE_2 = BUNDLES / "gold_2026-09-24b.json"
 FLOORS = json.loads((BUNDLES / "floors.json").read_text(encoding="utf-8"))
 GOLD = sorted(BUNDLES.glob("gold_*.json"))
+VECTORS = load_fixture_vectors(BUNDLES)  # B7: the fixtures' committed embedding vectors
 
 
 def _a(id_, source, story, event=None, hour=10):
@@ -221,9 +223,19 @@ def test_published_s07_clusters_land_within_2_points_of_section_1():
 @pytest.mark.parametrize("path", GOLD, ids=[p.name for p in GOLD])
 def test_current_clusterer_holds_the_floor_on_every_gold_fixture(path):
     arts = load_fixture(path)["articles"]
-    m = score(arts, run_s07(arts))
+    assert all(a["id"] in VECTORS for a in arts), "a gold fixture lands with its vectors (B7)"
+    m = score(arts, run_s07(arts, VECTORS))
     failures = check_floors(m, FLOORS[path.name])
     assert failures == [], f"below the floor on {path.name}: {failures}"
+
+
+@pytest.mark.parametrize("path", GOLD, ids=[p.name for p in GOLD])
+def test_lexical_fallback_holds_b2s_floor_on_every_gold_fixture(path):
+    # B7: with no vectors (no token, an API failure, the budget) the clusterer is B2.
+    arts = load_fixture(path)["articles"]
+    failures = check_floors(score(arts, run_s07(arts)), FLOORS["lexical"][path.name])
+    assert failures == [], f"lexical run below B2's floor on {path.name}: {failures}"
+    assert all(FLOORS[path.name][m] >= FLOORS["lexical"][path.name][m] for m in METRICS)
 
 
 NENE = {"7d7eb22e04cd5744", "7f9f8f76a02304d8", "9224d7d82b1e1b8f"}  # BBC, CNA, Bangkok Post

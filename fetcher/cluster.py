@@ -90,10 +90,15 @@ IDF_POWER = 0.75
 GEO_PATH = Path(__file__).resolve().parent.parent / "geo.json"
 
 # B7 embedding term (DESIGN-bundles section 2(b)), tuned on tests/fixtures/bundles/ by the
-# bake-off (fetcher/embed_bakeoff.py). The term is EMBED_WEIGHT * clamp((cos - EMBED_FLOOR)
-# / (1 - EMBED_FLOOR), EMBED_TERM_MIN, 1).
-EMBED_WEIGHT = 0.5
-EMBED_FLOOR = 0.6
+# bake-off (fetcher/embed_bakeoff.py, run 36083328623): qwen3-embedding-0.6b cut to 768
+# dimensions. The term is EMBED_WEIGHT * clamp((cos - EMBED_FLOOR) / (1 - EMBED_FLOOR),
+# EMBED_TERM_MIN, 1). A signed term (EMBED_TERM_MIN -1, subtracting for dissimilar pairs)
+# was tried and did worse: on these fixtures the wrong merges are different stories of
+# one event (Xi's arrival and his talks, Netanyahu's speech and a reply to it), whose
+# cosines sit as high as one story's, so no floor separates them and a stronger term
+# only merges more of them.
+EMBED_WEIGHT = 0.2
+EMBED_FLOOR = 0.775
 EMBED_TERM_MIN = 0.0
 
 METHODS = ("minhash", "cosine_entity", "minhash+cosine_entity",
