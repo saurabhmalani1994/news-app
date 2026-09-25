@@ -98,6 +98,11 @@ const openStory = (id) => (realOpens++, evaluate(`document.querySelector('#secti
 await load("index.html", "dark");
 const photos = JSON.parse(await evaluate(`JSON.stringify(Object.keys(JSON.parse(document.getElementById("rank-input").content.textContent).reader || {}))`));
 const bodyIds = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('#section-today a.story-link[data-body]')].map((a) => a.dataset.body))`));
+// H5: each Today row's R43 candidates (every member with a body file). A row with more
+// than one falls back to the next member when its pick's file is missing (L1), so the
+// missing-file note is only ever the answer for a row with one, or once all are gone.
+const members = JSON.parse(await evaluate(`JSON.stringify((() => { const bodies = JSON.parse(document.getElementById("rank-input").content.textContent).bodies || {};
+  return Object.fromEntries([...document.querySelectorAll('#section-today a.story-link[data-body]')].map((a) => [a.dataset.body, (bodies[a.closest("li.story")?.dataset.sid] || []).map((c) => c[0])])); })())`));
 const picked = JSON.parse(await evaluate(`(async () => {
   const photos = new Set(${JSON.stringify(photos)});
   const tabs = [...document.querySelectorAll(".tab")].filter((t) => !t.hidden).slice(1);
@@ -166,7 +171,16 @@ check("cache hit, then the bar's back restores", cachedFast && requests[picked.i
   { cachedFast, requestsBefore: count, requestsAfter: requests[picked.id], afterButton });
 
 // 5. Offline: the cached story opens; an uncached one says so calmly.
-const others = bodyIds.filter((id) => id !== picked.id);
+// H5: which row plays which part is fixed by what it is, not by its place on Today: a
+// single-body row for the missing file (H4 saw a two-member row fall back, correctly,
+// and the check wait for a note that R43 says never comes), a two-plus-member row for
+// the every-member-missing case, a row with a reader photo for the hostile body (so the
+// reader's own hero sits above the sanitized body, as it does for most real stories).
+const others = bodyIds.filter((id) => id !== picked.id && !(members[picked.id] || []).includes(id));
+const take = (want) => { const i = others.findIndex(want); return i < 0 ? null : others.splice(i, 1)[0]; };
+const missingId = take((id) => (members[id] || []).length <= 1);
+const multiId = take((id) => (members[id] || []).length > 1);
+const hostileId = take((id) => photos.includes(id)) || take(() => true);
 await send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
 await sleep(200);
 await openStory(picked.id);
@@ -180,21 +194,35 @@ await send("Network.emulateNetworkConditions", { offline: false, latency: 0, dow
 check("offline: cached opens, uncached says so", offlineCached && offlineNote === "You are offline" && offlineLink.startsWith("Read at"), { offlineCached, offlineNote, offlineLink });
 
 // 6. A missing body file and a server error.
-plan.status[others[1]] = 404;
-await openStory(others[1]);
-const missing = (await until(noteShown, 3000)) && await evaluate(`[document.querySelector(".reader-note-head").textContent, !!document.querySelector(".reader-retry"), document.querySelector(".reader-link")?.textContent]`);
+const NOTE = `[document.querySelector(".reader-note-head").textContent, !!document.querySelector(".reader-retry"), document.querySelector(".reader-link")?.textContent]`;
+plan.status[missingId] = 404;
+await openStory(missingId);
+const missing = (await until(noteShown, 3000)) && await evaluate(NOTE);
 await closeByBrowserBack();
-plan.status[others[2]] = 500;
-await openStory(others[2]);
-const failed = (await until(noteShown, 3000)) && await evaluate(`[document.querySelector(".reader-note-head").textContent, !!document.querySelector(".reader-retry"), document.querySelector(".reader-link")?.textContent]`);
+plan.status[others[1]] = 500;
+await openStory(others[1]);
+const failed = (await until(noteShown, 3000)) && await evaluate(NOTE);
 await closeByBrowserBack();
 check("missing file and fetch error", missing?.[0] === "The full text is not here anymore" && failed?.[0] === "This story did not load" && failed[1] && !missing[1],
-  { missing, failed });
+  { missingId, missing, failed });
+
+// 6b. H5: a row with several members, every one of their files missing: the reader
+// tries each in turn (R43) and then says the text is gone, with the link out.
+let allMissing = null;
+if (multiId) {
+  for (const m of members[multiId]) plan.status[m] = 404;
+  const seen = Object.fromEntries(members[multiId].map((m) => [m, requests[m] || 0]));
+  await openStory(multiId);
+  const note = (await until(noteShown, 4000)) && await evaluate(NOTE);
+  allMissing = { note, tried: members[multiId].filter((m) => (requests[m] || 0) > seen[m]).length, of: members[multiId].length };
+  await closeByBrowserBack();
+}
+check("every member missing: the note", !multiId || (allMissing.note?.[0] === "The full text is not here anymore" && !allMissing.note[1] && allMissing.tried === allMissing.of),
+  { multiId, ...(allMissing || { skipped: "no Today row with two or more body files" }) });
 
 // 7. A hostile body under the live CSP: nothing runs, nothing but parse-time reports.
 const cspBeforeHostile = (await evaluate("window.__csp")).length;
 const handlers = await evaluate(`(() => { const n = new Set(); for (const s of [window, document, document.body, document.createElement("video"), document.createElement("details"), document.createElement("img"), document.createElement("input"), document.createElementNS("http://www.w3.org/2000/svg", "svg")]) for (const k in s) if (/^on[a-z]+$/.test(k)) n.add(k); return [...n]; })()`);
-const hostileId = others[3];
 plan.body[hostileId] = { schema_version: 1, article_id: hostileId, source_id: "hostile", source_name: "Hostile Feed", url: "https://news.example/story/1",
   body_html: [...HOSTILE, ...handlerFixtures(handlers), BENIGN].map((f) => f.html).join("\n") };
 await openStory(hostileId);
@@ -203,12 +231,20 @@ await evaluate(`document.querySelectorAll('#reader-article *').forEach((el) => {
 await sleep(1500);
 const hostile = JSON.parse(await evaluate(`JSON.stringify({ pwned: window.__pwned, reports: window.__csp.slice(${cspBeforeHostile}),
   scripts: document.querySelectorAll("#reader-article script, #reader-article iframe, #reader-article object, #reader-article embed, #reader-article style").length,
-  handlerAttrs: [...document.querySelectorAll("#reader-article *")].filter((el) => [...el.attributes].some((a) => /^on/i.test(a.name) || a.name === "style")).length,
+  handlerAttrs: [...document.querySelectorAll("#reader-article .reader-body *")].filter((el) => [...el.attributes].some((a) => /^on/i.test(a.name) || ["style", "srcset", "formaction"].includes(a.name))).length,
+  chromeAttrs: [...document.querySelectorAll("#reader-article *")].filter((el) => !el.closest(".reader-body") && [...el.attributes].some((a) => /^on/i.test(a.name)
+    || (a.name === "style" && !(el.classList.contains("reader-hero-img") && /^--box: [0-9]+ \\/ [0-9]+;$/.test(a.value))))).length,
+  heroBox: document.querySelector("#reader-article .reader-hero-img")?.getAttribute("style") ?? null,
   badLinks: [...document.querySelectorAll("#reader-article a[href]")].filter((a) => !a.href.startsWith("https:")).length })`));
 const parseTime = (v) => /^(style-src-attr|style-src-elem|base-uri) /.test(v);
 await closeByBrowserBack();
-check("hostile body executes nothing", hostile.pwned.length === 0 && hostile.scripts === 0 && hostile.handlerAttrs === 0 && hostile.badLinks === 0 && hostile.reports.every(parseTime),
-  { fixtures: HOSTILE.length + handlers.length + 1, pwned: hostile.pwned, parseTimeReports: hostile.reports.length, scripts: hostile.scripts, handlerAttrs: hostile.handlerAttrs, badLinks: hostile.badLinks });
+// H5: handlerAttrs counts only the sanitized body. H4 saw 1 here from the reader's own
+// hero photo (H4 item 4's `style="--box: W / H"`, built from two checked integers, not
+// feed markup) sitting in #reader-article above the body; chromeAttrs holds the rest of
+// the article to the same rule, that one exact style excepted.
+check("hostile body executes nothing", hostile.pwned.length === 0 && hostile.scripts === 0 && hostile.handlerAttrs === 0 && hostile.chromeAttrs === 0 && hostile.badLinks === 0 && hostile.reports.every(parseTime),
+  { fixtures: HOSTILE.length + handlers.length + 1, hostileId, withHero: hostile.heroBox !== null, pwned: hostile.pwned, parseTimeReports: hostile.reports.length, scripts: hostile.scripts,
+    handlerAttrs: hostile.handlerAttrs, chromeAttrs: hostile.chromeAttrs, heroBox: hostile.heroBox, badLinks: hostile.badLinks });
 const darkReports = await evaluate("window.__csp");
 
 // 8. Light: the same story opened from its #read- address (a reload, a shared link).
