@@ -13,8 +13,8 @@
 // S12's why-this links still land: "#topic-<id>" becomes "#interest/<id>" and
 // "#raw-json" becomes "#advanced" with the editor in view (replaceState, no extra Back
 // step). Every change is one ProfileStore save (one version) with a quiet Undo that
-// reverts to the version before it. Nothing here is sent anywhere; the only fetches are
-// this app's own schema and source catalog, both precached.
+// reverts to the version before it. The only fetches are this app's own schema and
+// source catalog, both precached, and (W1) the interests sync's PUT below.
 //
 // L1: Display carries the lean marker's two switches (on, colored), and the source
 // picker shows each outlet's marker after its name, a tap on it opening the lean sheet
@@ -44,6 +44,15 @@
 // shows every matching source flat, from any group, in place of the collapsed rows;
 // clearing it restores the list. Nothing about a source row itself changed: same
 // switch, same lean marker and tap target, same one-version toggle.
+//
+// W1 (R50): the add sheet also follows a phrase, the owner's own free text: the search
+// field doubles as the phrase field, and a "Follow a phrase" row above the catalog takes
+// what is typed. A phrase interest lists in quotes and has a page like a topic's (level,
+// fine tuning, Remove with Undo), without the tag-only mute and boosts. Standing stories
+// gain an "Add standing story" row (a name and keywords, js/standing-form.js) and a
+// "Remove standing story" action with Undo. Every save also schedules the interests
+// sync (js/interests-sync.js), which sends the phrase and standing-story searches, and
+// only those, to this site's own /api/interests for the hourly run.
 import { ProfileStore } from "./profile/store.js";
 import { buildDefaultProfile } from "./profile/default-profile.js";
 import { migrateProfile } from "./profile/migrate.js";
@@ -55,8 +64,16 @@ import {
   leanMarkersOn, leanColorOn, withLeanMarkers, withLeanColor, SOURCE_STATES, sourceState, withSourceState, withSourceStates, sourceCounts, groupSources,
   matchesQuery, searchSources, sourceDetail, HEALTH_WORDS, commitEdit,
   availableInterests, withTopicAdded, withTopicRemoved,
+  isPhraseTopic, phraseStatus, withPhraseAdded, standingStatus, withStandingAdded, withStandingRemoved,
 } from "./profile/you-edits.js";
 import { leanHit, leanMarker, leanSheetContent, setBasis } from "./lean.js";
+import { PHRASE_MAX, QUERIES_MAX } from "./phrase.js";
+import { scheduleSync, startSync } from "./interests-sync.js";
+import { standingForm, standingMessage } from "./standing-form.js";
+
+/** W1: a phrase interest's name as the page shows it, in quotes. */
+const phraseName = (phrase) => `“${phrase}”`;
+const topicName = (id, t) => (isPhraseTopic(t) ? phraseName(t.phrase) : t.label || id);
 
 const dateFormat = new Intl.DateTimeFormat(undefined, {
   month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
@@ -153,7 +170,11 @@ async function loadJson(path) {
 }
 
 function main(schema, catalog) {
-  const store = new ProfileStore({ storage: window.localStorage, schema, seedDefault: buildDefaultProfile, migrate: migrateProfile });
+  const store = new ProfileStore({
+    storage: window.localStorage, schema, seedDefault: buildDefaultProfile, migrate: migrateProfile,
+    onSave: () => scheduleSync(),
+  });
+  startSync();
   const sources = Array.isArray(catalog?.sources) ? catalog.sources : [];
   const bases = catalog && typeof catalog.lean_basis === "object" && catalog.lean_basis ? catalog.lean_basis : {};
   const { root, title, back } = pageChrome();
@@ -229,20 +250,26 @@ function main(schema, catalog) {
     }, [rowText("Add interest"), chevron()]);
   }
 
-  /** The sheet body: a search field over the catalog entries not already an interest,
-   * grouped the same way the source picker groups by region. Empty (every interest
-   * already added, or a search with no match) gets a quiet line, never a blank sheet. */
+  /** The sheet body: one field that both searches the catalog and takes a phrase (W1),
+   * the "Follow a phrase" row under it, then the catalog entries not already an
+   * interest, grouped the same way the source picker groups by region. The phrase row
+   * says what a tap would do with what is typed, or why it cannot. */
   function addInterestContent(profile) {
     const available = availableInterests(profile);
-    if (!available.length) {
-      return el("div", { class: "search-block" }, [
-        el("p", { class: "settings-hint", text: "Every interest this app can match is already on your list." }),
-      ]);
-    }
     const search = el("input", {
-      class: "text-field search-field", type: "search", placeholder: "Search interests",
-      "aria-label": "Search interests", autocomplete: "off", spellcheck: "false", enterkeyhint: "search",
+      class: "text-field search-field", type: "search", placeholder: "Search, or type a phrase to follow",
+      "aria-label": "Search interests or type a phrase", autocomplete: "off", spellcheck: "false", enterkeyhint: "go",
+      maxlength: String(PHRASE_MAX + 20),
     });
+    const phraseRow = el("button", { class: "setting-row", type: "button", id: "follow-phrase-row", "data-focus-key": "follow-phrase" },
+      [rowText("Follow a phrase", "Type any word or phrase above")]);
+    const [phraseLabel, phraseSub] = phraseRow.querySelectorAll(".setting-label, .setting-sublabel");
+    const PHRASE_SUBS = {
+      ok: "Headlines and summaries with these words, in this order, and the hourly search",
+      long: `Too long: ${PHRASE_MAX} characters at most`,
+      duplicate: "Already one of your interests",
+      full: `You follow ${QUERIES_MAX} phrases and standing stories, the most the hourly search takes`,
+    };
     const empty = el("p", { class: "settings-hint settings-hint--top", text: "No interest matches.", hidden: true });
     const byGroup = new Map();
     for (const entry of available) {
@@ -260,6 +287,11 @@ function main(schema, catalog) {
     });
     function filter() {
       const query = search.value;
+      const status = phraseStatus(store.current(), query);
+      phraseRow.dataset.state = status.ok ? "ok" : status.reason;
+      phraseRow.setAttribute("aria-disabled", String(!status.ok && status.reason !== "empty"));
+      phraseLabel.textContent = status.phrase ? `Follow ${phraseName(status.phrase)}` : "Follow a phrase";
+      phraseSub.textContent = PHRASE_SUBS[status.ok ? "ok" : status.reason] || "Type any word or phrase above";
       let any = false;
       for (const g of groups) {
         let visible = 0;
@@ -271,11 +303,30 @@ function main(schema, catalog) {
         g.section.hidden = visible === 0;
         any ||= visible > 0;
       }
-      empty.hidden = any;
+      empty.hidden = any || !groups.length || Boolean(status.phrase);
     }
     search.addEventListener("input", filter);
+    // Enter adds the catalog entry typed out in full, else follows the phrase.
+    search.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const typed = search.value.trim().toLowerCase();
+      const exact = groups.flatMap((g) => g.rows).find((r) => r.dataset.name.toLowerCase() === typed);
+      if (exact) addInterestChosen(exact.dataset.id, exact.dataset.name);
+      else if (phraseRow.dataset.state === "ok") addPhraseChosen(search.value);
+    });
+    phraseRow.addEventListener("click", () => {
+      if (phraseRow.dataset.state === "ok") addPhraseChosen(search.value);
+      else if (phraseRow.dataset.state === "empty") search.focus();
+    });
     filter();
-    const wrap = el("div", {}, [el("div", { class: "search-block" }, [search]), empty, ...groups.map((g) => g.section)]);
+    const catalog = groups.length ? groups.map((g) => g.section)
+      : [el("p", { class: "settings-hint settings-hint--top", text: "Every topic this app tags is already on your list." })];
+    const wrap = el("div", {}, [
+      el("div", { class: "search-block" }, [search]),
+      el("div", { class: "settings-section" }, [el("h2", { class: "settings-label", text: "Phrase" }), phraseRow]),
+      empty, ...catalog,
+    ]);
     wrap.addEventListener("click", (e) => {
       const row = e.target.closest("button[data-id]");
       if (row) addInterestChosen(row.dataset.id, row.dataset.name);
@@ -283,10 +334,11 @@ function main(schema, catalog) {
     return wrap;
   }
 
-  async function addInterestChosen(id, label) {
-    const result = commitEdit(store, (p) => withTopicAdded(p, id));
-    // Already loaded by openAddInterest to get here; a dynamic re-import just reads the
-    // module cache, no second fetch.
+  /** One commit from a sheet: close it, redraw, and a quiet toast with Undo. */
+  async function commitFromSheet(edit, message) {
+    const result = commitEdit(store, edit);
+    // Already loaded by the sheet's own opener to get here; a dynamic re-import just
+    // reads the module cache, no second fetch.
     const { closeSheet } = await import("./sheet.js");
     closeSheet();
     if (!result) return;
@@ -296,12 +348,22 @@ function main(schema, catalog) {
       return;
     }
     render({ keepScroll: true });
-    showToast(`${label} added`, {
+    showToast(message, {
       onAction: () => {
         store.revert(result.before);
         render({ keepScroll: true });
       },
     });
+  }
+
+  function addInterestChosen(id, label) {
+    return commitFromSheet((p) => withTopicAdded(p, id), `${label} added`);
+  }
+
+  function addPhraseChosen(text) {
+    const status = phraseStatus(store.current(), text);
+    if (!status.ok) return null;
+    return commitFromSheet((p) => withPhraseAdded(p, text), `Following ${phraseName(status.phrase)}`);
   }
 
   async function openAddInterest(opener) {
@@ -313,6 +375,41 @@ function main(schema, catalog) {
     }
   }
 
+  // --- W1: add a standing story, from the same sheet, a name and its keywords. ---
+  function addStandingRow() {
+    return el("button", {
+      class: "setting-row", type: "button", id: "add-standing-row", "data-focus-key": "add-standing",
+      onclick: (e) => openAddStanding(e.currentTarget),
+    }, [rowText("Add standing story"), chevron()]);
+  }
+
+  async function openAddStanding(opener) {
+    try {
+      const { openSheet, closeSheet } = await import("./sheet.js");
+      const content = standingForm({
+        submitText: "Add",
+        onSubmit: (label, keywords) => {
+          const status = standingStatus(store.current(), { label, keywords });
+          if (!status.ok) return standingMessage(status.reason);
+          const result = commitEdit(store, (p) => withStandingAdded(p, { label, keywords }));
+          if (!result?.ok) return result ? `Not saved: ${result.errors[0]}` : standingMessage("name");
+          closeSheet();
+          render({ keepScroll: true });
+          showToast(`Following ${status.label}`, {
+            onAction: () => {
+              store.revert(result.before);
+              render({ keepScroll: true });
+            },
+          });
+          return null;
+        },
+      });
+      openSheet({ title: "Add standing story", content, opener });
+    } catch (err) {
+      console.warn("You page: the add-standing-story sheet could not open", err);
+    }
+  }
+
   // --- You ---
   function viewYou(profile) {
     return [
@@ -320,14 +417,17 @@ function main(schema, catalog) {
         ...Object.entries(profile.topics).map(([id, t]) => {
           const floor = t.enabled !== false && t.floor_slots > 0;
           const value = floor ? `Top ${t.floor_slots}` : levelWord(levelOf(t));
-          return linkRow(`#interest/${encodeURIComponent(id)}`, t.label || id, null, value, { "data-topic": id });
+          return linkRow(`#interest/${encodeURIComponent(id)}`, topicName(id, t), null, value, { "data-topic": id });
         }),
         addInterestRow(),
       ])]),
       section("Standing stories", () => {
         const stories = (profile.standing_stories || []).map((s) => linkRow(`#story/${encodeURIComponent(s.id)}`, s.label || s.id, null,
-          s.enabled ? "On" : "Off"));
-        return stories.length ? stories : [el("p", { class: "settings-hint", text: "None followed. Add one in Advanced." })];
+          s.enabled ? "On" : "Off", { "data-story": s.id }));
+        return [
+          stories.length ? null : el("p", { class: "settings-hint", text: "None followed. A standing story keeps a subject on Today and says when it goes quiet." }),
+          el("div", { id: "standing-list" }, [...stories, addStandingRow()]),
+        ];
       }),
       section("News sources", () => {
         const counts = sourceCounts(profile, sources);
@@ -346,7 +446,7 @@ function main(schema, catalog) {
       section("Health", [linkRow("/health", "Feed health", "Pool age, the last run, every source's status")]),
       section("Advanced", () => [linkRow("#advanced", "Profile data and versions", `Raw JSON, history and revert. Now v${store.history()[0].version}`)]),
       el("footer", { class: "colophon colophon--settings" }, [
-        el("p", { class: "colophon-text", text: "Kept on this device only. Your profile is never sent anywhere." }),
+        el("p", { class: "colophon-text", text: "Kept on this device. Only the searches for your phrases and standing stories leave it, to this site's own server, for the hourly run." }),
       ]),
     ];
   }
@@ -390,11 +490,13 @@ function main(schema, catalog) {
   function viewInterest(profile, id) {
     const topic = profile.topics[id];
     const level = levelOf(topic);
-    const levelButtons = el("div", { class: "level-control", role: "radiogroup", "aria-label": `${topic.label} level` },
+    const phrase = isPhraseTopic(topic);
+    const name = topicName(id, topic);
+    const levelButtons = el("div", { class: "level-control", role: "radiogroup", "aria-label": `${name} level` },
       LEVELS.map((l) => el("button", {
         class: "level-option", type: "button", role: "radio", "aria-checked": String(l.id === level),
         "data-focus-key": `level-${l.id}`, text: l.word,
-        onclick: () => commit((p) => withTopicLevel(p, id, l.id), `${topic.label}: ${l.word}`),
+        onclick: () => commit((p) => withTopicLevel(p, id, l.id), `${name}: ${l.word}`),
       })));
 
     const tuning = [
@@ -416,6 +518,28 @@ function main(schema, catalog) {
         onCommit: (v) => commit((p) => withTopicField(p, id, "floor_slots", v), `${topic.label}: top ${v} kept`),
       }));
     }
+    const levelSection = el("section", { class: "settings-section" }, [
+      el("h2", { class: "settings-label", text: "Level" }),
+      levelButtons,
+      el("p", { class: "settings-hint settings-hint--after", text: LEVEL_HINTS[level] }),
+    ]);
+    const remove = el("button", { class: "btn-row", type: "button", text: "Remove interest", "data-focus-key": "remove-interest",
+      onclick: () => removeInterest(id, name) });
+    // W1: a phrase matches by its words, never by a pool tag, so the tag-only mute and
+    // topic boosts do not apply; what it matches, and that it is searched, is said here.
+    if (phrase) {
+      return [
+        levelSection,
+        section("Phrase", [
+          el("p", { class: "settings-hint", id: "phrase-how", text: `Lifts a story whose headline or summary holds ${name}: the whole words, in this order, in any case, singular or plural.` }),
+          el("p", { class: "settings-hint", text: topic.enabled === false
+            ? "The hourly search skips it while it is off."
+            : "The hourly search also looks for it on Google News, so stories the app has not fetched yet can arrive." }),
+        ]),
+        section("Fine tuning", tuning),
+        remove,
+      ];
+    }
     const muted = (profile.mutes?.topics || []).includes(id);
     tuning.push(switchRow("mute", "Hide its stories", "Removes every story tagged with this interest, whatever else it scores.",
       muted, (on) => commit((p) => withTopicMuted(p, id, on), on ? `${topic.label} stories hidden` : `${topic.label} stories shown`)));
@@ -433,17 +557,7 @@ function main(schema, catalog) {
       ]),
     ])) : [el("p", { class: "settings-hint", text: "None. Boost a topic from any story's menu to add one here." })];
 
-    return [
-      el("section", { class: "settings-section" }, [
-        el("h2", { class: "settings-label", text: "Level" }),
-        levelButtons,
-        el("p", { class: "settings-hint settings-hint--after", text: LEVEL_HINTS[level] }),
-      ]),
-      section("Fine tuning", tuning),
-      section("Boosts", boostRows),
-      el("button", { class: "btn-row", type: "button", text: "Remove interest", "data-focus-key": "remove-interest",
-        onclick: () => removeInterest(id, topic.label || id) }),
-    ];
+    return [levelSection, section("Fine tuning", tuning), section("Boosts", boostRows), remove];
   }
 
   // U4: no confirmation dialog (the ask is explicit about that): commit the removal,
@@ -454,7 +568,16 @@ function main(schema, catalog) {
   // own hideToast() could hide it before the owner ever sees it); replaceState never
   // fires popstate at all, so there is nothing to race.
   function removeInterest(id, label) {
-    const result = commitEdit(store, (p) => withTopicRemoved(p, id));
+    removeAndReturn((p) => withTopicRemoved(p, id), `Removed ${label}.`);
+  }
+
+  // W1: the same for a standing story, from its own page.
+  function removeStanding(id, label) {
+    removeAndReturn((p) => withStandingRemoved(p, id), `Removed ${label}.`);
+  }
+
+  function removeAndReturn(edit, message) {
+    const result = commitEdit(store, edit);
     if (!result) return;
     if (!result.ok) {
       showToast(`Not saved: ${result.errors[0]}`);
@@ -468,7 +591,7 @@ function main(schema, catalog) {
     render();
     place();
     persist();
-    showToast(`Removed ${label}.`, {
+    showToast(message, {
       onAction: () => {
         store.revert(result.before);
         render({ keepScroll: true });
@@ -511,6 +634,8 @@ function main(schema, catalog) {
           onCommit: (v) => commit((p) => withStandingField(p, id, "silence_hours", v), `${story.label}: alarm after ${v}h`),
         }),
       ]),
+      el("button", { class: "btn-row", type: "button", text: "Remove standing story", "data-focus-key": "remove-story",
+        onclick: () => removeStanding(id, story.label || id) }),
     ];
   }
 
@@ -738,7 +863,7 @@ function main(schema, catalog) {
 
   // --- Routing and rendering ---
   function titleFor(route, profile) {
-    if (route.view === "interest") { const t = profile.topics?.[route.id]; return t && (t.label || route.id); }
+    if (route.view === "interest") { const t = profile.topics?.[route.id]; return t && topicName(route.id, t); }
     if (route.view === "story") { const s = (profile.standing_stories || []).find((x) => x?.id === route.id); return s && (s.label || s.id); }
     if (route.view === "sourceGroup") { const g = groupSources(sources).find((x) => x.id === route.id); return g && g.label; }
     if (route.view === "sources") return "News sources";

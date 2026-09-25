@@ -9,6 +9,12 @@
 // new version each; the affected panel re-ranks in place with the scroll anchored
 // (actions/scroll-anchor.js) and a quiet toast offers Undo, which reverts to the
 // version saved just before the action, itself one more ordinary append.
+//
+// W1: "Follow this story" opens the standing-story form (standing-form.js) prefilled
+// with a name and keywords from the story's own headlines (story-keywords.js); Follow
+// saves it as one version, re-ranks the built panels (its floor may place a card), and
+// offers Undo. Every save here also schedules the interests sync, and the page checks
+// it once on load, so an edit made offline reaches the hourly search later.
 import { openSheet, closeSheet } from "./sheet.js";
 import { showToast } from "./toast.js";
 import { ProfileStore } from "./profile/store.js";
@@ -36,6 +42,10 @@ import { openedStore } from "./history/store.js";
 import { recordOpened } from "./history/record.js";
 import { readSummary, summaryToHistory, noteSeen } from "./history/summary.js";
 import { seenPenaltyTerm } from "./history/penalty.js";
+import { standingStatus, withStandingAdded } from "./profile/you-edits.js";
+import { suggestStanding } from "./story-keywords.js";
+import { standingForm, standingMessage } from "./standing-form.js";
+import { scheduleSync, startSync } from "./interests-sync.js";
 
 function currentHistoryTerms() {
   return [seenPenaltyTerm(summaryToHistory(readSummary(window.localStorage)))];
@@ -54,6 +64,7 @@ const ICONS = Object.freeze({
   down: "M15 3H6.9c-.8 0-1.5.5-1.8 1.3L2.7 9.9c-.1.2-.1.4-.1.6v1.8c0 1 .8 1.8 1.8 1.8h5.1l-.7 3.6-.1.5c0 .4.2.8.4 1.1l.8 1.7 4.8-4.8c.3-.3.5-.7.5-1.1V5c0-1.1-.9-2-2-2zM21 14h-3V3h3z",
   mute: "M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zM4 12c0-4.4 3.6-8 8-8 1.8 0 3.5.6 4.9 1.7L5.7 16.9C4.6 15.5 4 13.8 4 12zm8 8c-1.8 0-3.5-.6-4.9-1.7L18.3 7.1C19.4 8.5 20 10.2 20 12c0 4.4-3.6 8-8 8z",
   boost: "M4 14l1.4 1.4L11 9.8V20h2V9.8l5.6 5.6L20 14l-8-8-8 8z",
+  follow: "M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z",
   why: "M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.4 0-8-3.6-8-8s3.6-8 8-8 8 3.6 8 8-3.6 8-8 8z",
   more: "M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
 });
@@ -82,7 +93,10 @@ function loadSchema() {
 let storeInstance = null;
 async function getStore() {
   if (!storeInstance) {
-    storeInstance = new ProfileStore({ storage: window.localStorage, schema: await loadSchema(), seedDefault: buildDefaultProfile });
+    storeInstance = new ProfileStore({
+      storage: window.localStorage, schema: await loadSchema(), seedDefault: buildDefaultProfile,
+      onSave: () => scheduleSync(),
+    });
   }
   return storeInstance;
 }
@@ -149,6 +163,7 @@ async function openStoryMenu(li) {
   items.push(menuItem({ action: "mute-source", icon: ICONS.mute, text: attrs.source_name ? `Mute ${attrs.source_name}` : "Mute source" }));
   items.push(menuItem({ action: "mute-topic", icon: ICONS.mute, text: "Mute topic" }));
   items.push(menuItem({ action: "boost-topic", icon: ICONS.boost, text: "Boost topic" }));
+  items.push(menuItem({ action: "follow", icon: ICONS.follow, text: "Follow this story" }));
   items.push(menuItem({ action: "why", icon: ICONS.why, text: "Why this", hidden: !WHY_THIS_ENABLED }));
 
   const menu = document.createElement("div");
@@ -176,6 +191,7 @@ function handleAction(action, ctx) {
   if (action === "mute-source") return doMuteSource(ctx);
   if (action === "mute-topic") return doMuteTopic(ctx);
   if (action === "boost-topic") return doBoostTopic(ctx);
+  if (action === "follow") return doFollow(ctx);
   if (action === "why") return doWhy(ctx);
   return null;
 }
@@ -359,6 +375,58 @@ function doMuteTopic({ li, attrs }) {
 function doBoostTopic({ li, attrs }) {
   return runProfileAction(li, (profile) => withTopicBoosted(profile, attrs.topics), "Topic boosted");
 }
+
+// --- W1: follow a story as a standing story. ---
+
+/** The story's own headlines (every member of its cluster, or the one article) and
+ * every headline in the pool, from the page's own rank input. */
+function storyTitles(input, sid) {
+  const articles = input.pool?.articles || [];
+  const byId = new Map(articles.map((a) => [a.id, a]));
+  const cluster = (input.pool?.clusters || []).find((c) => c.id === sid);
+  const ids = cluster ? cluster.article_ids : [sid];
+  return { own: ids.map((id) => byId.get(id)?.title).filter(Boolean), pool: articles.map((a) => a.title).filter(Boolean) };
+}
+
+async function doFollow({ li, sid }) {
+  const opener = li.querySelector(".story-overflow");
+  const input = getInput();
+  const { own, pool } = storyTitles(input, sid);
+  const suggestion = suggestStanding(own.length ? own : [li.querySelector(".headline")?.textContent || ""], pool);
+  closeSheet();
+  const content = standingForm({
+    label: suggestion.label,
+    keywords: suggestion.keywords,
+    submitText: "Follow",
+    onSubmit: async (label, keywords) => {
+      let store;
+      try {
+        store = await getStore();
+      } catch {
+        return "Could not save that. Try again once you are online.";
+      }
+      const before = store.current();
+      const status = standingStatus(before, { label, keywords });
+      if (!status.ok) return standingMessage(status.reason);
+      const result = store.save(withStandingAdded(before, { label, keywords }));
+      if (!result.ok) return `Not saved: ${result.errors[0]}`;
+      closeSheet();
+      rerenderAfterProfileChange(result.profile, panelOf(li));
+      showToast(`Following ${status.label}`, {
+        onAction: () => {
+          const reverted = store.revert(before.profile_version);
+          if (reverted.ok) rerenderAfterProfileChange(reverted.profile, panelOf(li));
+        },
+      });
+      return null;
+    },
+  });
+  await sheetClosed();
+  openSheet({ title: "Follow this story", content, opener });
+}
+
+// W1: once per page load, a check that the phone's searches reached the hourly run.
+startSync();
 
 document.addEventListener("click", (event) => {
   const button = event.target.closest(".story-overflow");

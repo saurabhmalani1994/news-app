@@ -438,8 +438,19 @@ button.setting-row:focus-visible {
   border-top: var(--divider-weight) solid var(--color-divider);
 }
 
-#topics-list > .setting-row:first-child {
+#topics-list > .setting-row:first-child,
+#standing-list > .setting-row:first-child {
   border-top: none;
+}
+
+/* W1: the add sheet's phrase row, while what is typed cannot be followed (too long, a
+   repeat, the search full): it says why in its second line and does nothing on a tap. */
+#follow-phrase-row[aria-disabled="true"] .setting-label {
+  color: var(--color-meta);
+}
+
+#follow-phrase-row[aria-disabled="true"]:active {
+  background: none;
 }
 
 .setting-row[hidden],

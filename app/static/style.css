@@ -2595,6 +2595,104 @@ body {
   fill: var(--color-headline);
 }
 
+/* W1: the standing-story form (js/standing-form.js), in this same sheet on Today and on
+   the You page. The You page's own field language: a small caps label, a field with a
+   bottom rule only (never a boxed field), a quiet hint, and one full-width action under
+   a hairline, like the sheet's own rows. 16px text in the fields, so a phone never
+   zooms into them. */
+.sheet-form {
+  padding: 2px var(--space-gutter) 0;
+}
+
+.sheet-field {
+  display: block;
+  padding-top: 12px;
+}
+
+.sheet-field-label {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-meta);
+}
+
+.sheet-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 8px 0 10px;
+  background: transparent;
+  border-style: none;
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 22px;
+  color: var(--color-headline);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.sheet-input:focus-visible {
+  outline: none;
+  border-bottom-color: var(--color-headline);
+}
+
+.sheet-input--area {
+  height: 88px;
+  resize: none;
+}
+
+.sheet-hint,
+.sheet-error {
+  margin: 12px 0 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-meta);
+}
+
+.sheet-error {
+  color: var(--color-headline);
+}
+
+.sheet-error[hidden] {
+  display: none;
+}
+
+.sheet-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: calc(100% + 2 * var(--space-gutter));
+  min-height: var(--touch-min);
+  margin: 16px calc(-1 * var(--space-gutter)) 0;
+  padding: 0;
+  background: none;
+  border-style: none;
+  border-top: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-headline);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.sheet-submit:active {
+  background: var(--color-pressed);
+}
+
+.sheet-submit:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sheet-scrim,
   .sheet,
