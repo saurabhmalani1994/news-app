@@ -247,7 +247,9 @@ PAGE = """<!doctype html>
 <meta name="apple-mobile-web-app-title" content="Almanac">
 <title>Feed health - Almanac</title>
 <link rel="preload" href="fonts/LibreFranklin-Medium-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="manifest" href="manifest.webmanifest">
+<!-- S34: crossorigin="use-credentials" so this fetch carries the Access cookie behind
+     Cloudflare Access, same as build.py's own index.html link. -->
+<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="style.css">

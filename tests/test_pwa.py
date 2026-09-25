@@ -58,7 +58,9 @@ def test_index_and_profile_pages_link_the_manifest_and_apple_touch_icon(tmp_path
     out = _build(tmp_path)
     for name in ("index.html", "profile.html"):
         html = (out / name).read_text(encoding="utf-8")
-        assert '<link rel="manifest" href="manifest.webmanifest">' in html
+        # S34: crossorigin="use-credentials" so the fetch carries the Access cookie
+        # behind Cloudflare Access (found by tests/browser/s34_check.mjs).
+        assert '<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">' in html
         assert '<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">' in html
         # H2: every script URL carries the build stamp (test_h2_* below).
         assert re.search(r'<script src="js/sw-register\.js\?v=[0-9a-f]{16}" defer></script>', html)
