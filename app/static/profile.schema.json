@@ -80,13 +80,14 @@
       }
     },
     "display": {
-      "description": "U1/U2 display settings, optional: an absent object or field takes the default. summaries: \"all\" shows a summary under every story, \"top\" only under the lead stories. Default \"all\". L1: lean_markers shows the five-dot lean marker after a source name (default true); lean_color fills its dot muted blue for left, muted red for right, grey for center (default false).",
+      "description": "U1/U2 display settings, optional: an absent object or field takes the default. summaries: \"all\" shows a summary under every story, \"top\" only under the lead stories. Default \"all\". L1: lean_markers shows the five-dot lean marker after a source name (default true); lean_color fills its dot muted blue for left, muted red for right, grey for center (default false). V1: word_marks marks, in the versions carousel, the headline words no other version used (default true, R40 answer 8).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "summaries": {"enum": ["all", "top"]},
         "lean_markers": {"type": "boolean"},
-        "lean_color": {"type": "boolean"}
+        "lean_color": {"type": "boolean"},
+        "word_marks": {"type": "boolean"}
       }
     },
     "seen_penalty": {
