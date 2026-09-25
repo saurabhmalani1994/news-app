@@ -79,6 +79,43 @@ export function retier(lists, order, rows, deks, images) {
   });
 }
 
+// H4 item 3: outlets a row's own cluster would leave visible for this viewer, the same
+// units passes.js's mute and versions.js's buildVersions already drop for them: a
+// near-duplicate group (syndicated copies) counts once, one outlet counts once however
+// many pieces it ran, and a muted outlet's own article never forms or joins a unit.
+// Mirrors app/frontpage.py visible_source_count so the build and the device agree.
+export function visibleSourceCount(cluster, articleById, muted) {
+  if (!cluster) return 1;
+  const off = new Set(muted || []);
+  const groupOf = new Map();
+  (cluster.near_duplicates || []).forEach((group, index) => {
+    for (const id of group) groupOf.set(id, index);
+  });
+  const units = new Set();
+  for (const id of cluster.article_ids || []) {
+    const article = articleById.get(id);
+    if (!article || off.has(article.source_id)) continue;
+    const group = groupOf.get(id);
+    units.add(group !== undefined ? `g${group}` : `s${article.source_id}`);
+  }
+  return units.size;
+}
+
+/** Rewrites a row's "N sources" span (app/build.py _meta) for `count`, the number the
+ * stored profile's mutes actually leave (visibleSourceCount); removes the span and its
+ * separator once count drops to 1 or fewer. The build only ever renders the span when
+ * its own mute-free count is over 1, and muting only ever lowers this count, so a row
+ * that never had one never needs one created here (CLS 0: nothing this adds or removes
+ * runs after first paint, only while root carries .rerank). */
+export function placeSourceCount(li, count) {
+  const span = li?.querySelector(".meta-count");
+  if (!span) return;
+  if (count > 1) { span.textContent = `${count} sources`; return; }
+  const sep = span.previousElementSibling;
+  if (sep && sep.classList.contains("meta-sep")) sep.remove();
+  span.remove();
+}
+
 // S13: the other-side link a pass attached to a row (passes.js), drawn as the build
 // draws it (app/build.py OTHER): its own link after the card's, label then headline,
 // every string as text (R26), an href only for an http(s) url. `record` is the story's

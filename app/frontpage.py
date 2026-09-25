@@ -82,13 +82,35 @@ def clean_dek(article):
 
 def independent_source_count(members, near_duplicates):
     """Outlets that wrote their own copy. A near-duplicate group (syndicated copies of
-    one piece) counts once, and one outlet counts once however many pieces it ran."""
+    one piece) counts once, and one outlet counts once however many pieces it ran. A
+    fact about the pool (R11 importance, R16 must-know, the other-side threshold): it
+    never reads mutes, so muting an outlet never changes a surviving story's score."""
     group_of = {}
     for index, group in enumerate(near_duplicates):
         for article_id in group:
             group_of[article_id] = index
     units = set()
     for article in members:
+        group = group_of.get(article["id"])
+        units.add(("group", group) if group is not None else ("source", article["source_id"]))
+    return len(units)
+
+
+def visible_source_count(members, near_duplicates, muted):
+    """The same count as independent_source_count, but for the row's own "N sources"
+    text (H4 item 3): outlets the viewer's mutes would actually leave in the versions
+    carousel (js/versions.js buildVersions, which drops a muted source's every version).
+    A muted outlet's article never forms or joins a unit, so a syndicated group led by a
+    muted outlet still counts the group once for its other, unmuted members."""
+    muted = set(muted)
+    group_of = {}
+    for index, group in enumerate(near_duplicates):
+        for article_id in group:
+            group_of[article_id] = index
+    units = set()
+    for article in members:
+        if article["source_id"] in muted:
+            continue
         group = group_of.get(article["id"])
         units.add(("group", group) if group is not None else ("source", article["source_id"]))
     return len(units)

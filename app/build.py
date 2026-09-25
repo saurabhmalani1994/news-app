@@ -24,7 +24,8 @@ from app.csp import headers_file
 from app.health import render as render_health
 from app.dek import fit_dek
 from app.frontpage import (CHARS_PER_LINE, DEK_LINES, ROW_DEK_LINES, clean_dek, dek_budget, front_page,
-                           pass_input, rank_input, run_ranker, source_countries, source_ownership)
+                           pass_input, rank_input, run_ranker, source_countries, source_ownership,
+                           visible_source_count)
 from app.images import THUMB_PX, credit_text, hero_box, hero_media, hero_worthy, image_url, media_for, thumb_ok
 from app.lean import hit_html as lean_hit_html, marker_html as lean_marker_html
 from app.serviceworker import write_service_worker
@@ -585,7 +586,7 @@ def _safe_url(url):
 META_SEP = f'<span class="meta-sep"> {MIDDOT} </span>'
 
 
-def _meta(story, source_names, now, read_from=None, lean=None, country=None):
+def _meta(story, source_names, now, read_from=None, lean=None, country=None, visible_sources=None):
     """U3 (R45): the meta as two lines, the second shown only when it has something.
     Line 1 is who and when: the source, its marker (L1, U3), the age. Line 2 is what the
     row offers: the quiet 'N sources' of a multi-outlet cluster (S14's coverage trigger
@@ -596,7 +597,14 @@ def _meta(story, source_names, now, read_from=None, lean=None, country=None):
     paint. Line 2 also carries the age as data-age: where the meta sits beside a river
     thumbnail, too narrow for the name and the age on one line, style.css leads line 2
     with it instead (every row there takes the second line). Only the outlet names may
-    truncate (style.css); the source count and the age never do."""
+    truncate (style.css); the source count and the age never do.
+
+    H4 item 3: `visible_sources` (app.frontpage.visible_source_count) is the count the
+    versions carousel would actually show, outlets the viewer muted left out; it falls
+    back to story.independent_sources when the caller has none (build's own default
+    profile mutes nothing, so the two agree there). The device re-rank (js/rerank.js)
+    recomputes this per row for the stored profile's real mutes and rewrites the same
+    span, so the row and the carousel never disagree."""
     article = story.lead
     source = source_names.get(article.get("source_id"), "")
     age = relative_age(article.get("published_at"), now)
@@ -609,8 +617,9 @@ def _meta(story, source_names, now, read_from=None, lean=None, country=None):
             first.append(META_SEP)
         first.append(f'<span class="meta-age">{escape(age)}</span>')
     second = []
-    if story.independent_sources > 1:
-        second.append(META_SEP + f'<span class="meta-count">{story.independent_sources} sources</span>')
+    shown = story.independent_sources if visible_sources is None else visible_sources
+    if shown > 1:
+        second.append(META_SEP + f'<span class="meta-count">{shown} sources</span>')
     if read_from is not None:
         second.append(META_SEP + f'<span class="meta-read"><span class="meta-read-label">{READ_HERE}</span></span>')
         if read_from:
@@ -673,7 +682,7 @@ def _other_side(record, links, source_names, leans, countries=None):
 
 
 def _render_story(story, tier, source_names, now, by_id, other="", coverage="", chars=None, leans=None,
-                  countries=None):
+                  countries=None, visible_sources=None):
     article = story.lead
     source_id = article.get("source_id")
     lean = (leans or {}).get(source_id)
@@ -701,7 +710,8 @@ def _render_story(story, tier, source_names, now, by_id, other="", coverage="", 
         close = "</a>"
     return STORY.format(
         tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
-        title=title, dek=dek, meta=_meta(story, source_names, now, read_from=read_from, lean=lean, country=country),
+        title=title, dek=dek, meta=_meta(story, source_names, now, read_from=read_from, lean=lean, country=country,
+                                          visible_sources=visible_sources),
         other=other, coverage=coverage,
         lean_hit=lean_hit_html(source_id, lean, country) if source_names.get(source_id) else "",
         media=_media(tier, hero_media(_members(story, by_id), article, source_names) if tier == "hero" else None,
@@ -776,9 +786,14 @@ def render(pool, ranking=None, chars=None):
         # V1: the trigger lies over the row's own "N sources", so a row shows it only
         # when that count shows (two or more versions); a cluster whose members are all
         # one syndicated copy has one version and no carousel.
+        # H4 item 3: the shown count is outlets the build's own (mute-free) default
+        # profile would leave visible; a single-article story never has a cluster entry.
+        cluster = clusters_by_id.get(story.id)
+        visible = (visible_source_count(_members(story, by_id), cluster.get("near_duplicates", []), ())
+                   if cluster is not None else 1)
         coverage = coverages.get(story.id, "") if story.independent_sources > 1 else ""
         return _render_story(story, tier, source_names, now, by_id, others.get(story.id, ""),
-                              coverage, chars, leans, countries)
+                              coverage, chars, leans, countries, visible_sources=visible)
 
     def rows(names):
         return "\n".join(row(story, tier) for tier in names for story in tiers[tier])

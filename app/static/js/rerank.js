@@ -14,7 +14,7 @@
 // before first paint; window.almanacHistorySummary is the compact localStorage summary
 // rank-gate.js already read synchronously.
 import { rankPages } from "./passes.js";
-import { retier, placeOtherSide } from "./tiers.js";
+import { retier, placeOtherSide, visibleSourceCount, placeSourceCount } from "./tiers.js";
 import { buildDefaultProfile } from "./profile/default-profile.js";
 import { summaryToHistory } from "./history/summary.js";
 import { seenPenaltyTerm } from "./history/penalty.js";
@@ -90,7 +90,13 @@ function run() {
       const lists = ["headlines", "more-list", "rest-list"].map((id) => document.getElementById(id));
       retier(lists, order, rows, input.deks, input.images || {});
       placeReadChoice(rows, input, profile.trust);
-      for (const story of pages.today) placeOtherSide(rows.get(story.id), story.other_side || null, input);
+      const clusters = new Map((input.pool?.clusters || []).map((c) => [c.id, c]));
+      const articleById = new Map((input.pool?.articles || []).map((a) => [a.id, a]));
+      const muted = (profile.mutes && profile.mutes.sources) || [];
+      for (const story of pages.today) {
+        placeOtherSide(rows.get(story.id), story.other_side || null, input);
+        placeSourceCount(rows.get(story.id), visibleSourceCount(clusters.get(story.id), articleById, muted));
+      }
       drawNotices(document.getElementById("standing-notices"), pages.notices);
       const toggle = today.querySelector(".more-toggle");
       if (toggle) toggle.textContent = `Show ${Math.max(0, order.length - 35)} more headlines`;
