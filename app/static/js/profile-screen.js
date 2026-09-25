@@ -6,7 +6,8 @@
 //                            advanced, each a plain row
 //   /profile#interest/<id>   one interest: its level in words, then its fine tuning
 //   /profile#story/<id>      one standing story: keywords, floor, alarm hours
-//   /profile#sources         every source by region, with search and on/off
+//   /profile#sources         sources collapsed into about eight groups, with search
+//   /profile#sources/<id>    one group's own sources, search and on/off
 //   /profile#advanced        the raw JSON editor, version history, diff and revert
 //
 // S12's why-this links still land: "#topic-<id>" becomes "#interest/<id>" and
@@ -32,6 +33,17 @@
 // interest" sits at the bottom of the per-interest page, no confirmation: it commits,
 // steps back to the list (a stale hash into a deleted interest is never left behind),
 // and a quiet Undo restores the exact version before it, same as every other edit here.
+//
+// U5: the sources page nested. The owner, on his phone: "the you page now got way too
+// big again... specifically the news sources page" (97 sources, every one drawn at
+// once). #sources now draws one collapsed row per group (you-edits.js's groupSources,
+// about eight of them) with its own "N of M on" count and a chevron; opening one is a
+// forward step to its own sub-view (#sources/<id>), the same one-level-deeper pattern
+// #interest/<id> already uses, so the masthead Back and the system Back both land on
+// the list they came from (backTarget below). Typing in the list's own search field
+// shows every matching source flat, from any group, in place of the collapsed rows;
+// clearing it restores the list. Nothing about a source row itself changed: same
+// switch, same lean marker and tap target, same one-version toggle.
 import { ProfileStore } from "./profile/store.js";
 import { buildDefaultProfile } from "./profile/default-profile.js";
 import { migrateProfile } from "./profile/migrate.js";
@@ -40,8 +52,8 @@ import { showToast, hideToast } from "./toast.js";
 import {
   LEVELS, levelOf, levelWord, withTopicLevel, withTopicField, withTopicMuted, boostsForTopic,
   withBoostAmount, withBoostRemoved, withStandingField, summariesMode, withSummaries,
-  leanMarkersOn, leanColorOn, withLeanMarkers, withLeanColor, SOURCE_STATES, sourceState, withSourceState, withSourceStates, sourceCounts, groupByRegion,
-  matchesQuery, sourceDetail, HEALTH_WORDS, commitEdit,
+  leanMarkersOn, leanColorOn, withLeanMarkers, withLeanColor, SOURCE_STATES, sourceState, withSourceState, withSourceStates, sourceCounts, groupSources,
+  matchesQuery, searchSources, sourceDetail, HEALTH_WORDS, commitEdit,
   availableInterests, withTopicAdded, withTopicRemoved,
 } from "./profile/you-edits.js";
 import { leanHit, leanMarker, leanSheetContent, setBasis } from "./lean.js";
@@ -184,6 +196,7 @@ function main(schema, catalog) {
     const [view, id] = hash.split("/");
     if (view === "interest" && id) return { view, id, key: hash };
     if (view === "story" && id) return { view, id, key: hash };
+    if (view === "sources" && id) return { view: "sourceGroup", id, key: hash };
     if (view === "sources" || view === "advanced") return { view, key: view };
     return { view: "you", key: "you" };
   }
@@ -501,7 +514,22 @@ function main(schema, catalog) {
     ];
   }
 
-  // --- Sources ---
+  // --- Sources: a collapsed list of groups, each opening to its own sub-view, with a
+  // search field that shows matches flat (from every group) while it holds text (U5).
+  /** One source row: its switch, health line and lean marker (`hits` collects the
+   * marker's own tap target, appended after every row in the section so a hit sitting
+   * between two rows never breaks their hairline, same reasoning as before U5). */
+  function sourceRow(profile, s, hits) {
+    const detail = [sourceDetail(s), HEALTH_WORDS[s.health] || ""].filter(Boolean).join(" · ");
+    const row = switchRow(`source-${s.id}`, s.name, detail, sourceState(profile, s.id) === SOURCE_STATES.ON,
+      (on) => commit((p) => withSourceState(p, s.id, on ? SOURCE_STATES.ON : SOURCE_STATES.OFF), `${s.name} ${on ? "on" : "off"}`));
+    row.dataset.source = s.id;
+    row.dataset.name = s.name;
+    if (s.health === "down" || s.health === "failing") row.classList.add("source-row--unwell");
+    placeLean(row, s, hits);
+    return row;
+  }
+
   function viewSources(profile) {
     if (!sources.length) {
       return [el("p", { class: "settings-hint settings-hint--top", text: "The source list is not available yet. Open this page once online." })];
@@ -514,54 +542,30 @@ function main(schema, catalog) {
     search.value = sourceQuery;
     const empty = el("p", { class: "settings-hint settings-hint--top", text: "No source matches.", hidden: true });
 
-    const groups = groupByRegion(sources).map((group) => {
-      const ids = group.sources.map((s) => s.id);
-      const allOn = ids.every((sid) => sourceState(profile, sid) === SOURCE_STATES.ON);
-      const next = allOn ? SOURCE_STATES.OFF : SOURCE_STATES.ON;
-      const head = el("div", { class: "group-head" }, [
-        el("h2", { class: "settings-label", text: group.label }),
-        el("button", {
-          class: "btn-quiet group-action", type: "button", "data-focus-key": `group-${group.bucket}`,
-          text: allOn ? "Turn all off" : "Turn all on", "aria-label": `${allOn ? "Turn all off" : "Turn all on"}: ${group.label}`,
-          onclick: () => commit((p) => withSourceStates(p, ids, next), `${group.label}: all ${next}`),
-        }),
-      ]);
-      const hits = [];
-      const rows = group.sources.map((s) => {
-        const detail = [sourceDetail(s), HEALTH_WORDS[s.health] || ""].filter(Boolean).join(" · ");
-        const row = switchRow(`source-${s.id}`, s.name, detail, sourceState(profile, s.id) === SOURCE_STATES.ON,
-          (on) => commit((p) => withSourceState(p, s.id, on ? SOURCE_STATES.ON : SOURCE_STATES.OFF), `${s.name} ${on ? "on" : "off"}`));
-        row.dataset.source = s.id;
-        row.dataset.name = s.name;
-        if (s.health === "down" || s.health === "failing") row.classList.add("source-row--unwell");
-        placeLean(row, s, hits);
-        return row;
-      });
-      // The markers' tap targets sit after the rows (a button inside the switch's own
-      // label would be invalid, and between rows it would break their hairlines), each
-      // laid over its own row's dots by a per-source anchor name.
-      return el("section", { class: "settings-section source-group", "data-bucket": group.bucket }, [head, ...rows, ...hits]);
-    });
+    const groups = groupSources(sources);
+    const groupList = el("section", { class: "settings-section", id: "source-group-list" },
+      groups.map((group) => {
+        const gc = sourceCounts(profile, group.sources);
+        return linkRow(`#sources/${encodeURIComponent(group.id)}`, group.label, null, `${gc.on} of ${gc.total} on`, { "data-group": group.id });
+      }));
+    const results = el("section", { class: "settings-section", id: "source-search-results" });
 
-    function filter() {
-      let any = false;
-      for (const groupEl of groups) {
-        let visible = 0;
-        for (const row of groupEl.querySelectorAll("label[data-source]")) {
-          const match = matchesQuery(row.dataset.name, sourceQuery);
-          row.hidden = !match;
-          const hit = groupEl.querySelector(`.lean-hit[data-lean-source="${CSS.escape(row.dataset.source)}"]`);
-          if (hit) hit.hidden = !match;
-          row.classList.toggle("is-first", match && visible === 0); // no rule under the group head
-          if (match) visible++;
-        }
-        groupEl.hidden = visible === 0;
-        any ||= visible > 0;
-      }
-      empty.hidden = any;
+    function renderResults() {
+      const matches = searchSources(sources, sourceQuery);
+      const hits = [];
+      const rows = matches.map((s) => sourceRow(profile, s, hits));
+      results.replaceChildren(...rows, ...hits);
+      results.hidden = rows.length === 0; // no stray empty divider under "No source matches."
+      empty.hidden = rows.length > 0;
     }
-    search.addEventListener("input", () => { sourceQuery = search.value; filter(); });
-    filter();
+    function update() {
+      const searching = sourceQuery.trim().length > 0;
+      groupList.hidden = searching;
+      if (searching) renderResults();
+      else { results.hidden = true; empty.hidden = true; }
+    }
+    search.addEventListener("input", () => { sourceQuery = search.value; update(); });
+    update();
 
     return [
       el("div", { class: "search-block" }, [
@@ -569,8 +573,33 @@ function main(schema, catalog) {
         el("p", { class: "search-count", text: `${counts.on} of ${counts.total} on. Off removes a source's stories from every page.` }),
       ]),
       empty,
-      ...groups,
+      groupList,
+      results,
     ];
+  }
+
+  /** One group's own sources: its "turn all on or off" and every one of its rows, same
+   * shape the flat list used to show for every source at once. */
+  function viewSourceGroup(profile, groupId) {
+    const group = groupSources(sources).find((g) => g.id === groupId);
+    if (!group) {
+      return [el("p", { class: "settings-hint settings-hint--top", text: "That group is no longer available." })];
+    }
+    const ids = group.sources.map((s) => s.id);
+    const gc = sourceCounts(profile, group.sources);
+    const allOn = gc.on === gc.total;
+    const next = allOn ? SOURCE_STATES.OFF : SOURCE_STATES.ON;
+    const head = el("div", { class: "group-head" }, [
+      el("p", { class: "settings-hint group-head-count", text: `${gc.on} of ${gc.total} on` }),
+      el("button", {
+        class: "btn-quiet group-action", type: "button", "data-focus-key": "group-all",
+        text: allOn ? "Turn all off" : "Turn all on", "aria-label": `${allOn ? "Turn all off" : "Turn all on"}: ${group.label}`,
+        onclick: () => commit((p) => withSourceStates(p, ids, next), `${group.label}: all ${next}`),
+      }),
+    ]);
+    const hits = [];
+    const rows = group.sources.map((s) => sourceRow(profile, s, hits));
+    return [el("section", { class: "settings-section source-group", "data-bucket": group.id }, [head, ...rows, ...hits])];
   }
 
   /** L1: the source's lean marker after its name in the picker, and its tap target
@@ -711,12 +740,18 @@ function main(schema, catalog) {
   function titleFor(route, profile) {
     if (route.view === "interest") { const t = profile.topics?.[route.id]; return t && (t.label || route.id); }
     if (route.view === "story") { const s = (profile.standing_stories || []).find((x) => x?.id === route.id); return s && (s.label || s.id); }
+    if (route.view === "sourceGroup") { const g = groupSources(sources).find((x) => x.id === route.id); return g && g.label; }
     if (route.view === "sources") return "News sources";
     if (route.view === "advanced") return "Advanced";
     return "You";
   }
 
-  const VIEWS = { you: viewYou, interest: viewInterest, story: viewStory, sources: viewSources, advanced: viewAdvanced };
+  // U5: a sub-view's own parent, for the masthead Back arrow. Every view but a source
+  // group steps out to You, same as before; a source group steps out to the sources
+  // list it was opened from.
+  const backTarget = (view) => (view === "sourceGroup" ? "sources" : "you");
+
+  const VIEWS = { you: viewYou, interest: viewInterest, story: viewStory, sources: viewSources, sourceGroup: viewSourceGroup, advanced: viewAdvanced };
 
   function render({ keepScroll = false } = {}) {
     const profile = store.current();
@@ -742,8 +777,9 @@ function main(schema, catalog) {
     title.textContent = name;
     document.title = `${name} - Almanac`;
     const isYou = current.view === "you";
-    back.setAttribute("href", isYou ? "/" : "#");
-    back.setAttribute("aria-label", isYou ? "Back to front page" : "Back to You");
+    const parent = backTarget(current.view);
+    back.setAttribute("href", isYou ? "/" : parent === "sources" ? "#sources" : "#");
+    back.setAttribute("aria-label", isYou ? "Back to front page" : parent === "sources" ? "Back to sources" : "Back to You");
     if (keepScroll) {
       scrollTo(0, y);
       const target = focusKey && root.querySelector(`[data-focus-key="${CSS.escape(focusKey)}"]`);
@@ -783,14 +819,19 @@ function main(schema, catalog) {
     }
   });
 
-  // Back from a sub-view: when the You view is the entry behind this one, step the real
-  // history back (so this arrow and the system Back agree and restore the same scroll);
-  // a deep link straight into a sub-view has nothing behind it, so go to You instead.
+  // Back from a sub-view: when its own parent is the entry behind this one, step the
+  // real history back (so this arrow and the system Back agree and restore the same
+  // scroll); a deep link straight into a sub-view has nothing behind it, so land on the
+  // parent instead (You for most views, the sources list for one of its groups, U5).
   back.addEventListener("click", (e) => {
     if (current.view === "you") return;
     e.preventDefault();
-    if (previousKey === "you") history.back();
-    else {
+    const parent = backTarget(current.view);
+    if (previousKey === parent) history.back();
+    else if (parent === "sources") {
+      history.pushState(null, "", "#sources");
+      route();
+    } else {
       history.pushState(null, "", location.pathname);
       route();
     }

@@ -642,10 +642,19 @@ input.switch:focus-visible {
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
+  padding-top: 28px;
 }
 
 .group-head .settings-label {
   flex: 1 1 auto;
+}
+
+/* U5: a source group's own sub-view repeats the page title, so its head shows the
+   on-count in place of the region label, aligned to the "Turn all" button's baseline. */
+.group-head-count {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0 0 8px var(--space-gutter);
 }
 
 .group-action {

@@ -318,6 +318,61 @@ export function groupByRegion(catalogSources) {
     }));
 }
 
+// U5: the picker's own nested groups. The owner, on his phone: "the you page now got
+// way too big again... specifically the news sources page" (97 rows, every one drawn
+// at once). These fold sources.json's finer buckets under about eight clear names, each
+// its own collapsed row on #sources and its own sub-view (#sources/<id>) when opened, so
+// the list page draws eight rows instead of ninety-seven. A bucket not listed here (a
+// later slice's new region) still gets a group of its own, named from the bucket
+// (regionLabel), appended after these, so a source is never dropped (H2).
+export const SOURCE_GROUPS = Object.freeze([
+  { id: "us_politics", label: "US politics", buckets: ["us_politics"] },
+  { id: "world", label: "World", buckets: ["general", "israel_gaza", "sudan", "europe", "africa", "latin_america", "middle_east", "oceania"] },
+  { id: "asia", label: "Asia", buckets: ["asia"] },
+  { id: "singapore", label: "Singapore", buckets: ["singapore"] },
+  { id: "business", label: "Business", buckets: ["business"] },
+  { id: "tech_ai", label: "Tech and AI", buckets: ["ai"] },
+  { id: "science_biotech", label: "Science and biotech", buckets: ["science", "biotech"] },
+  { id: "climate_food", label: "Climate and food", buckets: ["climate_food"] },
+]);
+
+const BUCKET_TO_GROUP = Object.freeze(
+  Object.fromEntries(SOURCE_GROUPS.flatMap((g) => g.buckets.map((bucket) => [bucket, g.id]))),
+);
+
+export function sourceGroupLabel(id) {
+  return SOURCE_GROUPS.find((g) => g.id === id)?.label || regionLabel(id);
+}
+
+/** [{id, label, sources}] over about eight groups (SOURCE_GROUPS' order, then any
+ * unmapped bucket by name), sources by name within each. Every catalog source lands in
+ * exactly one group: the Map keyed by group id guarantees that, whatever the bucket. */
+export function groupSources(catalogSources) {
+  const groups = new Map();
+  for (const source of catalogSources) {
+    const bucket = source.bucket || "";
+    const id = BUCKET_TO_GROUP[bucket] || bucket || "other";
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(source);
+  }
+  const rank = (id) => {
+    const i = SOURCE_GROUPS.findIndex((g) => g.id === id);
+    return i < 0 ? SOURCE_GROUPS.length : i;
+  };
+  return [...groups.entries()]
+    .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+    .map(([id, groupSourcesList]) => ({
+      id,
+      label: sourceGroupLabel(id),
+      sources: groupSourcesList.slice().sort((x, y) => x.name.localeCompare(y.name, undefined, { sensitivity: "base" })),
+    }));
+}
+
+/** Every source, from any group, whose name matches the query: U5's flat search. */
+export function searchSources(catalogSources, query) {
+  return catalogSources.filter((s) => matchesQuery(s.name, query));
+}
+
 /** Case and accent insensitive name match, every typed word somewhere in the name. */
 export function matchesQuery(name, query) {
   const fold = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
