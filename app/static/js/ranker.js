@@ -21,6 +21,14 @@
 // dedup, lean quota, exploration, other side, must-know floor) live in passes.js, whose
 // rankPages() scores here and then runs them per page; each pass has the `opts.passes`
 // shape and names itself in the story's `passes` list.
+//
+// W1 (R50): a phrase interest is a profile topic with a `phrase` (phrase.js). It matches
+// a story when a member's headline or dek holds the phrase (whole words, in order, any
+// case, plural "s" folded) or a member carries the phrase's watch tag (the hourly
+// search found it, W2), and then counts in affinity and recency exactly like a topic
+// matched by a pool tag. A phrase topic never matches by tag, only by its phrase.
+
+import { isPhraseTopic, matchesPhrase, phraseMatcher, textWords } from "./phrase.js";
 
 export const SCALE = 1_000_000;
 export const WEIGHTS = Object.freeze({ recency: 1, affinity: 1, importance: 0.5, boost: 1 });
@@ -87,6 +95,10 @@ function makeStory(id, members, { independent, lean }) {
     // own text (fetcher/geo.py), so a region counts only when some member names it.
     geo: uniqSorted(members.flatMap((a) => a.geo || [])),
     titles: members.map((a) => a.title || "").sort(byStr),
+    // W1: the members' deks (the compact pool's first 200 characters, app/frontpage.py
+    // rank_input) and their watch tags (W2's hourly search), for phrase interests.
+    deks: members.map((a) => a.dek || "").filter(Boolean).sort(byStr),
+    watch: uniqSorted(members.flatMap((a) => a.watch || [])),
     latest_ms: Math.max(...members.map((a) => epochMs(a.published_at))),
     independent_sources: independent,
     lean_buckets: uniqSorted(lean),
@@ -102,12 +114,27 @@ export function mustKnowEligible(story) {
     && story.lean_buckets.length >= 2;
 }
 
+// W1: each story's headlines and deks as folded words, once per story object.
+const storyWords = new WeakMap();
+function wordsOf(story) {
+  let words = storyWords.get(story);
+  if (!words) {
+    words = [...(story.titles || []), ...(story.deks || [])].map(textWords);
+    storyWords.set(story, words);
+  }
+  return words;
+}
+
 function matchedTopics(story, profile, eligible) {
   const topics = profile.topics || {};
   const ids = new Set();
   for (const tag of story.topics) {
     const id = Object.hasOwn(topics, tag) ? tag : TAG_TO_TOPIC[tag];
-    if (id && topics[id] && topics[id].enabled) ids.add(id);
+    if (id && topics[id] && topics[id].enabled && !isPhraseTopic(topics[id])) ids.add(id);
+  }
+  for (const [id, setting] of Object.entries(topics)) {
+    if (!setting || !setting.enabled || !isPhraseTopic(setting)) continue;
+    if (matchesPhrase(wordsOf(story), story.watch, phraseMatcher(setting.phrase))) ids.add(id);
   }
   if (eligible && topics[MUST_KNOW] && topics[MUST_KNOW].enabled) ids.add(MUST_KNOW);
   return [...ids].sort(byStr);

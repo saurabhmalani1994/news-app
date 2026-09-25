@@ -13,6 +13,8 @@
 // string here is a boost's own label and a source's own name, both already plain text
 // from profile.json and the pool.
 
+import { isPhraseTopic } from "./phrase.js";
+
 const HOUR_MS = 3_600_000;
 
 // Micro-points -> points: ranker.js's WEIGHTS use 1 for a full-strength term (recency
@@ -25,6 +27,21 @@ const POINTS_PER_MICRO = 1 / 10_000;
 const points = (micro) => Math.round(micro * POINTS_PER_MICRO);
 const listWords = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
 const topicLabel = (profile, id) => (profile.topics && profile.topics[id] && profile.topics[id].label) || id;
+
+/** W1: the affinity row names what matched: "Your AI interest", "Your phrase “heat
+ * pump”", or both, "Your AI interest and phrase “heat pump”". A phrase is the owner's
+ * own text from profile.json, rendered as text like every other label here. */
+function affinityLabel(profile, matched) {
+  if (!matched.length) return "No followed topic";
+  const topics = profile.topics || {};
+  const quoted = (id) => `“${topics[id].phrase}”`;
+  const phrases = matched.filter((id) => isPhraseTopic(topics[id])).map(quoted);
+  const names = matched.filter((id) => !isPhraseTopic(topics[id])).map((id) => topicLabel(profile, id));
+  const phrasePart = phrases.length ? `${phrases.length === 1 ? "phrase" : "phrases"} ${listWords(phrases)}` : "";
+  if (!names.length) return `Your ${phrasePart}`;
+  const interest = `Your ${listWords(names)} interest`;
+  return phrasePart ? `${interest} and ${phrasePart}` : interest;
+}
 
 function hoursText(ageHours) {
   const h = Math.round(ageHours);
@@ -65,8 +82,7 @@ function describeTerm(term, story, profile, names) {
   if (term.term === "affinity") {
     const matched = story.topics_matched || [];
     const topic = strongestTopic(profile, matched, "affinity");
-    const label = matched.length ? `Your ${listWords(matched.map((id) => topicLabel(profile, id)))} interest` : "No followed topic";
-    return { label, editHref: topic ? `/profile#topic-${topic}` : "/profile" };
+    return { label: affinityLabel(profile, matched), editHref: topic ? `/profile#topic-${topic}` : "/profile" };
   }
   if (term.term === "importance") {
     const n = story.independent_sources;

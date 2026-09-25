@@ -126,7 +126,9 @@ def test_bad_geo_json_is_refused(tmp_path):
 
 
 def test_rank_input_carries_geo_for_build_and_device():
+    # W1 (R50) made the dek a ranked field (phrase interests match it), so the field
+    # left out here is now the url, which the ranker has never read.
     pool = {"articles": [{"id": "a1", "source_id": "mothership", "title": "t", "published_at": "2026-09-24T00:00:00Z",
-                          "topics": ["world"], "geo": ["us"], "dek": "not ranked"}], "clusters": []}
+                          "topics": ["world"], "geo": ["us"], "url": "https://example.com/not-ranked"}], "clusters": []}
     assert rank_input(pool)["articles"] == [{"id": "a1", "source_id": "mothership", "title": "t",
                                              "published_at": "2026-09-24T00:00:00Z", "topics": ["world"], "geo": ["us"]}]

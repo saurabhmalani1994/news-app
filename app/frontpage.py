@@ -140,7 +140,11 @@ def build_stories(pool):
     return stories
 
 
-RANK_ARTICLE_FIELDS = ("id", "source_id", "title", "published_at", "topics", "geo")
+# W1: `watch` is W2's watch tags (the hourly search's "w:" hashes, never a phrase) and
+# the compact pool also carries rank_dek(), so a phrase interest matches a headline or
+# a dek on the device exactly as it would at build time.
+RANK_ARTICLE_FIELDS = ("id", "source_id", "title", "published_at", "topics", "geo", "watch")
+RANK_DEK_CHARS = 200
 RANK_CLUSTER_FIELDS = ("id", "article_ids", "near_duplicates", "independent_sources", "lean_buckets")
 
 
@@ -152,6 +156,13 @@ def rank_input(pool):
     quota and the other-side slot read the lean of the outlet a card shows."""
     def pick(item, fields):
         return {k: item[k] for k in fields if k in item}
+
+    def article(a):
+        record = pick(a, RANK_ARTICLE_FIELDS)
+        dek = rank_dek(a)
+        if dek:
+            record["dek"] = dek
+        return record
     leads = {s.id: s.lead["id"] for s in build_stories(pool)}
     clusters = []
     for cluster in pool.get("clusters", []):
@@ -161,9 +172,22 @@ def rank_input(pool):
         clusters.append(record)
     return {
         "generated_at": pool.get("generated_at"),
-        "articles": sorted((pick(a, RANK_ARTICLE_FIELDS) for a in pool["articles"]), key=lambda a: a["id"]),
+        "articles": sorted((article(a) for a in pool["articles"]), key=lambda a: a["id"]),
         "clusters": sorted(clusters, key=lambda c: c["id"]),
     }
+
+
+def rank_dek(article):
+    """W1 (R50): the dek the device matches a phrase interest against, the cleaned dek
+    (clean_dek, so a repeat of the headline adds nothing) cut to its first RANK_DEK_CHARS
+    characters at a word boundary. A dek names its subject early; a full-text feed's
+    description can run to 2000 characters, which the page would carry for every
+    article. '' when there is no dek worth matching."""
+    dek = " ".join(clean_dek(article).split())
+    if len(dek) <= RANK_DEK_CHARS:
+        return dek
+    cut = dek[:RANK_DEK_CHARS + 1]
+    return cut[:cut.rfind(" ")] if " " in cut else dek[:RANK_DEK_CHARS]
 
 
 def _source_field(pool, field, sources_path):
