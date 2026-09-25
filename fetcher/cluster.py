@@ -1,4 +1,4 @@
-"""S07: near-duplicate detection and story clustering. Standard library only (R30).
+"""S07, B2: near-duplicate detection and story clustering. Standard library only (R30).
 
 Two stages, computed locally from the run's own items, never imported (R8):
 
@@ -10,21 +10,46 @@ Two stages, computed locally from the run's own items, never imported (R8):
    bigrams alone also counts, at the stricter TITLE_DUP_JACCARD and only for headlines of
    TITLE_DUP_MIN_WORDS or more. Near-duplicates are kept and marked, never
    dropped, so a later slice can count independent sources (R16).
-2. cosine_entity: independently written coverage of the same event. TF-IDF vectors of
-   headline and dek; a unit joins the cluster whose rolling centroid is most similar
-   when cosine >= COSINE_MIN AND they share at least one key entity AND the unit is
-   within WINDOW_HOURS of the cluster. Cosine alone false-merges; entity plus time alone
-   merges unrelated stories about the same person, so both are required
-   (research/ranking-and-clustering.md section 4).
+2. cosine_entity: independently written coverage of one story (B2, DESIGN-bundles
+   section 2(a)), scored pair by pair, never against a rolling centroid, so nothing
+   drifts and nothing depends on which article came first.
+   - Features: a title word counts TITLE_WEIGHT times a dek word (the dek's first
+     DEK_WORDS_VEC), adjacent title words also count as a bigram, and entities (words
+     the run itself capitalizes, acronyms, numbers of 3+ digits, money amounts) weigh
+     ENTITY_WEIGHT times more. Every feature is weighted by its rarity in the run
+     (smoothed idf to the power IDF_POWER), so "Tigray" counts far more than "Trump".
+     Demonyms fold to their country (geo.json `demonyms`), dotted acronyms join ("U.N."
+     is "UN"), a plural s drops, and "197,000" is one number.
+   - Pair score: the cosine of two articles' vectors times exp(-hours apart /
+     DECAY_HOURS).
+   - Blocking: keys are title words, title bigrams and entities. Only pairs inside
+     STORY_SPAN_HOURS that share one key found in at most BLOCK_ONE_DF of the run's
+     articles, or two found in at most block_df, are scored up front; any other pair
+     is scored when its two clusters are compared.
+   - Average link: from the near-duplicate units up, the two clusters with the highest
+     average link merge while it reaches LINK_MIN, or RARE_LINK_MIN when they share an
+     entity rare outside them (RARE_SHARE or more of the run's articles naming it sit
+     in the two). The link averages cross-outlet pairs only, so a story needs two
+     outlets and one outlet's pieces join only through another outlet's. A merge that
+     would stretch a story past STORY_SPAN_HOURS is refused.
+   - Merge pass: then clusters that share a headline word of any rarity merge on the
+     same rule at MERGE_LINK_MIN, which rejoins a story split because its versions
+     share only common words.
+   Stories are the parts of S32's events: fetcher.events groups these clusters into
+   events, so every story sits inside at most one event.
 
 A near-duplicate group moves as one unit through stage 2, so every article lands in at
-most one cluster. Each cluster names the stages that built it in `method`.
+most one cluster. A cluster needs articles from two outlets: one outlet's own copies
+alone are not a story. Each cluster names the stages that built it in `method`.
 """
 import hashlib
+import heapq
+import json
 import math
 import random
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 
 NEAR_DUP_JACCARD = 0.5
 TITLE_DUP_JACCARD = 0.8
@@ -32,12 +57,28 @@ TITLE_DUP_MIN_WORDS = 6
 NUM_PERM = 96
 BANDS = 32
 ROWS = NUM_PERM // BANDS
-COSINE_MIN = 0.35
 WINDOW_HOURS = 48
 DEK_WORDS_DUP = 30
 DEK_WORDS_VEC = 50
 TITLE_WEIGHT = 2
 PROPER_MIN = 0.8
+
+# B2 story stage (DESIGN-bundles section 2(a)), tuned on tests/fixtures/bundles/.
+LINK_MIN = 0.41
+MERGE_LINK_MIN = 0.36
+RARE_LINK_MIN = 0.27
+RARE_SHARE = 0.5
+DECAY_HOURS = 24
+STORY_SPAN_HOURS = 36
+BIGRAM_WEIGHT = 1
+ENTITY_WEIGHT = 1.5
+BLOCK_DF_SHARE = 0.01
+BLOCK_DF_MIN = 25
+BLOCK_ONE_DF = 10
+NUMBER_MIN_DIGITS = 3
+IDF_PLUS = 1.0
+IDF_POWER = 0.75
+GEO_PATH = Path(__file__).resolve().parent.parent / "geo.json"
 
 METHODS = ("minhash", "cosine_entity", "minhash+cosine_entity")
 
@@ -88,12 +129,7 @@ def _signature(shingles):
     # XOR with a random 64-bit mask permutes the hash space; min under each mask is one
     # MinHash coordinate.
     hs = [_h64(s) for s in shingles] or [0]
-    return [min([h ^ m for h in hs]) for m in _PERM_MASKS]
-
-
-def _content_tokens(text, limit=None):
-    toks = [t for t in WORD_RE.findall(text.lower()) if len(t) > 1 and t not in STOPWORDS]
-    return toks[:limit] if limit else toks
+    return [min(map(m.__xor__, hs)) for m in _PERM_MASKS]
 
 
 class _UnionFind:
@@ -190,101 +226,343 @@ def item_entities(items):
     return {it["id"]: _entities(it, proper) for it in items}
 
 
-def _unit_vector(tf, idf):
-    vec = {t: c * idf[t] for t, c in tf.items() if idf.get(t, 0) > 0}
-    norm = math.sqrt(sum(v * v for v in vec.values()))
-    return {t: v / norm for t, v in vec.items()} if norm else {}
+def _plural(word):
+    if len(word) > 4 and word.endswith("ies"):
+        return word[:-3] + "y"
+    if len(word) > 3 and word.endswith("s") and not word.endswith(("ss", "us", "is")):
+        return word[:-1]
+    return word
+
+
+def _load_demonyms(path=GEO_PATH):
+    """geo.json `demonyms`: {folded word: country} and a pattern for its phrases."""
+    block = json.loads(Path(path).read_text(encoding="utf-8")).get("demonyms", {})
+    words = {_plural(k.lower()): _plural(v.lower()) for k, v in block.get("map", {}).items()}
+    phrases = {k.lower(): v.lower() for k, v in block.get("phrases", {}).items()}
+    alts = "|".join(re.escape(k) for k in sorted(phrases, key=lambda k: (-len(k), k)))
+    pattern = re.compile(rf"(?<![^\W_])(?:{alts})(?![^\W_])") if phrases else None
+    return words, phrases, pattern
+
+
+DEMONYMS, PHRASES, PHRASE_RE = _load_demonyms()
+PHRASE_HEADS = frozenset(k.split()[0] for k in PHRASES)
+# Words that say when or how a piece is packaged, not what happened: every same-day
+# article shares them. The story stage drops them; S32 keeps reading STOPWORDS alone.
+STORY_STOPWORDS = STOPWORDS | frozenset("""
+monday tuesday wednesday thursday friday saturday sunday today tonight yesterday tomorrow
+morning evening weekend know thing things key highlight highlights explained explainer
+analysis opinion column editorial podcast newsletter briefing wrap roundup here what's
+""".split())
+
+DOTTED_RE = re.compile(r"(?<![^\W\d_])((?:[A-Za-z]\.){2,})")
+THOUSANDS_RE = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+MONEY_RE = re.compile(
+    r"(?<![^\W_])(?:[A-Z]{1,2})?[$\u00a3\u20ac\u00a5\u20b9]\s?(\d+(?:\.\d+)?)"
+    r"(?:\s?(?i:(trillion|tn|billion|bn|million|mn|m|b|thousand|k)))?(?![^\W_])")
+SCALED_RE = re.compile(r"(?<![^\W_])(\d+(?:\.\d+)?)\s(?i:(trillion|billion|million))(?![^\W_])")
+CURRENCY_MARKS = "$\u00a3\u20ac\u00a5\u20b9"
+SCALES = {"trillion": 1e12, "tn": 1e12, "billion": 1e9, "bn": 1e9, "b": 1e9, "million": 1e6,
+          "mn": 1e6, "m": 1e6, "thousand": 1e3, "k": 1e3}
+OUTLET_NAME = r"[A-Z0-9][\w.&'\u2019]*"
+OUTLET_WORD = rf"(?:{OUTLET_NAME}|of|the|and|for|on|in)"
+OUTLET_SUFFIX_RE = re.compile(
+    rf"\s+[-|\u2013\u2014]\s+({OUTLET_NAME}(?:\s+{OUTLET_WORD}){{0,5}})\s*$")
+
+
+def _prep(text):
+    """Join dotted acronyms and thousands separators, so "U.N." is one word and
+    "197,000" one number."""
+    text = text or ""
+    if "." in text:
+        text = DOTTED_RE.sub(lambda m: m.group(1).replace(".", ""), text)
+    return THOUSANDS_RE.sub("", text) if "," in text else text
+
+
+def _amounts(text):
+    """Money amounts and scaled numbers as tokens, and the text with them taken out."""
+    found = []
+
+    def money(m):
+        value = float(m.group(1)) * SCALES.get((m.group(2) or "").lower(), 1)
+        found.append(f"${value:.3g}")
+        return " "
+
+    def scaled(m):
+        found.append(f"#{float(m.group(1)) * SCALES[m.group(2).lower()]:.3g}")
+        return " "
+
+    if any(c in text for c in CURRENCY_MARKS):
+        text = MONEY_RE.sub(money, text)
+    if "illion" in text:
+        text = SCALED_RE.sub(scaled, text)
+    return found, text
+
+
+_FOLDED = {}
+
+
+def _fold(word):
+    got = _FOLDED.get(word)
+    if got is None:
+        got = _plural(word)
+        got = _FOLDED[word] = DEMONYMS.get(got, got)
+    return got
+
+
+def _words(text):
+    """Content words, folded; numbers only with NUMBER_MIN_DIGITS or more digits."""
+    text = text.lower()
+    if PHRASE_RE is not None and any(h in text for h in PHRASE_HEADS):
+        text = PHRASE_RE.sub(lambda m: PHRASES[m.group()], text)
+    out = []
+    for w in WORD_RE.findall(text):
+        if w.isdigit():
+            if len(w) >= NUMBER_MIN_DIGITS:
+                out.append(w)
+            continue
+        if len(w) < 2 or w in STORY_STOPWORDS:
+            continue
+        f = _fold(w)
+        if f not in STORY_STOPWORDS:
+            out.append(f)
+    return out
+
+
+def _strip_outlet(title):
+    """"Headline - The Indian Express" is the headline; a lower-case tail is kept."""
+    return OUTLET_SUFFIX_RE.sub("", title)
+
+
+def _features(items):
+    """Per item: (tf dict, entity set, blocking keys, headline words). Titles and deks
+    go through the same normalizer, so a word folds the same way wherever it appears."""
+    prepped = [{"title": _prep(_strip_outlet(it["title"])), "dek": _prep(it.get("dek", "")[:600])}
+               for it in items]
+    proper = _proper_ratios(prepped)
+    out = []
+    for it in prepped:
+        t_money, title = _amounts(it["title"])
+        d_money, dek = _amounts(it["dek"])
+        t_words = _words(title)
+        d_words = _words(dek)[:DEK_WORDS_VEC]
+        tf = {}
+        for w in t_words + t_money:
+            tf[w] = tf.get(w, 0) + TITLE_WEIGHT
+        bigrams = [f"{a} {b}" for a, b in zip(t_words, t_words[1:])]
+        for b in bigrams:
+            tf[b] = tf.get(b, 0) + BIGRAM_WEIGHT
+        for w in d_words + d_money:
+            tf[w] = tf.get(w, 0) + 1
+        ents = {_fold(e) for e in _entities(it, proper)} | set(PHRASES.values())
+        ents |= {w for w in t_words + d_words if w.isdigit()} | set(t_money) | set(d_money)
+        ents &= set(tf)
+        keys = set(t_words) | set(bigrams) | set(t_money) | ents
+        out.append((tf, ents, keys, set(t_words)))
+    return out
+
+
+def _vectors(feats, n):
+    df = {}
+    for tf, _, _, _ in feats:
+        for t in tf:
+            df[t] = df.get(t, 0) + 1
+    # Smoothed idf (the sklearn default), damped by IDF_POWER: every term keeps some
+    # weight, a term's weight grows with its rarity in this run, and one big event's
+    # names ("Xi", "Netanyahu") are not discounted to nothing on a busy day.
+    idf = {t: (math.log((1 + n) / (1 + d)) + IDF_PLUS) ** IDF_POWER for t, d in df.items()}
+    vecs = []
+    for tf, ents, _, _ in feats:
+        vec = {t: c * idf[t] * (ENTITY_WEIGHT if t in ents else 1) for t, c in tf.items()}
+        norm = math.sqrt(sum(v * v for v in vec.values()))
+        vecs.append({t: v / norm for t, v in vec.items()} if norm else {})
+    return vecs, df
+
+
+class _Stories:
+    """Average-link agglomeration over article pairs, cross-outlet pairs only."""
+
+    def __init__(self, vecs, times, sources, ents, df):
+        self.vecs, self.times, self.sources, self.ents, self.df = vecs, times, sources, ents, df
+        self.cache = {}
+        self.span = STORY_SPAN_HOURS * 3600
+
+    def score(self, i, j):
+        if i > j:
+            i, j = j, i
+        got = self.cache.get((i, j))
+        if got is None:
+            dt = abs(self.times[i] - self.times[j])
+            got = 0.0
+            if dt <= self.span:
+                a, b = self.vecs[i], self.vecs[j]
+                if len(a) > len(b):
+                    a, b = b, a
+                # Summed in a's own term order, never a set's, so every process adds the
+                # same floats in the same order and a tie never flips between runs.
+                dot = sum(v * b[t] for t, v in a.items() if t in b)
+                got = dot * math.exp(-dt / (DECAY_HOURS * 3600))
+            self.cache[(i, j)] = got
+        return got
+
+    def link(self, xs, ys):
+        total, count = 0.0, 0
+        src = self.sources
+        for x in xs:
+            for y in ys:
+                if src[x] != src[y]:
+                    total += self.score(x, y)
+                    count += 1
+        return total / count if count else 0.0
+
+    def agglomerate(self, members, neighbors, threshold, rare_threshold):
+        """members: {cluster id: [article index]}; neighbors: {id: set of ids}. Merges in
+        place, best average link first, while it reaches threshold, or rare_threshold
+        for two clusters that share an entity rare outside them: at least RARE_SHARE of
+        the run's articles naming it sit in the two."""
+        times, df = self.times, self.df
+        tmin = {c: min(times[i] for i in m) for c, m in members.items()}
+        tmax = {c: max(times[i] for i in m) for c, m in members.items()}
+        ecount = {}
+        for c, m in members.items():
+            cnt = ecount[c] = {}
+            for i in m:
+                for e in self.ents[i]:
+                    cnt[e] = cnt.get(e, 0) + 1
+        version = {c: 0 for c in members}
+        heap = []
+
+        def push(a, b):
+            if a > b:
+                a, b = b, a
+            if max(tmax[a], tmax[b]) - min(tmin[a], tmin[b]) > self.span:
+                return
+            s = self.link(members[a], members[b])
+            if s < rare_threshold:
+                return
+            ca, cb = ecount[a], ecount[b]
+            if len(ca) > len(cb):
+                ca, cb = cb, ca
+            if s >= threshold or any(e in cb and ca[e] + cb[e] >= RARE_SHARE * df[e] for e in ca):
+                heapq.heappush(heap, (-s, a, b, version[a], version[b]))
+
+        for a in sorted(neighbors):
+            for b in sorted(neighbors[a]):
+                if a < b:
+                    push(a, b)
+        while heap:
+            _, a, b, va, vb = heapq.heappop(heap)
+            if a not in members or b not in members or version[a] != va or version[b] != vb:
+                continue
+            members[a] = members[a] + members.pop(b)
+            tmin[a], tmax[a] = min(tmin[a], tmin.pop(b)), max(tmax[a], tmax.pop(b))
+            ca = ecount[a]
+            for e, k in ecount.pop(b).items():
+                ca[e] = ca.get(e, 0) + k
+            version[a] += 1
+            del version[b]
+            joined = (neighbors.get(a, set()) | neighbors.pop(b, set())) - {a, b}
+            neighbors[a] = joined
+            for c in joined:
+                neighbors[c].discard(b)
+                neighbors[c].add(a)
+            for c in sorted(joined):
+                push(a, c)
+        return members
+
+
+def _headline_words(members, title_words):
+    """Words in at least half of a cluster's headlines: its merge-pass keys."""
+    counts = {}
+    for i in members:
+        for w in title_words[i]:
+            counts[w] = counts.get(w, 0) + 1
+    need = len(members) / 2
+    return {w for w, c in counts.items() if c >= need}
 
 
 def cluster_items(items):
     """Cluster article dicts (id, source_id, title, published_at, optional dek).
 
-    Returns a list of clusters with 2+ articles, each {"article_ids", "method",
-    "near_duplicates"}, where near_duplicates lists the minhash groups (2+ ids each).
-    Pure and deterministic: the same items in the same order give the same clusters.
+    Returns a list of clusters with articles from 2+ outlets, each {"article_ids",
+    "method", "near_duplicates"}, where near_duplicates lists the minhash groups (2+ ids
+    each). Pure and deterministic, and the input order never matters: articles are
+    taken in (published_at, id) order.
     """
-    n = len(items)
-    if n == 0:
+    if not items:
         return []
+    items = sorted(items, key=lambda it: (it["published_at"], it["id"]))
+    n = len(items)
     times = [_epoch(it["published_at"]) for it in items]
+    sources = [it["source_id"] for it in items]
 
     uf = _UnionFind(n)
     for i, j in near_duplicate_pairs(items, times):
         uf.union(i, j)
-    groups = {}
+    units = {}
     for i in range(n):
-        groups.setdefault(uf.find(i), []).append(i)
+        units.setdefault(uf.find(i), []).append(i)
+    unit_of = {i: u for u, m in units.items() for i in m}
 
-    tfs, df = [], {}
-    for it in items:
-        tf = {}
-        for t in _content_tokens(_strip_suffix(it["title"])):
-            tf[t] = tf.get(t, 0) + TITLE_WEIGHT
-        for t in _content_tokens(it.get("dek", ""), DEK_WORDS_VEC):
-            tf[t] = tf.get(t, 0) + 1
-        tfs.append(tf)
-        for t in tf:
-            df[t] = df.get(t, 0) + 1
-    # Smoothed idf, the sklearn default: every term keeps some weight, so a small run does
-    # not let one-off words drown the words a story shares.
-    idf = {t: math.log((1 + n) / (1 + d)) + 1 for t, d in df.items()}
-    vecs = [_unit_vector(tf, idf) for tf in tfs]
-    proper = _proper_ratios(items)
-    ents = [_entities(it, proper) for it in items]
+    feats = _features(items)
+    vecs, df = _vectors(feats, n)
+    stories = _Stories(vecs, times, sources, [f[1] for f in feats], df)
+    span = STORY_SPAN_HOURS * 3600
 
-    units = sorted(groups.values(), key=lambda g: (min(times[i] for i in g), g[0]))
-    window = WINDOW_HOURS * 3600
-    clusters = []       # each: {"units": [...], "centroid": {}, "norm": f, "ents": set, "tmin", "tmax", "cos": bool}
-    postings = {}       # token -> {cluster index: centroid weight}
-    for members in units:
-        uvec = {}
-        for i in members:
-            for t, v in vecs[i].items():
-                uvec[t] = uvec.get(t, 0.0) + v
-        unorm = math.sqrt(sum(v * v for v in uvec.values())) or 1.0
-        uents = set().union(*(ents[i] for i in members))
-        utime = min(times[i] for i in members)
+    # Blocking: pairs inside the span that share one very rare key (df <= BLOCK_ONE_DF)
+    # or two rare ones (df <= block_df).
+    block_df = max(BLOCK_DF_MIN, int(BLOCK_DF_SHARE * n))
+    postings = {}
+    for i, (_, _, keys, _) in enumerate(feats):
+        for k in keys:
+            if df[k] <= block_df:
+                postings.setdefault(k, []).append(i)
+    pairs, seen = set(), set()
+    for k, idx in postings.items():
+        one = df[k] <= BLOCK_ONE_DF
+        for x, i in enumerate(idx):
+            for j in idx[x + 1:]:
+                if times[j] - times[i] > span:
+                    break
+                if sources[i] == sources[j] or unit_of[i] == unit_of[j]:
+                    continue
+                if one or (i, j) in seen:
+                    pairs.add((i, j))
+                else:
+                    seen.add((i, j))
+    neighbors = {u: set() for u in units}
+    for i, j in sorted(pairs):
+        if stories.score(i, j) >= min(LINK_MIN, RARE_LINK_MIN):
+            a, b = unit_of[i], unit_of[j]
+            neighbors[a].add(b)
+            neighbors[b].add(a)
+    members = stories.agglomerate(dict(units), neighbors, LINK_MIN, RARE_LINK_MIN)
 
-        dots = {}
-        for t, v in uvec.items():
-            for c, w in postings.get(t, {}).items():
-                dots[c] = dots.get(c, 0.0) + v * w
-        best, best_cos = None, COSINE_MIN
-        for c, dot in dots.items():
-            cl = clusters[c]
-            cos = dot / (unorm * cl["norm"])
-            if cos < best_cos:
-                continue
-            if abs(utime - cl["tmax"]) > window and abs(utime - cl["tmin"]) > window:
-                continue
-            if not (uents & cl["ents"]):
-                continue
-            best, best_cos = c, cos
-
-        if best is None:
-            best = len(clusters)
-            clusters.append({"units": [], "centroid": {}, "norm": 1.0, "ents": set(),
-                             "tmin": utime, "tmax": utime})
-        cl = clusters[best]
-        cl["units"].append(members)
-        for t, v in uvec.items():
-            nv = cl["centroid"].get(t, 0.0) + v / unorm
-            cl["centroid"][t] = nv
-            postings.setdefault(t, {})[best] = nv
-        cl["norm"] = math.sqrt(sum(v * v for v in cl["centroid"].values())) or 1.0
-        cl["ents"] |= uents
-        cl["tmin"] = min(cl["tmin"], utime)
-        cl["tmax"] = max(cl["tmax"], max(times[i] for i in members))
+    # Merge pass: clusters of 2+ articles sharing a headline word of any rarity.
+    title_words = [f[3] for f in feats]
+    multi = sorted(c for c, m in members.items() if len(m) > 1)
+    by_word = {}
+    for c in multi:
+        for w in _headline_words(members[c], title_words):
+            by_word.setdefault(w, []).append(c)
+    neighbors = {c: set() for c in multi}
+    for cs in by_word.values():
+        for x, a in enumerate(cs):
+            for b in cs[x + 1:]:
+                neighbors[a].add(b)
+                neighbors[b].add(a)
+    merged = stories.agglomerate({c: members[c] for c in multi}, neighbors, MERGE_LINK_MIN,
+                                 min(MERGE_LINK_MIN, RARE_LINK_MIN))
 
     out = []
-    for cl in clusters:
-        idx = sorted(i for u in cl["units"] for i in u)
-        if len(idx) < 2:
+    for c in sorted(merged, key=lambda c: min(merged[c])):
+        idx = sorted(merged[c])
+        if len({sources[i] for i in idx}) < 2:
             continue
-        dups = sorted(sorted(u) for u in cl["units"] if len(u) > 1)
+        cluster_units = sorted({unit_of[i] for i in idx})
+        dups = sorted(sorted(units[u]) for u in cluster_units if len(units[u]) > 1)
         out.append({
             "article_ids": [items[i]["id"] for i in idx],
-            "method": method_for(len(cl["units"]), bool(dups)),
+            "method": method_for(len(cluster_units), bool(dups)),
             "near_duplicates": [[items[i]["id"] for i in u] for u in dups],
         })
     return out
