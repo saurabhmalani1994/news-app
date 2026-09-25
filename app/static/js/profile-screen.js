@@ -324,7 +324,7 @@ function main(schema, catalog) {
       section("Display", () => [switchRow("summaries", "Summaries on every story", "Off shows them on the lead stories only",
         summariesMode(profile) === "all",
         (on) => commit((p) => withSummaries(p, on ? "all" : "top"), on ? "Summaries on every story" : "Summaries on lead stories only")),
-      switchRow("lean-markers", "Lean markers", "After a source name: five dots for where a US outlet leans, or the home country of one outside the US",
+      switchRow("lean-markers", "Lean markers", "Five dots for a US outlet's lean, a country code for others",
         leanMarkersOn(profile),
         (on) => commit((p) => withLeanMarkers(p, on), on ? "Lean markers on" : "Lean markers off")),
       switchRow("lean-color", "Color the markers", "Blue for left, red for right, grey for center",

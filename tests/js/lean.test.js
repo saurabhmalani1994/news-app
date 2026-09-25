@@ -121,7 +121,7 @@ test("the country sheet names the country, says US ratings do not apply, and kee
   assert.equal(content.querySelector(".lean-sheet-dots"), null, "no scale for an outlet off the US axis");
   assert.equal(content.querySelector(".lean-sheet-word").textContent, "Pakistan");
   assert.equal(content.querySelector(".lean-sheet-scope").textContent, NOT_ON_US_SCALE);
-  assert.match(NOT_ON_US_SCALE, /home country/);
+  assert.match(NOT_ON_US_SCALE, /Where this outlet is based/);
   assert.match(NOT_ON_US_SCALE, /US left and right ratings do not apply/);
   assert.equal(content.querySelector(".lean-sheet-basis").textContent, evil, "the basis arrives verbatim, as text");
   assert.equal(content.querySelector(".lean-sheet-label").textContent, "Why no US rating");

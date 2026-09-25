@@ -139,14 +139,14 @@ function ownershipWords(value) {
 }
 
 export const OUTLET_NOT_STORY = "This rates the outlet as a whole, not this story.";
-export const NOT_ON_US_SCALE = "The outlet's home country. US left and right ratings do not apply to it.";
+export const NOT_ON_US_SCALE = "Where this outlet is based. US left and right ratings do not apply to it.";
 
 /**
  * The lean sheet's content for one source: the scale (or "State media") with the
  * bucket in words, why it is rated so (sources.json lean_basis), who owns it where
  * sources.json says, and one line saying the rating is the outlet's, not the story's.
- * U3: for a country marker, the country's name and a line saying it is the outlet's
- * home country and that US left and right ratings do not apply, then the same basis
+ * U3: for a country marker, the country's name and a line saying that is where the
+ * outlet is based and that US left and right ratings do not apply, then the same basis
  * and ownership. `source` is {lean, country, basis, ownership}; every value is set as
  * text (R26). `basis` may arrive later (the catalog is fetched on first open): pass
  * undefined and fill the returned node's `.lean-sheet-basis` with setBasis(). Null for

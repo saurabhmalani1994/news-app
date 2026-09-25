@@ -4,8 +4,9 @@
 // headers) in headless Chrome at 360x780 CSS px, DPR 3, and checks the lean marker and
 // R43's "Read here · <outlet>":
 //   - every Today row whose outlet sits on the US scale shows five dots with its own
-//     bucket filled, state media shows "State", non-us shows nothing; the meta line
-//     stays one 11dp line, the age is never cut, the marker never clipped;
+//     bucket filled, state media shows "State", non-us shows its home country's code
+//     (U3); each meta line is 11dp (U3: one or two lines), the age and count are never
+//     cut, the marker never clipped;
 //   - each row's 48dp .lean-hit sits centred on its own row's dots (anchor positioning)
 //     and wins a tap there, while a tap on the headline still hits the row's link;
 //   - a tap opens the lean sheet: the outlet's name, the bucket in words, the cited
@@ -139,7 +140,7 @@ const ROWS = `(() => {
     const meta = li.querySelector(".meta");
     const lean = meta.querySelector(".lean");
     const hit = li.querySelector(".lean-hit");
-    const rest = meta.querySelector(".meta-rest");
+    const rest = [...meta.querySelectorAll(".meta-age, .meta-count")];
     const read = meta.querySelector(".meta-read-source");
     const link = li.querySelector("a.story-link");
     const shown = (n) => n && n.getClientRects().length > 0;
@@ -148,9 +149,10 @@ const ROWS = `(() => {
     const memberSource = link?.dataset.body ? byId.get(link.dataset.body)?.source_id : null;
     return { sid, lean: data.leans[source] || null, cls: lean?.className || null, drawn: shown(lean), filled,
       dots: lean ? lean.querySelectorAll("i").length : 0, state: lean?.textContent || "",
-      metaH: meta.getBoundingClientRect().height, metaLines: meta.getClientRects().length,
+      metaH: meta.getBoundingClientRect().height, metaLines: [...meta.querySelectorAll(".meta-line")].filter(shown).length,
+      code: lean?.querySelector(".lean-code")?.textContent || "", country: (data.countries || {})[source] || null,
       metaOver: meta.scrollWidth > meta.clientWidth + 1,
-      restCut: rest ? rest.scrollWidth > rest.clientWidth + 1 : false,
+      restCut: rest.some((n) => n.scrollWidth > n.clientWidth + 1),
       nameCut: (() => { const n = meta.querySelector(".meta-source"); return n ? n.scrollWidth > n.clientWidth + 1 : false; })(),
       leanBox: shown(lean) ? box(lean) : null, hitBox: shown(hit) ? box(hit) : null, metaBox: box(meta),
       body: link?.dataset.body || null, readName: read?.textContent ?? null, readCut: read ? read.scrollWidth > read.clientWidth + 1 : false,
@@ -169,13 +171,19 @@ const none = rows.filter((r) => !SCALE.includes(r.lean) && r.lean !== "state");
 check(onScale.length > 0 && onScale.every((r) => r.drawn && r.dots === 5 && r.filled === SCALE.indexOf(r.lean)),
   `${onScale.length} US-scale rows show five dots with their own bucket filled`);
 check(state.every((r) => r.drawn && r.dots === 0 && /state/i.test(r.state)), `${state.length} state-media rows show "State", no dots`);
-check(none.every((r) => r.cls === null && r.hitBox === null), `${none.length} non-us or unrated rows show no marker and no tap target`);
-check(rows.every((r) => r.metaLines === 1 && Math.abs(r.metaH - 11) < 0.5), "every meta line is one 11dp line");
+check(none.every((r) => r.country ? r.cls === "lean lean--country" && r.code === r.country && r.hitBox : r.cls === null && r.hitBox === null),
+  `${none.length} non-us rows show their home country's code (U3), an unrated one nothing`);
+check(rows.every((r) => Math.abs(r.metaH - (r.metaLines === 2 ? 27 : 11)) < 0.5), "every meta line is 11dp, one or two of them (U3)");
 check(rows.every((r) => !r.restCut), "no row's source count or age is cut");
 const clipped = rows.filter((r) => r.leanBox && r.leanBox.r > r.metaBox.r + 0.5);
 check(clipped.length === 0, `no marker runs past its meta line (${clipped.length})`);
-const offTarget = rows.filter((r) => r.leanBox && (!r.hitBox || Math.abs(r.hitBox.x - r.leanBox.x) > 1 || Math.abs(r.hitBox.y - r.leanBox.y) > 1 || r.hitBox.w < 48 || r.hitBox.h < 48));
-check(offTarget.length === 0, `every row's 48dp tap target is centred on its own dots (${offTarget.length} off)`);
+// U3: over a second meta line the target keeps to line 1 and the air above it: it still
+// covers the marker, and ends before line 2 begins (5dp below line 1).
+const offTarget = rows.filter((r) => r.leanBox && (!r.hitBox || Math.abs(r.hitBox.x - r.leanBox.x) > 1 || r.hitBox.w < 48 || r.hitBox.h < 48
+  || (r.metaLines === 1 ? Math.abs(r.hitBox.y - r.leanBox.y) > 1
+    : r.hitBox.y + 24 > r.metaBox.y - r.metaBox.h / 2 + 16 + 0.5 || r.hitBox.y - 24 > r.leanBox.y - r.leanBox.h / 2
+      || r.hitBox.y + 24 < r.leanBox.y + r.leanBox.h / 2)));
+check(offTarget.length === 0, `every row's 48dp tap target sits on its own marker (${offTarget.length} off)`);
 check(onScale.every((r) => r.hitLabel === `Lean: ${r.lean}`), "each tap target is named \"Lean: <bucket>\"");
 const reads = rows.filter((r) => r.body);
 const others = reads.filter((r) => r.expectRead);
@@ -345,8 +353,8 @@ for (const scheme of ["dark", "light"]) {
     }
     return { rows: rows.length, markers: rows.filter((r) => r.querySelector(".lean")).map((r) => r.dataset.source), off };
   })()`);
-  const expected = catalog.sources.filter((s) => SCALE.includes(s.lean) || s.lean === "state").map((s) => s.id).sort();
-  check(JSON.stringify(picker.markers.slice().sort()) === JSON.stringify(expected), `picker (${scheme}): ${picker.markers.length} of ${picker.rows} sources carry a marker, the scale and state ones`);
+  const expected = catalog.sources.filter((s) => SCALE.includes(s.lean) || s.lean === "state" || s.country).map((s) => s.id).sort();
+  check(JSON.stringify(picker.markers.slice().sort()) === JSON.stringify(expected), `picker (${scheme}): ${picker.markers.length} of ${picker.rows} sources carry a marker, every one with a lean or a country`);
   check(picker.off.length === 0, `picker (${scheme}): every tap target sits on its own dots (${picker.off.length} off)`);
   await evaluate(`document.querySelector('.source-group[data-bucket="us_politics"]')?.scrollIntoView({ block: "start" })`);
   await sleep(300);
