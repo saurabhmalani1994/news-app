@@ -224,7 +224,11 @@ for (const scheme of ["dark", "light"]) {
       sep: getComputedStyle(li.querySelector(".meta-read-source"), "::before").content }; })()`);
   await sleep(400);
   if (read) await shot(`u3-read-outlet-${scheme}.png`);
-  if (scheme === "dark") check(!!read && read.label === "Read here" && read.outlet && read.sep.includes("·"),
+  // B5: a face with full text is what "Read here" opens, and full text scores 15 toward
+  // the face, so a pool can hold no row whose text comes from another outlet; l1_check
+  // proves that case on its own fixture. When one exists, it must read right.
+  if (scheme === "dark" && !read) console.log("  (no Read here row names another outlet in this pool: each row's full text is its own face's)");
+  else if (scheme === "dark") check(read.label === "Read here" && read.outlet && read.sep.includes("·"),
     `a row names the other outlet whose text opens: "${read?.label} · ${read?.outlet}"`);
   await zoom(`u3-zoom-after-${scheme}.png`, "BBC World");
 }
@@ -268,7 +272,8 @@ check(below.own,
 
 // 4. The other-side line: the outlet then its marker, never the lean in words.
 const other = await evaluate(`(() => { const o = document.querySelector("#section-today .other-side"); if (!o) return null;
-  const li = o.closest("li"); document.getElementById("section-today").scrollTop = li.offsetTop - 60;
+  // The line itself in view (B5: a taller hero face can put it under the bottom nav).
+  const li = o.closest("li"); const p = document.getElementById("section-today"); p.scrollTop += o.getBoundingClientRect().top - 300;
   return { text: o.querySelector(".other-side-label").textContent, marker: !!o.querySelector(".other-side-label .lean"), sid: li.dataset.sid }; })()`);
 if (other) {
   await sleep(400);
