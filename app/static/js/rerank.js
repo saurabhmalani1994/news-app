@@ -72,28 +72,38 @@ function drawNotices(box, notices) {
   }));
 }
 
-try {
-  const input = JSON.parse(document.getElementById("rank-input").content.textContent);
-  const profile = window.almanacProfile || buildDefaultProfile(input.now);
-  const history = summaryToHistory(window.almanacHistorySummary || {});
-  const pages = rankPages(input.pool, profile, input.now, {
-    buckets: input.buckets, leans: input.leans, names: input.names, health: input.health,
-    terms: [seenPenaltyTerm(history)],
-  });
-  if (root.classList.contains("rerank")) {
-    const today = document.getElementById("section-today") || document;
-    const rows = new Map([...today.querySelectorAll("li.story[data-sid]")].map((li) => [li.dataset.sid, li]));
-    const order = pages.today.map((s) => s.id);
-    const onPage = new Set(order);
-    for (const [sid, li] of rows) if (!onPage.has(sid)) li.remove();
-    const lists = ["headlines", "more-list", "rest-list"].map((id) => document.getElementById(id));
-    retier(lists, order, rows, input.deks, input.images || {});
-    placeReadChoice(rows, input, profile.trust);
-    for (const story of pages.today) placeOtherSide(rows.get(story.id), story.other_side || null, input);
-    drawNotices(document.getElementById("standing-notices"), pages.notices);
-    const toggle = today.querySelector(".more-toggle");
-    if (toggle) toggle.textContent = `Show ${Math.max(0, order.length - 35)} more headlines`;
+function run() {
+  try {
+    const input = JSON.parse(document.getElementById("rank-input").content.textContent);
+    const profile = window.almanacProfile || buildDefaultProfile(input.now);
+    const history = summaryToHistory(window.almanacHistorySummary || {});
+    const pages = rankPages(input.pool, profile, input.now, {
+      buckets: input.buckets, leans: input.leans, names: input.names, health: input.health,
+      terms: [seenPenaltyTerm(history)],
+    });
+    if (root.classList.contains("rerank")) {
+      const today = document.getElementById("section-today") || document;
+      const rows = new Map([...today.querySelectorAll("li.story[data-sid]")].map((li) => [li.dataset.sid, li]));
+      const order = pages.today.map((s) => s.id);
+      const onPage = new Set(order);
+      for (const [sid, li] of rows) if (!onPage.has(sid)) li.remove();
+      const lists = ["headlines", "more-list", "rest-list"].map((id) => document.getElementById(id));
+      retier(lists, order, rows, input.deks, input.images || {});
+      placeReadChoice(rows, input, profile.trust);
+      for (const story of pages.today) placeOtherSide(rows.get(story.id), story.other_side || null, input);
+      drawNotices(document.getElementById("standing-notices"), pages.notices);
+      const toggle = today.querySelector(".more-toggle");
+      if (toggle) toggle.textContent = `Show ${Math.max(0, order.length - 35)} more headlines`;
+    }
+  } finally {
+    root.classList.remove("rerank");
   }
-} finally {
-  root.classList.remove("rerank");
 }
+
+// rank-gate.js inserts this module from <head>, and an inserted module runs as soon as
+// it arrives, which can be before the parser has reached #rank-input at the end of the
+// body: its text is then cut short and the re-rank fails (U3 caught it, 3 loads in its
+// proof). While the page is still parsing, wait for the whole document; the headlines
+// stay hidden until then, and tabs.js already waits for the re-rank either way.
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run, { once: true });
+else run();
