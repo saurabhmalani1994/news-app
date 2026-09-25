@@ -183,6 +183,7 @@ VERSIONS = """<div class="bv" id="bv" role="dialog" aria-modal="true" aria-label
 <div class="bv-track" id="bv-track" role="region" aria-roledescription="carousel" aria-label="Versions of this story"></div>
 <footer class="bv-foot">
 <button class="bv-all" id="bv-all" type="button" aria-haspopup="dialog"><span>All versions by lean</span><svg class="bv-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9.4 5.6 8 7l5 5-5 5 1.4 1.4 6.4-6.4z"></path></svg></button>
+<a class="bv-primary" id="bv-primary" target="_blank" rel="noopener noreferrer" aria-label="Primary source: the post, on trumpstruth.org, a third-party archive not run by Truth Social" hidden><span>Primary source</span><svg class="bv-icon bv-action-icon--out" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"></path></svg></a>
 </footer>
 </div>"""
 

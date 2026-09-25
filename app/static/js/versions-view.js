@@ -42,6 +42,7 @@ const marksButton = document.getElementById("bv-marks");
 const strip = document.getElementById("bv-strip");
 const track = document.getElementById("bv-track");
 const allButton = document.getElementById("bv-all");
+const primaryLink = document.getElementById("bv-primary");
 const reader = document.getElementById("reader");
 const sheetRoot = document.getElementById("sheet-root");
 const underneath = [document.querySelector(".screens"), document.querySelector(".bottom-nav")].filter(Boolean);
@@ -292,6 +293,22 @@ function render(slides) {
   marksButton.disabled = !markable;
 }
 
+/** B9: the footer's primary source link, shown only when this cluster carries a
+ * primary_source (DESIGN-bundles section 3: the fetcher's own match already
+ * decided it, this just renders the url it wrote). WEB guards against anything
+ * but a plain http(s) link ever reaching an href (R26 applies to every
+ * feed-adjacent string, this one included). */
+function setPrimarySource(cluster) {
+  const url = cluster?.primary_source?.url;
+  if (typeof url === "string" && WEB.test(url)) {
+    primaryLink.href = url;
+    primaryLink.hidden = false;
+  } else {
+    primaryLink.removeAttribute("href");
+    primaryLink.hidden = true;
+  }
+}
+
 function setMarks(on) {
   layer.classList.toggle("bv--plain", !on);
   marksButton.setAttribute("aria-pressed", String(on));
@@ -400,6 +417,7 @@ export function openVersions(sid, opener = null, push = true) {
   current = { sid, slides, index: null, opener, pushed: push, leadId: slides[0].id, seen: new Set() };
   render(slides);
   setMarks(wordMarksOn(profile));
+  setPrimarySource(cluster);
   if (push) history.pushState({ almanacBundle: sid }, "", `#bundle-${sid}`);
   for (const node of underneath) node.inert = true;
   layer.hidden = false;
@@ -426,6 +444,7 @@ function close() {
     layer.hidden = true;
     strip.replaceChildren();
     track.replaceChildren();
+    setPrimarySource(null);
   };
   if (reduced.matches) done();
   else hideTimer = setTimeout(done, 190);

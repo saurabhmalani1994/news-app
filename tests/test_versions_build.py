@@ -103,3 +103,30 @@ def test_a_hostile_dek_stays_text_in_the_page():
     assert "<script>alert(1)" not in page and "<img src=x" not in page
     data = _rank_input(page)
     assert "<script>alert(1)</script>" in data["vdeks"]["c1b"]
+
+
+# B9: the primary source link (DESIGN-bundles section 3 and 5). app/frontpage.py's
+# rank_input picks a fixed field list per cluster; primary_source must be in it, or
+# the fetcher's own match never reaches the device.
+
+def test_the_primary_source_footer_link_is_on_the_page_once_and_hidden():
+    page = render(pool())
+    assert page.count('id="bv-primary"') == 1
+    link = re.search(r'<a class="bv-primary" id="bv-primary"[^>]*>', page).group(0)
+    assert link.endswith(" hidden>")
+    assert page.count('<script type="module" src="js/versions-view.js"></script>') == 1
+
+
+def test_rank_input_carries_a_clusters_primary_source():
+    p = pool()
+    p["clusters"][0]["primary_source"] = {"url": "https://trumpstruth.org/posts/12345"}
+    data = _rank_input(render(p))
+    clusters = {c["id"]: c for c in data["pool"]["clusters"]}
+    assert clusters["c1"]["primary_source"] == {"url": "https://trumpstruth.org/posts/12345"}
+    assert "primary_source" not in clusters["w"]
+
+
+def test_rank_input_omits_primary_source_when_the_cluster_has_none():
+    data = _rank_input(render(pool()))
+    clusters = {c["id"]: c for c in data["pool"]["clusters"]}
+    assert "primary_source" not in clusters["c1"]

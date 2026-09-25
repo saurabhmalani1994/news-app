@@ -173,7 +173,8 @@ def build_stories(pool):
 # a dek on the device exactly as it would at build time.
 RANK_ARTICLE_FIELDS = ("id", "source_id", "title", "published_at", "topics", "geo", "watch")
 RANK_DEK_CHARS = 200
-RANK_CLUSTER_FIELDS = ("id", "article_ids", "near_duplicates", "independent_sources", "lean_buckets")
+RANK_CLUSTER_FIELDS = ("id", "article_ids", "near_duplicates", "independent_sources", "lean_buckets",
+                       "primary_source")
 
 
 def rank_input(pool):

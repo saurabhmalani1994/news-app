@@ -1433,12 +1433,40 @@ body {
   transition: background-color var(--motion-duration) var(--motion-ease);
 }
 
+/* B9: the primary source link, shown only when the cluster matched section 3's
+   rule. A second footer item beside "All versions by lean", narrower and set off
+   by a hairline, since it applies to the story, not one lean grouping. */
+.bv-primary {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--space-gutter);
+  border-style: none;
+  border-left: var(--divider-weight) solid var(--color-divider);
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--color-meta-tertiary);
+  text-decoration: none;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.bv-primary[hidden] {
+  display: none;
+}
+
 .bv-close:active,
 .bv-marks:active,
 .bv-chip:active,
 .bv .bv-action:active,
 .bv .bv-more-row:active,
-.bv-all:active {
+.bv-all:active,
+.bv-primary:active {
   background-color: var(--color-pressed);
 }
 
@@ -1447,7 +1475,8 @@ body {
 .bv-chip:focus-visible,
 .bv .bv-action:focus-visible,
 .bv .bv-more-row:focus-visible,
-.bv-all:focus-visible {
+.bv-all:focus-visible,
+.bv-primary:focus-visible {
   outline: 2px solid var(--color-headline);
   outline-offset: -2px;
 }
