@@ -12,6 +12,52 @@
     "radio free asia", "voice of america", "new york times", "washington post",
     "wall street journal", "los angeles times", "america's got talent"
   ],
+  "demonyms": {
+    "note": "B2: fetcher/cluster.py folds each word in map to its country when it compares two articles, so \"Ethiopian army\" and \"Ethiopia\" share a word, and each phrase in phrases to one word, so \"United Nations General Assembly\" and \"UNGA\" match. Matched lowercase, map after a trailing plural s is dropped. Geography tagging does not read this block.",
+    "phrases": {
+      "united nations general assembly": "unga", "un general assembly": "unga",
+      "united nations": "un", "united states": "us", "united kingdom": "uk",
+      "european union": "eu"
+    },
+    "map": {
+      "afghan": "afghanistan", "albanian": "albania", "algerian": "algeria", "american": "us",
+      "argentine": "argentina", "argentinian": "argentina", "armenian": "armenia",
+      "australian": "australia", "austrian": "austria", "azerbaijani": "azerbaijan",
+      "bangladeshi": "bangladesh", "belarusian": "belarus", "belgian": "belgium",
+      "bolivian": "bolivia", "bosnian": "bosnia", "brazilian": "brazil", "british": "britain",
+      "bruneian": "brunei", "bulgarian": "bulgaria", "burmese": "myanmar", "burma": "myanmar",
+      "cambodian": "cambodia", "cameroonian": "cameroon", "canadian": "canada", "chadian": "chad",
+      "chilean": "chile", "chinese": "china", "colombian": "colombia", "congolese": "congo",
+      "croatian": "croatia", "cuban": "cuba", "cypriot": "cyprus", "danish": "denmark",
+      "dutch": "netherlands", "ecuadorian": "ecuador", "egyptian": "egypt", "emirati": "uae",
+      "eritrean": "eritrea", "estonian": "estonia", "ethiopian": "ethiopia", "fijian": "fiji",
+      "filipino": "philippines", "finnish": "finland", "french": "france", "german": "germany",
+      "ghanaian": "ghana", "greek": "greece", "guatemalan": "guatemala", "haitian": "haiti",
+      "honduran": "honduras", "hungarian": "hungary", "icelandic": "iceland", "indian": "india",
+      "indonesian": "indonesia", "iranian": "iran", "iraqi": "iraq", "irish": "ireland",
+      "israeli": "israel", "italian": "italy", "jamaican": "jamaica", "japanese": "japan",
+      "jordanian": "jordan", "kazakh": "kazakhstan", "kenyan": "kenya", "korean": "korea",
+      "kuwaiti": "kuwait", "laotian": "laos", "latvian": "latvia", "lebanese": "lebanon",
+      "liberian": "liberia", "libyan": "libya", "lithuanian": "lithuania",
+      "malaysian": "malaysia", "maldivian": "maldives", "malian": "mali", "maltese": "malta",
+      "mexican": "mexico", "moldovan": "moldova", "mongolian": "mongolia",
+      "moroccan": "morocco", "mozambican": "mozambique", "namibian": "namibia",
+      "nepali": "nepal", "nepalese": "nepal", "nicaraguan": "nicaragua", "nigerian": "nigeria",
+      "norwegian": "norway", "omani": "oman", "pakistani": "pakistan",
+      "palestinian": "palestine", "panamanian": "panama", "paraguayan": "paraguay",
+      "peruvian": "peru", "polish": "poland", "portuguese": "portugal", "qatari": "qatar",
+      "romanian": "romania", "russian": "russia", "rwandan": "rwanda",
+      "senegalese": "senegal", "serbian": "serbia", "singaporean": "singapore",
+      "slovak": "slovakia", "slovenian": "slovenia", "somali": "somalia", "spanish": "spain",
+      "sudanese": "sudan", "swedish": "sweden", "swiss": "switzerland", "syrian": "syria",
+      "taiwanese": "taiwan", "tanzanian": "tanzania", "thai": "thailand", "tibetan": "tibet",
+      "tunisian": "tunisia", "turkish": "turkey", "turkiye": "turkey", "ugandan": "uganda",
+      "ukrainian": "ukraine", "uruguayan": "uruguay", "uzbek": "uzbekistan",
+      "venezuelan": "venezuela", "vietnamese": "vietnam", "yemeni": "yemen",
+      "zambian": "zambia", "zimbabwean": "zimbabwe", "scottish": "scotland", "welsh": "wales",
+      "european": "europe", "african": "africa", "asian": "asia"
+    }
+  },
   "regions": {
     "sg": {
       "terms": [
