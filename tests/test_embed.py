@@ -505,3 +505,14 @@ def test_publish_passes_the_token_by_name_and_caches_the_vectors():
     assert wf.count("path: .cache/embeddings.json") == 2
     assert "embed-${{ github.run_id }}-${{ github.run_attempt }}" in wf
     assert wf.count("path: .cache/state.json") == 2  # F6's cache untouched
+
+
+def test_build_logs_todays_top_stories_as_ids_only():
+    from app.build import today_top_line
+    pool = {"clusters": [{"id": "c_a", "article_ids": ["a", "b", "c"]},
+                         {"id": "c_d", "article_ids": ["d", "e"]}],
+            "events": [{"id": "e_1", "cluster_ids": ["c_a", "c_d"]}]}
+    ranking = {"ranked": [{"id": "c_a"}, {"id": "x"}, {"id": "c_d"}]}
+    line = today_top_line(pool, ranking)
+    assert line == ('today_top12: largest_event_share=2 stories=[["c_a", 3, "e_1"], '
+                    '["x", 1, null], ["c_d", 2, "e_1"]]')

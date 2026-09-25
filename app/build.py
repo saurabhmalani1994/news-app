@@ -861,7 +861,24 @@ def main(argv=None):
     counts = ", ".join(f"{name} {len(tiers[name])}" for name in tiers)
     print(f"built {out / 'index.html'}: {counts}")
     print("sections: " + ", ".join(f"{s['label']} {len(s['ids'])}" for s in ranking["sections"] if not s.get("slot")))
+    print(today_top_line(pool, ranking))
     return 0
+
+
+def today_top_line(pool, ranking, n=12):
+    """B7: Today's first n stories as ids only (the log is public): story id, articles in
+    it, and its S32 event, plus how many of the n share the most common event. A story's
+    headlines can be looked up by id in a candidate dump."""
+    size = {c["id"]: len(c["article_ids"]) for c in pool.get("clusters", [])}
+    event_of = {cid: e["id"] for e in pool.get("events", []) for cid in e["cluster_ids"]}
+    top = [r["id"] for r in ranking["ranked"][:n]]
+    rows = [[sid, size.get(sid, 1), event_of.get(sid)] for sid in top]
+    counts = {}
+    for _, _, ev in rows:
+        if ev:
+            counts[ev] = counts.get(ev, 0) + 1
+    most = max(counts.values(), default=0)
+    return f"today_top{n}: largest_event_share={most} stories={json.dumps(rows)}"
 
 
 if __name__ == "__main__":
