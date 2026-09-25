@@ -197,6 +197,13 @@ def source_ownership(pool, sources_path=SOURCES_JSON):
     return _source_field(pool, "ownership", sources_path)
 
 
+def source_countries(pool, sources_path=SOURCES_JSON):
+    """{source_id: country} for the pool's sources, from sources.json (U3): the outlet's
+    home country, ISO 3166-1 alpha-2, the marker an outlet outside the US left-right
+    scale shows, and the one its lean sheet names. Repo owned like lean (R10)."""
+    return _source_field(pool, "country", sources_path)
+
+
 def source_names(pool):
     """{source_id: name} from the pool's own source records, sorted by id, so a pass can
     name an outlet in a story's explanation."""

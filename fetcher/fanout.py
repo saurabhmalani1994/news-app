@@ -136,6 +136,16 @@ def _google_news_real_url(item):
     return None
 
 
+def _pool_source(source):
+    """A source's record in the pool: id, name and feed_url, plus (U3) its home country
+    when sources.json gives one in the contract's shape (pool.schema.json, B3)."""
+    record = {"id": source["id"], "name": source["name"], "feed_url": source["feed_url"]}
+    country = source.get("country")
+    if isinstance(country, str) and re.fullmatch(r"[A-Z]{2}", country):
+        record["country"] = country
+    return record
+
+
 class SourcesError(Exception):
     """sources.json is missing a required field, has a duplicate id, or breaks the
     closed lean/ownership/syndication shape (S08)."""
@@ -450,9 +460,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     return {
         "schema_version": 1,
         "generated_at": generated_at,
-        "sources": [
-            {"id": s["id"], "name": s["name"], "feed_url": s["feed_url"]} for s in sources
-        ],
+        "sources": [_pool_source(s) for s in sources],
         "articles": articles,
         "clusters": clusters,
         "counts": counts,

@@ -22,7 +22,7 @@ def test_catalog_carries_every_pool_source_with_repo_facts_and_health():
     rows = {r["id"]: r for r in catalog(pool)["sources"]}
     assert set(rows) == {"cna_asia", "npr", "not_in_repo"}
     assert rows["cna_asia"] == {"id": "cna_asia", "name": "CNA Asia", "bucket": "asia", "lean": "state",
-                                "health": "ok", "ownership": "state-owned"}
+                                "health": "ok", "ownership": "state-owned", "country": "SG"}
     assert rows["npr"]["health"] == "down" and "ownership" not in rows["npr"]
     assert rows["not_in_repo"]["bucket"] == "" and rows["not_in_repo"]["health"] == "unknown"
 

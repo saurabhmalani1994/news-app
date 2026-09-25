@@ -8,8 +8,9 @@ the device profile's mutes.sources, never here.
 
 L1: also each source's cited lean_basis, in a map of its own beside the rows (the rows
 stay the picker's compact shape), for the lean sheet a tap on a lean marker opens, on
-the front page and here. Only a source with a marker (a US-scale bucket or state media)
-has a sheet, so only those carry one.
+the front page and here. Only a source with a marker has a sheet, so only those carry
+one. U3: every row carries its home country (sources.json `country`), and an outlet
+outside the US scale shows it as its marker, so its sheet has a basis too.
 
 Built once per build, precached with the app shell (app/serviceworker.py), so the
 picker works offline.
@@ -18,10 +19,11 @@ import json
 from pathlib import Path
 
 from app.frontpage import SOURCES_JSON
-from app.lean import LEAN_SCALE
+from app.lean import LEAN_SCALE, country_code
 
 ERROR_STATES = ("http_error", "timeout", "parse_error")
-# The leans a marker shows for (app/lean.py): the US scale and state media.
+# The leans a marker shows for (app/lean.py): the US scale and state media; any other
+# source with a country shows that instead (U3).
 SHEET_LEANS = LEAN_SCALE + ("state",)
 
 
@@ -59,10 +61,13 @@ def catalog(pool, sources_path=SOURCES_JSON):
                "health": health_word(health.get(sid))}
         if extra.get("ownership"):
             row["ownership"] = extra["ownership"]
+        if country_code(extra.get("country")):
+            row["country"] = extra["country"]
         rows.append(row)
     rows.sort(key=lambda r: (r["bucket"], r["name"].lower(), r["id"]))
-    basis = {r["id"]: meta[r["id"]]["lean_basis"] for r in rows
-             if r["lean"] in SHEET_LEANS and isinstance(meta.get(r["id"], {}).get("lean_basis"), str)}
+    marked = [r for r in rows if r["lean"] in SHEET_LEANS or r.get("country")]
+    basis = {r["id"]: meta[r["id"]]["lean_basis"] for r in marked
+             if isinstance(meta.get(r["id"], {}).get("lean_basis"), str)}
     return {"generated_at": pool.get("generated_at"), "sources": rows, "lean_basis": dict(sorted(basis.items()))}
 
 
