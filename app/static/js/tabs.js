@@ -22,7 +22,7 @@
 // flash the wrong tab into the strip. syncLiveTab is cheap (no ranking, just
 // live.js's pure pick) and runs at once, then again after any profile save that could
 // change the outcome (story-actions.js, live-actions.js).
-import { rankPages } from "./passes.js";
+import { rankPages, pageOptions } from "./passes.js";
 import { buildDefaultProfile } from "./profile/default-profile.js";
 import { STORAGE_KEY } from "./profile/store.js";
 import { SECTIONS } from "./sections.js";
@@ -181,7 +181,7 @@ function buildSections() {
   if (built) return;
   built = true;
   const profile = currentProfile();
-  const pages = rankPages(input.pool, profile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health, events: input.events || [] });
+  const pages = rankPages(input.pool, profile, input.now, pageOptions(input));
   syncLiveTab(profile);
   const todayRows = [...document.querySelectorAll("#section-today li.story[data-sid]")];
   const byId = new Map(todayRows.map((li) => [li.dataset.sid, li]));

@@ -506,6 +506,18 @@ export function applyPasses(names, pool, profile, now, opts = {}) {
   return { list, removed: ctx.removed };
 }
 
+/** R2: rankPages()'s opts from the page's embedded #rank-input (or rank_cli's stdin,
+ * the same fields): every field the build ranks with, so no caller can drop one. The
+ * device re-rank once left out `events`, so H4's per-event repeat cap ran at build and
+ * not on the phone, and Today's order after the device re-rank disagreed with the page
+ * as built. `extra` adds what only the device has (terms: the seen penalty). */
+export function pageOptions(input, extra = {}) {
+  return {
+    buckets: input.buckets || {}, leans: input.leans || {}, names: input.names || {},
+    health: input.health || {}, events: input.events || [], ...extra,
+  };
+}
+
 /**
  * The pages for a profile: Today and every section tab, each after its passes.
  * Returns {today, removed, sections: [{id, label, slot, stories}], notices}; `today` and

@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
 import { ACCESS_COOKIE, parseHeaders, serve } from "./cdp.mjs";
 
-import { rankPages } from "../../app/static/js/passes.js";
+import { rankPages, pageOptions } from "../../app/static/js/passes.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
 
@@ -56,7 +56,11 @@ async function visit(stored, scheme, shot) {
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: scheme }] });
   await send("Page.navigate", { url: `${origin}/index.html` });
   await sleep(800);
-  await evaluate(stored ? `localStorage.setItem(${JSON.stringify(STORAGE_KEY)}, ${JSON.stringify(JSON.stringify(stored))})` : "localStorage.clear()");
+  // R2: always clear first, as standing_cls and csp_check do (H4 item 6). The page a
+  // previous visit left on screen writes R17's seen summary, which the device re-rank
+  // reads (the seen penalty) and this file's expectation does not model.
+  await evaluate("localStorage.clear()");
+  if (stored) await evaluate(`localStorage.setItem(${JSON.stringify(STORAGE_KEY)}, ${JSON.stringify(JSON.stringify(stored))})`);
   await send("Page.reload", { ignoreCache: true });
   await sleep(2500);
   const out = JSON.parse(await evaluate(`document.fonts.ready.then(() => JSON.stringify({ cls: window.__cls, first: window.__first,
@@ -96,7 +100,7 @@ const results = {};
 let ok = true;
 for (const [name, store, scheme] of [["default-dark", null, "dark"], ["custom-dark", stored, "dark"], ["custom-light", stored, "light"], ["muted-dark", mutedStore, "dark"]]) {
   const r = await visit(store, scheme, shot(`rerank-${name}.png`));
-  const opts = { buckets: r.input.buckets, leans: r.input.leans, names: r.input.names, health: r.input.health };
+  const opts = pageOptions(r.input);
   const page = rankPages(r.input.pool, expectFor(store), r.input.now, opts);
   const expected = page.today.map((s) => s.id);
   const expectedOthers = page.today.filter((s) => s.other_side).map((s) => [s.id, s.other_side.article_id]);

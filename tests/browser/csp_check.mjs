@@ -12,7 +12,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { rankPages } from "../../app/static/js/passes.js";
+import { rankPages, pageOptions } from "../../app/static/js/passes.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
 import { BASE, BENIGN, HOSTILE, handlerFixtures } from "../js/hostile-bodies.js";
@@ -93,7 +93,7 @@ const rr = JSON.parse(await evaluate(`JSON.stringify({ hidden: document.document
   rerankLoaded: performance.getEntriesByType("resource").some((e) => e.name.includes("/js/rerank.js")),
   order: [...document.querySelectorAll("#section-today li.story[data-sid]")].map((li) => li.dataset.sid),
   input: JSON.parse(document.getElementById("rank-input").content.textContent) })`));
-const opts = { buckets: rr.input.buckets, leans: rr.input.leans, names: rr.input.names, events: rr.input.events || [] };
+const opts = pageOptions(rr.input);
 const expected = rankPages(rr.input.pool, custom, rr.input.now, opts).today.map((s) => s.id);
 const builtOrder = rankPages(rr.input.pool, base, rr.input.now, opts).today.map((s) => s.id);
 await shot("csp-rerank-dark.png");

@@ -11,7 +11,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { rankPages } from "../../app/static/js/passes.js";
+import { rankPages, pageOptions } from "../../app/static/js/passes.js";
 import { seenPenaltyTerm } from "../../app/static/js/history/penalty.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
@@ -123,7 +123,7 @@ const history = {
   opened: new Map(Object.entries(localSummary.opened || {}).map(([k, v]) => [k, { time: v }])),
   shown: new Map(Object.entries(localSummary.shown || {}).map(([k, v]) => [k, { time: v }])),
 };
-const opts = { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health, terms: [seenPenaltyTerm(history)] };
+const opts = pageOptions(input, { terms: [seenPenaltyTerm(history)] });
 const expectedPages = rankPages(input.pool, buildDefaultProfile(input.now), input.now, opts);
 const expectedOpenedTerm = expectedPages.today.find((s) => s.id === openedId)?.explanation.find((t) => t.term === "seen_penalty");
 const domOrder = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('#section-today li.story[data-sid]')].map((li) => li.dataset.sid))`));

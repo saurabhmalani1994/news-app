@@ -13,7 +13,7 @@ import { join, extname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
 import { ACCESS_COOKIE, parseHeaders, serve } from "./cdp.mjs";
-import { rankPages } from "../../app/static/js/passes.js";
+import { rankPages, pageOptions } from "../../app/static/js/passes.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
 
@@ -83,7 +83,7 @@ const results = {};
 let ok = true;
 for (const [name, stored, scheme] of [["default-dark", null, "dark"], ["default-light", null, "light"], ["off-dark", store, "dark"]]) {
   const r = await visit(stored, scheme);
-  const opts = { buckets: r.input.buckets, leans: r.input.leans, names: r.input.names, health: r.input.health };
+  const opts = pageOptions(r.input);
   const page = rankPages(r.input.pool, stored ? off : base, r.input.now, opts);
   const want = page.notices.map((n) => [n.id, n.kind, n.kicker, n.head, n.text]);
   const placed = page.today.map((s, i) => [s, i]).filter(([s]) => s.passes.some((e) => e.pass === "standing-story" && e.text.startsWith("Placed")));

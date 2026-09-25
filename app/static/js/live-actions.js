@@ -7,7 +7,7 @@ import { openSheet, closeSheet } from "./sheet.js";
 import { showToast } from "./toast.js";
 import { ProfileStore } from "./profile/store.js";
 import { buildDefaultProfile } from "./profile/default-profile.js";
-import { rankPages } from "./passes.js";
+import { rankPages, pageOptions } from "./passes.js";
 import {
   overridesOf, withEventPinned, withEventUnpinned, withEventBlocked,
 } from "./live.js";
@@ -89,9 +89,7 @@ function refreshLivePanel(profile) {
   panel.replaceChildren();
   if (!event) return;
   const input = getInput();
-  const pages = rankPages(input.pool, profile, input.now, {
-    buckets: input.buckets, leans: input.leans, names: input.names, health: input.health, events: input.events || [],
-  });
+  const pages = rankPages(input.pool, profile, input.now, pageOptions(input));
   const liveSection = pages.sections.find((s) => s.id === "live");
   const todayRows = [...document.querySelectorAll("#section-today li.story[data-sid]")];
   const byId = new Map(todayRows.map((li) => [li.dataset.sid, li]));

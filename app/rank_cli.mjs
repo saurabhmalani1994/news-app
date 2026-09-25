@@ -8,14 +8,15 @@
 // (S27's one table, app/static/js/sections.js), with their entries and links; `notices`
 // is S28's silence alarm for Today (app/static/js/standing.js). Node only, no packages.
 import { profileKey } from "./static/js/ranker.js";
-import { rankPages } from "./static/js/passes.js";
+import { rankPages, pageOptions } from "./static/js/passes.js";
 import { buildDefaultProfile } from "./static/js/profile/default-profile.js";
 
 const chunks = [];
 for await (const chunk of process.stdin) chunks.push(chunk);
-const { pool, now, buckets, leans, names, health, events } = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+const { pool, now } = input;
 const profile = buildDefaultProfile(now);
-const pages = rankPages(pool, profile, now, { buckets: buckets || {}, leans: leans || {}, names: names || {}, health: health || {}, events: events || [] });
+const pages = rankPages(pool, profile, now, pageOptions(input));
 const record = ({ id, score, explanation, must_know, passes, other_side }) => ({ id, score, explanation, must_know, passes, ...(other_side ? { other_side } : {}) });
 const touched = (stories) => Object.fromEntries(stories.filter((s) => s.passes.length).map((s) => [s.id, s.passes]));
 const links = (stories) => Object.fromEntries(stories.filter((s) => s.other_side).map((s) => [s.id, s.other_side]));

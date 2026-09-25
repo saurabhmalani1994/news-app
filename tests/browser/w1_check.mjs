@@ -310,14 +310,14 @@ check("sync_puts_the_contract_shape_and_get_returns_it", synced && value.v === 1
 // 4. Today re-ranks on the device: the three matches lead, the decoy does not.
 await open("/");
 const today = await json(`(async () => {
-  const { rankPages } = await import("/js/passes.js");
+  const { rankPages, pageOptions } = await import("/js/passes.js");
   const { summaryToHistory } = await import("/js/history/summary.js");
   const { seenPenaltyTerm } = await import("/js/history/penalty.js");
   const input = JSON.parse(document.getElementById("rank-input").content.textContent);
   const order = [...document.querySelectorAll("#section-today li.story[data-sid]")].map((li) => li.dataset.sid);
   // The page's own re-rank (rerank.js): this profile, and the read history's seen term.
   const terms = [seenPenaltyTerm(summaryToHistory(window.almanacHistorySummary || {}))];
-  const pages = rankPages(input.pool, window.almanacProfile, input.now, { buckets: input.buckets, leans: input.leans, names: input.names, health: input.health, terms });
+  const pages = rankPages(input.pool, window.almanacProfile, input.now, pageOptions(input, { terms }));
   const matched = Object.fromEntries(pages.today.filter((s) => ["p1", "p2", "p3", "p4"].includes(s.id)).map((s) => [s.id, s.topics_matched]));
   return { order, ranked: pages.today.map((s) => s.id), matched, hasPhrase: !!window.almanacProfile?.topics?.p_sodium_battery };
 })()`);

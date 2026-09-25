@@ -13,7 +13,7 @@
 // even with the default profile, so the seen penalty (R17) always reaches the page
 // before first paint; window.almanacHistorySummary is the compact localStorage summary
 // rank-gate.js already read synchronously.
-import { rankPages } from "./passes.js";
+import { rankPages, pageOptions } from "./passes.js";
 import { retier, placeOtherSide, visibleSourceCount, placeSourceCount } from "./tiers.js";
 import { buildDefaultProfile } from "./profile/default-profile.js";
 import { summaryToHistory } from "./history/summary.js";
@@ -77,10 +77,7 @@ function run() {
     const input = JSON.parse(document.getElementById("rank-input").content.textContent);
     const profile = window.almanacProfile || buildDefaultProfile(input.now);
     const history = summaryToHistory(window.almanacHistorySummary || {});
-    const pages = rankPages(input.pool, profile, input.now, {
-      buckets: input.buckets, leans: input.leans, names: input.names, health: input.health,
-      terms: [seenPenaltyTerm(history)],
-    });
+    const pages = rankPages(input.pool, profile, input.now, pageOptions(input, { terms: [seenPenaltyTerm(history)] }));
     if (root.classList.contains("rerank")) {
       const today = document.getElementById("section-today") || document;
       const rows = new Map([...today.querySelectorAll("li.story[data-sid]")].map((li) => [li.dataset.sid, li]));
