@@ -65,14 +65,14 @@ def test_the_iso_list_is_the_full_assigned_set():
 
 
 def test_every_source_has_a_valid_home_country():
-    assert len(REPO_SOURCES) == 97
+    assert len(REPO_SOURCES) == 108  # B4 added the eleven section 3 feeds
     for s in REPO_SOURCES:
         assert s.get("country") in ISO_3166_ALPHA2, (s["id"], s.get("country"))
 
 
 def test_the_pool_carries_each_sources_country_in_the_b3_field_and_still_validates():
     assert _pool_source(BY_ID["dawn_pk"]) == {"id": "dawn_pk", "name": "Dawn", "feed_url": BY_ID["dawn_pk"]["feed_url"],
-                                              "country": "PK"}
+                                              "country": "PK", "roster": "core", "paywall": False}
     for bad in ("pk", "PAK", "", None):
         assert "country" not in _pool_source({**BY_ID["dawn_pk"], "country": bad})
     pool = copy.deepcopy(GOLDEN)

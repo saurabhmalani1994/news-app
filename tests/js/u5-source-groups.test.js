@@ -36,8 +36,8 @@ test("the real catalog's groups are the brief's own eight, with the right counts
   // buckets; world absorbs general, israel_gaza, sudan, europe, africa, latin_america,
   // middle_east and oceania; science_biotech absorbs science and biotech.
   assert.deepEqual(byId, {
-    us_politics: 10,
-    world: 35,
+    us_politics: 19, // B4: nine section 3 feeds
+    world: 37, // B4: Fox News latest and world (bucket general)
     asia: 20,
     singapore: 5,
     business: 5,

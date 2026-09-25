@@ -10,7 +10,9 @@
       "lean": "center-left",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET rates NPR Center-Left; US public broadcaster.",
       "syndication_group": "npr",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "bbc_world",
@@ -21,7 +23,9 @@
       "lean": "center",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET rates BBC World Center.",
       "syndication_group": "bbc_world",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "al_jazeera",
@@ -33,7 +37,9 @@
       "lean_basis": "research/feeds-interests.md: Qatari state-funded, pro-Palestinian editorial lean on Israel/Gaza coverage.",
       "ownership": "state-funded",
       "syndication_group": "al_jazeera",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "guardian_world",
@@ -44,7 +50,9 @@
       "lean": "left",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET and feeds-interests.md (Guardian US entry) both rate the Guardian Left / left-leaning; UK-owned.",
       "syndication_group": "guardian",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "axios",
@@ -55,7 +63,9 @@
       "lean": "center",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET rates Axios Center.",
       "syndication_group": "axios",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "ars_technica",
@@ -66,7 +76,9 @@
       "lean": "center",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET rates Ars Technica Center; tech trade press, not political.",
       "syndication_group": "ars_technica",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "economist_finance",
@@ -78,7 +90,8 @@
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET: Center (globalist/economically right-of-center).",
       "syndication_group": "economist",
       "full_text_ok": false,
-      "paywall": true
+      "paywall": true,
+      "roster": "core"
     },
     {
       "id": "wsj_world",
@@ -90,7 +103,8 @@
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET rates WSJ news (not opinion) Center-Right; feeds-verified.md confirms the feed is WSJ content via Dow Jones RSS.",
       "syndication_group": "wsj",
       "full_text_ok": false,
-      "paywall": true
+      "paywall": true,
+      "roster": "core"
     },
     {
       "id": "pbs_newshour",
@@ -101,7 +115,9 @@
       "lean": "center",
       "lean_basis": "Public-broadcaster consensus lean Center; R11 and research/feeds-asia.md: 17 of 20 sampled headline items carry Associated Press attribution in the body, so this feed stands in for AP wire copy.",
       "syndication_group": "ap_wire",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "politico",
@@ -112,7 +128,9 @@
       "lean": "center-left",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET: Center-Left (DC establishment).",
       "syndication_group": "politico",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "fox_politics",
@@ -123,7 +141,9 @@
       "lean": "right",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET rates Fox News Right.",
       "syndication_group": "fox_politics",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "wapo_politics",
@@ -134,7 +154,9 @@
       "lean": "center-left",
       "lean_basis": "research/sources-landscape.md RECOMMENDED SET: Lean Left.",
       "syndication_group": "wapo",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "the_hill",
@@ -145,7 +167,9 @@
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: Center/institutional Beltway.",
       "syndication_group": "the_hill",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "national_review",
@@ -156,7 +180,9 @@
       "lean": "right",
       "lean_basis": "research/feeds-interests.md: Conservative/movement right.",
       "syndication_group": "national_review",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "reason",
@@ -167,7 +193,9 @@
       "lean": "right",
       "lean_basis": "research/feeds-interests.md: Libertarian right (distinct pole from movement conservatism, still right of center).",
       "syndication_group": "reason",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "mother_jones",
@@ -178,7 +206,9 @@
       "lean": "left",
       "lean_basis": "research/feeds-interests.md: Progressive/investigative left.",
       "syndication_group": "mother_jones",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "guardian_us",
@@ -189,7 +219,9 @@
       "lean": "left",
       "lean_basis": "research/feeds-interests.md: UK-owned, left-leaning.",
       "syndication_group": "guardian",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "washington_examiner",
@@ -200,7 +232,9 @@
       "lean": "right",
       "lean_basis": "research/feeds-interests.md: Conservative/populist right.",
       "syndication_group": "washington_examiner",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "the_dispatch",
@@ -211,7 +245,9 @@
       "lean": "center-right",
       "lean_basis": "research/feeds-interests.md: Center-right, anti-Trump conservative.",
       "syndication_group": "the_dispatch",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "straits_times_sg",
@@ -222,7 +258,9 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-interests.md: Establishment, SPH Media; Singapore's dominant establishment press, does not map to a US left-right axis.",
       "syndication_group": "straits_times_sph",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "cna_singapore",
@@ -234,7 +272,9 @@
       "lean_basis": "research/feeds-interests.md labels CNA 'State-linked, Mediacorp'; research/feeds-asia.md: Mediacorp is wholly owned by Temasek, Singapore's state investment arm.",
       "ownership": "state-owned",
       "syndication_group": "cna_mediacorp",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "business_times_sg",
@@ -245,7 +285,9 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-interests.md: Business/finance, SPH Media; establishment financial trade press, not mapped to a US-style axis.",
       "syndication_group": "straits_times_sph",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "mothership",
@@ -256,7 +298,10 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-interests.md: Independent, youth-oriented; no US-style partisan lean documented.",
       "syndication_group": "mothership",
-      "full_text_ok": false
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B4 2026-09-25, R40 answer 9: measured live, 8 of 10 items carry full text over the 2,000-char cutoff, so full_text_ok is true like every full-text feed; the cutoff still decides per item."
     },
     {
       "id": "independent_sg",
@@ -267,7 +312,9 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-interests.md: Independent/tabloid, gov-critical; Singapore's establishment-vs-critical axis does not map onto the US left-right scale.",
       "syndication_group": "independent_sg",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "times_of_israel",
@@ -281,7 +328,9 @@
       "full_text_ok": false,
       "via": "relay",
       "via_url": "/feed/times_of_israel",
-      "via_basis": "F4 2026-09-24: relay Worker deployed after the owner created a Workers-scoped Cloudflare token (F3's deploy had failed on a permission gap). Verified live from Actions: status 200, 13 items, real descriptions in CDATA, the outlet's own native feed content. Google News gave more items (100) but only headlines behind a Google redirect link, so the relay route wins. feed_url is kept as the original direct route; removing via/via_url reverts."
+      "via_basis": "F4 2026-09-24: relay Worker deployed after the owner created a Workers-scoped Cloudflare token (F3's deploy had failed on a permission gap). Verified live from Actions: status 200, 13 items, real descriptions in CDATA, the outlet's own native feed content. Google News gave more items (100) but only headlines behind a Google redirect link, so the relay route wins. feed_url is kept as the original direct route; removing via/via_url reverts.",
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "haaretz",
@@ -292,7 +341,9 @@
       "lean": "left",
       "lean_basis": "research/feeds-interests.md: Israeli left, government/occupation-critical.",
       "syndication_group": "haaretz",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "jerusalem_post",
@@ -303,7 +354,9 @@
       "lean": "center-right",
       "lean_basis": "research/feeds-interests.md: Israeli mainstream, right-of-center.",
       "syndication_group": "jerusalem_post",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "middle_east_eye",
@@ -317,7 +370,9 @@
       "full_text_ok": true,
       "via": "relay",
       "via_url": "/feed/middle_east_eye",
-      "via_basis": "F4 2026-09-24: relay Worker deployed after the owner created a Workers-scoped Cloudflare token (F3's deploy had failed on a permission gap). Verified live from Actions: status 200, 20 items, real descriptions in CDATA, the outlet's own native feed content (no content:encoded, same as before). Google News gave more items (100) but only headlines behind a Google redirect link, so the relay route wins. feed_url is kept as the original direct route; removing via/via_url reverts."
+      "via_basis": "F4 2026-09-24: relay Worker deployed after the owner created a Workers-scoped Cloudflare token (F3's deploy had failed on a permission gap). Verified live from Actions: status 200, 20 items, real descriptions in CDATA, the outlet's own native feed content (no content:encoded, same as before). Google News gave more items (100) but only headlines behind a Google redirect link, so the relay route wins. feed_url is kept as the original direct route; removing via/via_url reverts.",
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "radio_dabanga",
@@ -325,10 +380,14 @@
       "feed_url": "https://www.dabangasudan.org/en/feed",
       "bucket": "sudan",
       "country": "NL",
+      "exile_of": "SD",
+      "exile_basis": "R42 and DESIGN-bundles section 4: Radio Dabanga is a Sudanese newsroom in exile, based in Amsterdam, reporting for Sudan.",
       "lean": "non-us",
       "lean_basis": "research/feeds-interests.md: Sudanese-Dutch NGO radio, Darfur-focused, anti-regime advocacy voice; does not map to a US left-right axis.",
       "syndication_group": "radio_dabanga",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "radio_tamazuj",
@@ -336,10 +395,14 @@
       "feed_url": "https://radiotamazuj.org/en/feed",
       "bucket": "sudan",
       "country": "NL",
+      "exile_of": "SS",
+      "exile_basis": "R42: Radio Tamazuj was founded in exile in Amsterdam (U3's NL call) and reports mainly for South Sudan, with Sudan second; one exile_of is allowed, so SS.",
       "lean": "non-us",
       "lean_basis": "F2 feed repair 2026-09-24: reliefweb_sudan (reliefweb.int) returns an AWS WAF challenge (202, empty body) to an honest client, confirmed dead. Radio Tamazuj is an independent Sudan and South Sudan focused news and radio service, verified live with 12 same-day items on peace-deal, opposition and government coverage; does not map to a US left-right axis.",
       "syndication_group": "radio_tamazuj",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "allafrica_sudan",
@@ -350,7 +413,9 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-interests.md: Pan-African wire aggregator, not a single editorially aligned outlet.",
       "syndication_group": "allafrica",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "techcrunch_ai",
@@ -361,7 +426,9 @@
       "lean": "center",
       "lean_basis": "research/feeds-interests.md labels this trade press with no political-lean rating; treated as center for a non-political vertical.",
       "syndication_group": "techcrunch",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "mit_tech_review_ai",
@@ -372,7 +439,9 @@
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: research-adjacent trade press, no political-lean rating documented.",
       "syndication_group": "mit_tech_review",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "huggingface_blog",
@@ -383,7 +452,9 @@
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: company/community blog, no political-lean rating documented.",
       "syndication_group": "huggingface",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "arxiv_cs_ai",
@@ -394,7 +465,9 @@
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: raw academic preprints, no political-lean rating documented.",
       "syndication_group": "arxiv",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "import_ai",
@@ -408,7 +481,9 @@
       "full_text_ok": true,
       "via": "relay",
       "via_url": "/feed/import_ai",
-      "via_basis": "F4 2026-09-24: relay Worker deployed after the owner created a Workers-scoped Cloudflare token (F3's deploy had failed on a permission gap). Verified live from Actions: status 200, 20 items, real descriptions, images and full article content:encoded on every item, the outlet's own native feed. Google News gave more items (38) but headlines only, no images, no full content, so the relay route wins. feed_url is kept as the original direct route; removing via/via_url reverts."
+      "via_basis": "F4 2026-09-24: relay Worker deployed after the owner created a Workers-scoped Cloudflare token (F3's deploy had failed on a permission gap). Verified live from Actions: status 200, 20 items, real descriptions, images and full article content:encoded on every item, the outlet's own native feed. Google News gave more items (38) but headlines only, no images, no full content, so the relay route wins. feed_url is kept as the original direct route; removing via/via_url reverts.",
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "labiotech",
@@ -419,7 +494,9 @@
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: European biotech/synbio trade press, no political-lean rating documented.",
       "syndication_group": "labiotech",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "gen_news",
@@ -430,7 +507,9 @@
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: broad biotech trade press, no political-lean rating documented.",
       "syndication_group": "gen_news",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "agfundernews",
@@ -441,7 +520,9 @@
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: ag-bio trade press, no political-lean rating documented.",
       "syndication_group": "agfundernews",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "bioprocess_intl",
@@ -452,7 +533,9 @@
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: bioprocessing trade press, no political-lean rating documented.",
       "syndication_group": "bioprocess_intl",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "fierce_biotech",
@@ -463,7 +546,9 @@
       "lean": "center",
       "lean_basis": "research/feeds-interests.md: pharma/clinical trade press, no political-lean rating documented.",
       "syndication_group": "fierce_biotech",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "straits_times_asia",
@@ -474,7 +559,9 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: SPH Media, Singapore establishment press; same publisher as the Singapore-section feed.",
       "syndication_group": "straits_times_sph",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "cna_asia",
@@ -486,7 +573,9 @@
       "lean_basis": "research/feeds-asia.md: State-owned: Mediacorp is wholly owned by Temasek, Singapore's state investment arm.",
       "ownership": "state-owned",
       "syndication_group": "cna_mediacorp",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "the_diplomat",
@@ -497,7 +586,9 @@
       "lean": "center",
       "lean_basis": "research/feeds-asia.md: Private, US-based Asia-policy analysis magazine, no partisan lean documented.",
       "syndication_group": "the_diplomat",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "asia_times",
@@ -508,7 +599,9 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private, Hong Kong-based, no partisan lean documented; treated as non-us.",
       "syndication_group": "asia_times",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "japan_times",
@@ -519,7 +612,9 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private, mainstream Japan-domestic press, no US-style lean documented.",
       "syndication_group": "japan_times",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "kyodo_news",
@@ -531,7 +626,9 @@
       "lean_basis": "research/feeds-asia.md: Nonprofit cooperative owned by member papers/broadcasters; Japan's quasi-official wire, editorially independent in a free-press environment.",
       "ownership": "member-owned",
       "syndication_group": "kyodo_news",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "yonhap",
@@ -543,7 +640,9 @@
       "lean_basis": "research/feeds-asia.md: Statutorily designated South Korea's national news agency, receives government subsidy, editorially independent in a free-press environment.",
       "ownership": "state-subsidized",
       "syndication_group": "yonhap",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "korea_herald",
@@ -554,7 +653,9 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private (Herald Corporation), no US-style lean documented.",
       "syndication_group": "korea_herald",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "scmp_china",
@@ -566,7 +667,9 @@
       "lean_basis": "research/feeds-asia.md: Owned by Alibaba Group, a mainland Chinese company, since 2016; SCMP asserts editorial independence but the PRC-linked ownership is a documented fact.",
       "ownership": "corporate-controlled",
       "syndication_group": "scmp",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "focus_taiwan",
@@ -578,7 +681,9 @@
       "lean_basis": "research/feeds-asia.md: Operated by Taiwan's government-funded Central News Agency; Taiwan ranks among Asia's freest press environments, unlike PRC state media.",
       "ownership": "state-funded",
       "syndication_group": "focus_taiwan",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "hong_kong_free_press",
@@ -589,7 +694,10 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Independent nonprofit, crowdfunded, pro-press-freedom editorial stance; operates under Hong Kong's 2020 National Security Law.",
       "syndication_group": "hong_kong_free_press",
-      "full_text_ok": false
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B4 2026-09-25, R40 answer 9: measured live, 23 of 30 items carry full text over the 2,000-char cutoff, so full_text_ok is true like every full-text feed; the cutoff still decides per item."
     },
     {
       "id": "the_hindu",
@@ -600,7 +708,9 @@
       "lean": "center-left",
       "lean_basis": "research/feeds-asia.md: Private (Kasturi & Sons), center-left.",
       "syndication_group": "the_hindu",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "indian_express",
@@ -614,7 +724,9 @@
       "full_text_ok": false,
       "via": "relay",
       "via_url": "/feed/indian_express",
-      "via_basis": "F4 2026-09-24: relay Worker deployed after the owner created a Workers-scoped Cloudflare token (F3's deploy had failed on a permission gap). Verified live from Actions: status 200, 200 items, real descriptions, images and full article content:encoded on every item, the outlet's own native feed. Google News gave fewer items (100), headlines only, no images, no full content, so the relay route wins. feed_url is kept as the original direct route; removing via/via_url reverts."
+      "via_basis": "F4 2026-09-24: relay Worker deployed after the owner created a Workers-scoped Cloudflare token (F3's deploy had failed on a permission gap). Verified live from Actions: status 200, 200 items, real descriptions, images and full article content:encoded on every item, the outlet's own native feed. Google News gave fewer items (100), headlines only, no images, no full content, so the relay route wins. feed_url is kept as the original direct route; removing via/via_url reverts.",
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "livemint",
@@ -625,7 +737,9 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private (HT Media), business focus, no US-style lean documented.",
       "syndication_group": "livemint",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "economic_times",
@@ -636,7 +750,9 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private (Times Group), business focus, no US-style lean documented.",
       "syndication_group": "economic_times",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "bangkok_post",
@@ -647,7 +763,9 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private; operates under Thailand's lese-majeste law (Section 112) and Computer Crime Act, which constrain coverage of the monarchy and government.",
       "syndication_group": "bangkok_post",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "malay_mail",
@@ -658,7 +776,10 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Private; Malaysian outlets require annual licenses under the Printing Presses and Publications Act.",
       "syndication_group": "malay_mail",
-      "full_text_ok": false
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B4 2026-09-25, R40 answer 9: measured live, 23 of 50 items carry full text over the 2,000-char cutoff, so full_text_ok is true like every full-text feed; the cutoff still decides per item."
     },
     {
       "id": "rappler",
@@ -669,7 +790,10 @@
       "lean": "non-us",
       "lean_basis": "research/feeds-asia.md: Independent; faced government legal action (tax charges, license-revocation attempt) under the Duterte administration.",
       "syndication_group": "rappler",
-      "full_text_ok": false
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B4 2026-09-25, R40 answer 9: measured live, 6 of 10 items carry full text over the 2,000-char cutoff, so full_text_ok is true like every full-text feed; the cutoff still decides per item."
     },
     {
       "id": "vnexpress",
@@ -681,7 +805,9 @@
       "lean_basis": "research/feeds-asia.md: Operates under Vietnam's state media-licensing system (Ministry of Information and Communications); Vietnam ranks near the bottom of global press-freedom indices.",
       "ownership": "state-owned",
       "syndication_group": "vnexpress",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "dawn_pk",
@@ -692,7 +818,9 @@
       "lean": "non-us",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (25 items, newest same-day, description up to 7,771 chars = full text). Private (Pakistan Herald Publications), Pakistan's dominant English-language paper, no US-style lean documented.",
       "syndication_group": "dawn_pk",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "france24_france",
@@ -704,7 +832,9 @@
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (30 items, newest within a week, description up to 510 chars). France 24 is owned by France Medias Monde, a French state holding company, but editorially independent like BBC; no general international-desk feed was found live (only this France section), so scope is narrower than the outlet's full coverage.",
       "ownership": "state-owned",
       "syndication_group": "france24",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "euronews_en",
@@ -716,7 +846,9 @@
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (50 items, newest same-day, description up to 286 chars). Pan-European broadcaster, majority-owned by a private equity holder (Alpac Capital) since 2022, no US-style lean documented.",
       "ownership": "corporate-controlled",
       "syndication_group": "euronews",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "le_monde_en",
@@ -727,7 +859,9 @@
       "lean": "non-us",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (16 items, newest same-day, description up to 343 chars). Private (Le Monde Group), France's paper of record, no US-style lean documented.",
       "syndication_group": "le_monde",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "al_monitor",
@@ -738,7 +872,9 @@
       "lean": "non-us",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (20 items, newest same-day, description up to 564 chars). Private, US-based pan-Middle East analysis outlet distinct from the Israel/Gaza-conflict bucket's outlets, no US-style lean documented.",
       "syndication_group": "al_monitor",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "ynet_news",
@@ -749,7 +885,9 @@
       "lean": "non-us",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (30 items, newest same-day, description up to 295 chars). Private (Yedioth Ahronoth Group), Israeli mainstream, no US-style lean documented.",
       "syndication_group": "ynet",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "daily_maverick",
@@ -760,7 +898,9 @@
       "lean": "non-us",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (52 items, newest same-day, description up to 425 chars). Private, independent South African investigative outlet, no US-style lean documented.",
       "syndication_group": "daily_maverick",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "premium_times",
@@ -771,7 +911,9 @@
       "lean": "non-us",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (15 items, newest same-day, description up to 359 chars). Private, independent Nigerian investigative outlet, no US-style lean documented.",
       "syndication_group": "premium_times",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "allafrica_general",
@@ -782,7 +924,9 @@
       "lean": "non-us",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (33 items, newest same-day, description up to 446 chars). Pan-African wire aggregator, same publisher as allafrica_sudan (syndication_group shared so a shared story counts once for R16 diversity), not a single editorially aligned outlet.",
       "syndication_group": "allafrica",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "buenos_aires_times",
@@ -793,7 +937,9 @@
       "lean": "non-us",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (100 items, newest same-day, description up to 338 chars). Private, Argentina's English-language paper of record, no US-style lean documented.",
       "syndication_group": "buenos_aires_times",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "mercopress",
@@ -804,7 +950,9 @@
       "lean": "non-us",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest same-day, description up to 411 chars). Private, Uruguay-based South Atlantic/Mercosur regional wire, no US-style lean documented.",
       "syndication_group": "mercopress",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "rest_of_world",
@@ -815,7 +963,9 @@
       "lean": "non-us",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (12 items, newest same-day, description up to 203 chars). US-based nonprofit newsroom covering tech outside Western markets globally, not Latin America exclusively; bucketed here per the brief's own grouping, scope is broader in practice.",
       "syndication_group": "rest_of_world",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "abc_australia",
@@ -827,7 +977,9 @@
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (25 items, newest same-day, description up to 236 chars). Australian Broadcasting Corporation, publicly funded but editorially independent like BBC, no US-style lean documented.",
       "ownership": "state-funded",
       "syndication_group": "abc_australia",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "guardian_australia",
@@ -838,7 +990,9 @@
       "lean": "left",
       "lean_basis": "research/sources-landscape.md and feeds-interests.md rate the Guardian group Left; same publisher/syndication as guardian_world and guardian_us.",
       "syndication_group": "guardian",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "ft_home",
@@ -850,7 +1004,8 @@
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (9 items, newest same-day, description up to 135 chars, headline+snippet only). Financial/business press, rated Center by common convention like the Economist and WSJ news desk already in sources.json.",
       "syndication_group": "ft",
       "full_text_ok": false,
-      "paywall": true
+      "paywall": true,
+      "roster": "core"
     },
     {
       "id": "bloomberg_markets",
@@ -861,7 +1016,9 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (20 items, newest same-day, headline-only, no description text). Business/financial wire, rated Center by common convention.",
       "syndication_group": "bloomberg",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "semafor",
@@ -872,7 +1029,10 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (253 items, newest same-day, description up to 248 chars). Global news/business outlet in the same DC-adjacent explanatory format as Axios (already sources.json center), no partisan lean documented.",
       "syndication_group": "semafor",
-      "full_text_ok": false
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B4 2026-09-25, R40 answer 9: measured live, 67 of 259 items carry full text over the 2,000-char cutoff, so full_text_ok is true like every full-text feed; the cutoff still decides per item."
     },
     {
       "id": "sifted",
@@ -883,7 +1043,9 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (24 items, newest same-day, headline-only, no description text). European startup/VC trade press (FT-backed), no partisan lean documented, treated as center like other trade press in sources.json.",
       "syndication_group": "sifted",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "crunchbase_news",
@@ -894,7 +1056,10 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest same-day, description up to 449 chars). Startup/VC funding trade press, no partisan lean documented; keyword tagging (topics.json) picks up biotech, foodtech and climate_tech items from its funding coverage.",
       "syndication_group": "crunchbase_news",
-      "full_text_ok": false
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B4 2026-09-25, R40 answer 9: measured live, 10 of 10 items carry full text over the 2,000-char cutoff, so full_text_ok is true like every full-text feed; the cutoff still decides per item."
     },
     {
       "id": "science_news",
@@ -905,7 +1070,9 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (20 items, newest same-day, description up to 159 chars). Nonprofit (Society for Science) science-journalism magazine, no partisan lean documented, treated as center like other science/trade press in sources.json.",
       "syndication_group": "science_news",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "quanta_magazine",
@@ -916,7 +1083,9 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (5 items, newest 1 day old, description up to 298 chars). Simons Foundation-funded nonprofit science journalism, no partisan lean documented.",
       "syndication_group": "quanta",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "nyt_world",
@@ -927,7 +1096,9 @@
       "lean": "center-left",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (58 items, newest same-day, description up to 230 chars). Common media-bias convention rates the New York Times Center-Left, same bucket as Guardian World and Washington Post already in sources.json.",
       "syndication_group": "nyt",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "propublica",
@@ -938,7 +1109,10 @@
       "lean": "center-left",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (20 items, newest same-day, description up to 153 chars). Nonprofit investigative newsroom, Creative Commons licensed; common convention rates its accountability-journalism focus Center-Left, nonpartisan mission notwithstanding.",
       "syndication_group": "propublica",
-      "full_text_ok": false
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B4 2026-09-25, R40 answer 9: measured live, 20 of 20 items carry full text over the 2,000-char cutoff, so full_text_ok is true like every full-text feed; the cutoff still decides per item."
     },
     {
       "id": "global_voices",
@@ -949,7 +1123,10 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (15 items, newest same-day, description up to 234 chars). Nonprofit, Creative Commons-licensed international citizen-media network, no single national lens or partisan lean documented.",
       "syndication_group": "global_voices",
-      "full_text_ok": false
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B4 2026-09-25, R40 answer 9: measured live, 15 of 15 items carry full text over the 2,000-char cutoff, so full_text_ok is true like every full-text feed; the cutoff still decides per item."
     },
     {
       "id": "green_queen",
@@ -960,7 +1137,10 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest same-day, description up to 545 chars). Asia-based alternative-protein/foodtech trade press, no partisan lean documented, treated as center like other trade press in sources.json.",
       "syndication_group": "green_queen",
-      "full_text_ok": false
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B4 2026-09-25, R40 answer 9: measured live, 10 of 10 items carry full text over the 2,000-char cutoff, so full_text_ok is true like every full-text feed; the cutoff still decides per item."
     },
     {
       "id": "food_dive",
@@ -971,7 +1151,9 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest same-day, description up to 150 chars). US food-industry trade press, no partisan lean documented.",
       "syndication_group": "food_dive",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "canary_media",
@@ -982,7 +1164,9 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (100 items, newest same-day, description up to 319 chars). Nonprofit climate-energy trade press (RMI-affiliated), no partisan lean documented, treated as center like other trade press in sources.json.",
       "syndication_group": "canary_media",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "latitude_media",
@@ -993,7 +1177,10 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest same-day, description up to 238 chars). Climate-tech trade press, no partisan lean documented.",
       "syndication_group": "latitude_media",
-      "full_text_ok": false
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B4 2026-09-25, R40 answer 9: measured live, 10 of 10 items carry full text over the 2,000-char cutoff, so full_text_ok is true like every full-text feed; the cutoff still decides per item."
     },
     {
       "id": "trellis_greenbiz",
@@ -1004,7 +1191,10 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest 1 day old, description up to 297 chars). Sustainability-business trade press (formerly GreenBiz), no partisan lean documented.",
       "syndication_group": "trellis",
-      "full_text_ok": false
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B4 2026-09-25, R40 answer 9: measured live, 10 of 10 items carry full text over the 2,000-char cutoff, so full_text_ok is true like every full-text feed; the cutoff still decides per item."
     },
     {
       "id": "ctvc",
@@ -1015,7 +1205,10 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (15 items, newest 3 days old, headline-only, no description text). Climate-tech venture newsletter, no partisan lean documented.",
       "syndication_group": "ctvc",
-      "full_text_ok": false
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B4 2026-09-25, R40 answer 9: measured live, 15 of 15 items carry full text over the 2,000-char cutoff, so full_text_ok is true like every full-text feed; the cutoff still decides per item."
     },
     {
       "id": "biofuels_digest",
@@ -1026,7 +1219,9 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest same-day, description up to 429 chars). Bioeconomy/biofuels trade press, no partisan lean documented; keyword tagging (topics.json) also picks up biotech from its industrial-biotech coverage.",
       "syndication_group": "biofuels_digest",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "techcrunch_climate",
@@ -1037,7 +1232,9 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (20 items, newest same-day, description up to 269 chars). TechCrunch vertical, same publisher/rating as techcrunch_ai already in sources.json (center, non-political trade press).",
       "syndication_group": "techcrunch",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "utility_dive",
@@ -1048,7 +1245,9 @@
       "lean": "center",
       "lean_basis": "F7 2026-09-24: live-verified with fetcher.fanout (RSS 2.0, 10 items, newest same-day, description up to 214 chars sampled). Industry Dive's utility/grid trade press, sister publication to food_dive already in sources.json (center, non-political trade press). Sector outlets publish less often than general news, so the bar here is at least 5 items and newest under 14 days, not daily volume.",
       "syndication_group": "industry_dive",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "pv_magazine",
@@ -1059,7 +1258,10 @@
       "lean": "center",
       "lean_basis": "F7 2026-09-24: live-verified with fetcher.fanout (RSS 2.0, 10 items, newest same-day, description up to 431 chars sampled). Solar/renewables trade press, no partisan lean documented. Sector outlets publish less often than general news, so the bar here is at least 5 items and newest under 14 days, not daily volume.",
       "syndication_group": "pv_magazine",
-      "full_text_ok": false
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B4 2026-09-25, R40 answer 9: measured live, 9 of 10 items carry full text over the 2,000-char cutoff, so full_text_ok is true like every full-text feed; the cutoff still decides per item."
     },
     {
       "id": "dw_english",
@@ -1071,7 +1273,9 @@
       "lean_basis": "F7 2026-09-24: live-verified with fetcher.fanout (Atom, 15+ items sampled, newest same-day, summary up to ~250 chars, published/updated present). German international public broadcaster; same non-us/state-funded treatment as france24_france, another state-owned international broadcaster already in sources.json.",
       "ownership": "state-funded",
       "syndication_group": "dw",
-      "full_text_ok": false
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
     },
     {
       "id": "the_atlantic",
@@ -1082,7 +1286,9 @@
       "lean": "center-left",
       "lean_basis": "US general/politics/culture magazine, consistent with NYT and Guardian's center-left rating already in sources.json; no dedicated research/sources-landscape.md row found for it. F7 2026-09-24: live-verified with fetcher.fanout (Atom, 25 items, newest same-day, content field carries full article prose, 6,000-30,000 chars stripped across 5 sampled items).",
       "syndication_group": "the_atlantic",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": true
     },
     {
       "id": "the_conversation",
@@ -1093,7 +1299,158 @@
       "lean": "center",
       "lean_basis": "F7 2026-09-24: live-verified with fetcher.fanout (Atom, 46 items, newest same-day, content field carries full CC BY-SA licensed article prose, 6,000-9,000+ chars stripped across 5 sampled items). Nonprofit academic-newsroom explainer journalism written by named academics, no partisan rating documented; Creative Commons license makes full text appropriate per S22 (DESIGN-v1.1 R12).",
       "syndication_group": "the_conversation",
-      "full_text_ok": true
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false
+    },
+    {
+      "id": "fox_latest",
+      "name": "Fox News",
+      "feed_url": "https://moxie.foxnews.com/google-publisher/latest.xml",
+      "bucket": "general",
+      "country": "US",
+      "lean": "right",
+      "lean_basis": "DESIGN-bundles section 3 (feeds checked live 2026-09-24, owner-approved with R40): Fox News rated right, as fox_politics already is (research/sources-landscape.md RECOMMENDED SET rates Fox News Right).",
+      "syndication_group": "fox_politics",
+      "full_text_ok": true,
+      "roster": "perspective",
+      "paywall": false
+    },
+    {
+      "id": "fox_world",
+      "name": "Fox News World",
+      "feed_url": "https://moxie.foxnews.com/google-publisher/world.xml",
+      "bucket": "general",
+      "country": "US",
+      "lean": "right",
+      "lean_basis": "DESIGN-bundles section 3 (feeds checked live 2026-09-24, owner-approved with R40): Fox News rated right, as fox_politics already is (research/sources-landscape.md RECOMMENDED SET rates Fox News Right).",
+      "syndication_group": "fox_politics",
+      "full_text_ok": true,
+      "roster": "perspective",
+      "paywall": false
+    },
+    {
+      "id": "daily_wire",
+      "name": "The Daily Wire",
+      "feed_url": "https://www.dailywire.com/feeds/rss.xml",
+      "bucket": "us_politics",
+      "country": "US",
+      "lean": "right",
+      "lean_basis": "DESIGN-bundles section 3 (feeds checked live 2026-09-24, owner-approved with R40): Daily Wire rated right; conservative outlet founded by Ben Shapiro.",
+      "syndication_group": "daily_wire",
+      "full_text_ok": true,
+      "roster": "perspective",
+      "paywall": false
+    },
+    {
+      "id": "redstate",
+      "name": "RedState",
+      "feed_url": "https://redstate.com/feed",
+      "bucket": "us_politics",
+      "country": "US",
+      "lean": "right",
+      "lean_basis": "DESIGN-bundles section 3 (feeds checked live 2026-09-24, owner-approved with R40): RedState rated right; conservative group blog (Townhall Media).",
+      "syndication_group": "redstate",
+      "full_text_ok": false,
+      "roster": "perspective",
+      "paywall": false
+    },
+    {
+      "id": "breitbart",
+      "name": "Breitbart",
+      "feed_url": "https://www.breitbart.com/feed/",
+      "bucket": "us_politics",
+      "country": "US",
+      "lean": "right",
+      "lean_basis": "DESIGN-bundles section 3 (feeds checked live 2026-09-24, owner-approved with R40): Breitbart rated right.",
+      "syndication_group": "breitbart",
+      "full_text_ok": false,
+      "roster": "perspective",
+      "paywall": false
+    },
+    {
+      "id": "the_federalist",
+      "name": "The Federalist",
+      "feed_url": "https://thefederalist.com/feed/",
+      "bucket": "us_politics",
+      "country": "US",
+      "lean": "right",
+      "lean_basis": "DESIGN-bundles section 3 (feeds checked live 2026-09-24, owner-approved with R40): The Federalist rated right; conservative online magazine.",
+      "syndication_group": "the_federalist",
+      "full_text_ok": false,
+      "roster": "perspective",
+      "paywall": false
+    },
+    {
+      "id": "jacobin",
+      "name": "Jacobin",
+      "feed_url": "https://jacobin.com/feed/",
+      "bucket": "us_politics",
+      "country": "US",
+      "lean": "left",
+      "lean_basis": "DESIGN-bundles section 3 (feeds checked live 2026-09-24, owner-approved with R40): Jacobin rated left; socialist magazine. Atom feed, full text in xhtml content.",
+      "syndication_group": "jacobin",
+      "full_text_ok": true,
+      "roster": "perspective",
+      "paywall": false
+    },
+    {
+      "id": "the_intercept",
+      "name": "The Intercept",
+      "feed_url": "https://theintercept.com/feed/?rss",
+      "bucket": "us_politics",
+      "country": "US",
+      "lean": "left",
+      "lean_basis": "DESIGN-bundles section 3 (feeds checked live 2026-09-24, owner-approved with R40): The Intercept rated left; adversarial investigative outlet.",
+      "syndication_group": "the_intercept",
+      "full_text_ok": true,
+      "roster": "perspective",
+      "paywall": false
+    },
+    {
+      "id": "common_dreams",
+      "name": "Common Dreams",
+      "feed_url": "https://www.commondreams.org/feeds/feed.rss",
+      "bucket": "us_politics",
+      "country": "US",
+      "lean": "left",
+      "lean_basis": "DESIGN-bundles section 3 (feeds checked live 2026-09-24, owner-approved with R40): Common Dreams rated left; progressive nonprofit newsroom.",
+      "syndication_group": "common_dreams",
+      "full_text_ok": true,
+      "full_text_basis": "B4 2026-09-25: measured full text in 21 of 30 items, although section 3's table said teaser; full_text_ok follows the measurement.",
+      "roster": "perspective",
+      "paywall": false
+    },
+    {
+      "id": "new_republic",
+      "name": "The New Republic",
+      "feed_url": "https://newrepublic.com/rss.xml",
+      "bucket": "us_politics",
+      "country": "US",
+      "lean": "left",
+      "lean_basis": "DESIGN-bundles section 3 (feeds checked live 2026-09-24, owner-approved with R40): The New Republic rated left (R40 answer 6).",
+      "syndication_group": "new_republic",
+      "full_text_ok": true,
+      "full_text_basis": "B4 2026-09-25: measured full text in 67 of 100 items, although section 3's table said headline and dek; full_text_ok follows the measurement.",
+      "roster": "perspective",
+      "paywall": true
+    },
+    {
+      "id": "democracy_now",
+      "name": "Democracy Now!",
+      "feed_url": "https://www.democracynow.org/democracynow.rss",
+      "bucket": "us_politics",
+      "country": "US",
+      "lean": "left",
+      "lean_basis": "DESIGN-bundles section 3 (feeds checked live 2026-09-24, owner-approved with R40): Democracy Now! rated left (R40 answer 6); independent daily news program.",
+      "syndication_group": "democracy_now",
+      "full_text_ok": false,
+      "drop_titles": [
+        "^Headlines for [A-Z][a-z]+ \\d{1,2}, \\d{4}$"
+      ],
+      "drop_titles_basis": "DESIGN-bundles section 3: the daily 'Headlines for <date>' item spans many stories, so it is dropped (title_rule) and never joins a bundle.",
+      "roster": "perspective",
+      "paywall": false
     }
   ]
 }
