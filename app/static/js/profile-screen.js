@@ -265,7 +265,7 @@ function main(schema, catalog) {
       [rowText("Follow a phrase", "Type any word or phrase above")]);
     const [phraseLabel, phraseSub] = phraseRow.querySelectorAll(".setting-label, .setting-sublabel");
     const PHRASE_SUBS = {
-      ok: "Headlines and summaries with these words, in this order, and the hourly search",
+      ok: "Stories with these words, in this order. Also searched for every hour.",
       long: `Too long: ${PHRASE_MAX} characters at most`,
       duplicate: "Already one of your interests",
       full: `You follow ${QUERIES_MAX} phrases and standing stories, the most the hourly search takes`,
