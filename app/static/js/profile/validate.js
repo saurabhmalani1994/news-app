@@ -10,6 +10,8 @@
 // such as a topic id's shape (open set, so it cannot be an enum) and cross references
 // between fields (a muted topic must be a topic that exists).
 
+import { textWords } from "../phrase.js";
+
 export class SchemaError extends Error {}
 
 const ANNOTATIONS = new Set(["$schema", "$id", "$defs", "$comment", "title", "description"]);
@@ -141,9 +143,18 @@ export function validateSchema(profile, schema) {
 export function checkIntegrity(profile) {
   const errors = [];
   const topics = profile.topics || {};
-  for (const id of Object.keys(topics)) {
+  const phrases = new Map();
+  for (const [id, setting] of Object.entries(topics)) {
     if (!TOPIC_ID_PATTERN.test(id)) {
       errors.push(`$.topics.${id}: topic id must be lowercase letters, digits and underscores, starting with a letter`);
+    }
+    // W1: a phrase must hold at least one word to match, and two phrase interests that
+    // read as the same words (case, plural and punctuation aside) would be one search.
+    if (typeof setting?.phrase === "string") {
+      const words = textWords(setting.phrase).join(" ");
+      if (!words) errors.push(`$.topics.${id}.phrase: needs at least one letter or digit`);
+      else if (phrases.has(words)) errors.push(`$.topics.${id}.phrase: the same phrase as $.topics.${phrases.get(words)}`);
+      else phrases.set(words, id);
     }
   }
   const boostIds = new Set();

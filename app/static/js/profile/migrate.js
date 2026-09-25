@@ -1,6 +1,7 @@
 // H2: brings a profile saved by an older build up to the current shape. Every field a
 // later slice added is filled with its default only where it is missing: S13 passes,
-// S28 standing_stories, S33 live_overrides, U2 display, and any sub-field of those.
+// S28 standing_stories, S33 live_overrides, U2 display, and any sub-field of those. W1:
+// a phrase interest's phrase is kept in its clean form (fillTopic).
 // Nothing the owner set is changed, no topic (known or not) is dropped, and the stored
 // history is never rewritten: ProfileStore saves the result once, as one new version.
 //
@@ -8,6 +9,7 @@
 // defaults are the shipped default profile's own (default-profile.js), never a copy.
 
 import { buildDefaultProfile } from "./default-profile.js";
+import { normalizePhrase } from "../phrase.js";
 
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -28,10 +30,19 @@ function fillStory(story, defaults) {
   return fill({ ...story, label: story.label || known?.label || story.id }, known || generic);
 }
 
-/** A topic an older build saved without `enabled` (or a label): shown, under its id. */
+/** A topic an older build saved without `enabled` (or a label): shown, under its id.
+ * W1: a phrase interest missing its label (a hand edit in Advanced) shows its phrase,
+ * and a phrase saved with stray spaces or quotes is kept in its clean form, the form
+ * the You page itself saves and the search query is built from. */
 function fillTopic(id, topic) {
   if (!isObject(topic)) return topic;
-  return { ...topic, label: topic.label || id, enabled: topic.enabled !== false };
+  const out = { ...topic, enabled: topic.enabled !== false };
+  if (typeof topic.phrase === "string") {
+    const clean = normalizePhrase(topic.phrase);
+    if (clean) out.phrase = clean;
+  }
+  out.label = topic.label || (typeof out.phrase === "string" && out.phrase) || id;
+  return out;
 }
 
 /**

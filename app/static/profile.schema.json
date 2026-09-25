@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://almanac.local/app/profile.schema.json",
   "title": "Almanac profile",
-  "description": "S10: the owner's opinions about ranking (R10). Device owned, local, versioned, never sent anywhere. Lean and source facts stay in the repo's sources.json; this file only holds what the owner has tuned. Every object is closed except topics, trust and boosts entries which use additionalProperties/items on purpose so new topic buckets and trust overrides are a settings action, not a code change (DESIGN-v1.1 section 9 item 2). Key patterns that additionalProperties cannot express (topic id shape, cross references) are checked by validate.js's checkIntegrity, mirroring contract/validate.py's two-phase approach.",
+  "description": "S10: the owner's opinions about ranking (R10). Device owned, local, versioned, never sent anywhere, with one exception (W1, R50): the search queries built from phrase interests and standing stories go to this site's own /api/interests, behind Cloudflare Access, so the hourly run can search for them. Lean and source facts stay in the repo's sources.json; this file only holds what the owner has tuned. Every object is closed except topics, trust and boosts entries which use additionalProperties/items on purpose so new topic buckets and trust overrides are a settings action, not a code change (DESIGN-v1.1 section 9 item 2). Key patterns that additionalProperties cannot express (topic id shape, cross references) are checked by validate.js's checkIntegrity, mirroring contract/validate.py's two-phase approach.",
   "type": "object",
   "required": [
     "schema_version", "profile_version", "updated_at", "topics", "trust", "boosts",
@@ -121,6 +121,13 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 10
+        },
+        "phrase": {
+          "description": "W1 (R50): present only on a phrase interest, the owner's own free text (app/static/js/phrase.js). The topic then matches a story whose headline or dek holds these words in order (any case, plural s folded) or that carries the phrase's watch tag from the hourly search, never by pool tag. Kept on the device; only its search query and tag are sent, to this site's own /api/interests. No double quotes, since the query wraps it in them.",
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60,
+          "pattern": "^[^\"“”]*$"
         }
       }
     },

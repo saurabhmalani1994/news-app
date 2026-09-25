@@ -7,7 +7,12 @@
 // U4: adding and removing an interest. STARTER_TOPICS (default-profile.js) is the one
 // source of the six starter buckets' own settings, reused here so re-adding one of them
 // restores its shipped defaults rather than a flattened generic value.
+//
+// W1 (R50): a phrase interest (the owner's own free text) is added here too, and a
+// standing story can be added and removed, not only edited.
 import { STARTER_TOPICS } from "./default-profile.js";
+import { STANDING_DEFAULTS, STANDING_NEW } from "../standing.js";
+import { PHRASE_MAX, QUERIES_MAX, isPhraseTopic, normalizePhrase, textWords } from "../phrase.js";
 
 // --- Interest levels: plain words over the 0 to 1 affinity weight. ---
 //
@@ -117,12 +122,9 @@ export function withBoostRemoved(profile, boostId) {
 // matched by mustKnowEligible(), not by a story's topic tags), offered on its own
 // since it is still an interest the pipeline can and does match.
 //
-// There is no general custom-keyword interest here on purpose: the ranker only matches
-// a topic through this closed tag set (or must_know's own eligibility check), never a
-// free-text keyword with a level and a half-life. A keyword can only ever attach as a
-// flat boost to an existing topic (actions/mute-boost.js, from a story's own menu), or
-// as a separate standing story (S28, its own section on this page); neither is a top
-// level interest, so no "Follow '<text>'" option is offered here.
+// W1 (R50) adds the one interest outside this closed set: a phrase, the owner's own
+// free text, which the ranker matches in headlines and deks (phrase.js), not by tag.
+// It is offered from the same sheet ("Follow a phrase"), below.
 export const INTEREST_CATALOG = Object.freeze([
   { id: "singapore", label: "Singapore", group: "Regions" },
   { id: "asia", label: "Asia", group: "Regions" },
@@ -173,6 +175,65 @@ export function withTopicRemoved(profile, id) {
   return { ...profile, topics: nextTopics, mutes: { ...profile.mutes, topics: mutedTopics }, boosts };
 }
 
+// --- W1: phrase interests. ---
+//
+// A phrase interest is a topic like any other (a level, a half-life, a page of its
+// own, Remove with Undo), under an id of its own ("p_" and the phrase's letters), with
+// its text in `phrase`. The ranker matches it in headlines and deks; the interests sync
+// sends its query to the hourly search. Both caps below are the search's: a phrase in
+// quotes stays under the query limit, and phrases plus standing stories that are on
+// stay within the query count, so every one the owner follows is searched.
+
+export { isPhraseTopic };
+
+const slug = (text) => String(text).normalize("NFKD").replace(/\p{M}+/gu, "").toLowerCase()
+  .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+
+/** An id not yet taken in `taken` (a Set or object keys): `base`, else base_2, base_3. */
+function freeId(base, taken) {
+  const has = (id) => (taken instanceof Set ? taken.has(id) : Object.hasOwn(taken, id));
+  if (!has(base)) return base;
+  for (let n = 2; ; n++) if (!has(`${base}_${n}`)) return `${base}_${n}`;
+}
+
+/** The topic id a new phrase gets: "p_" and its letters, unique in the profile. */
+export function phraseTopicId(profile, phrase) {
+  const base = `p_${slug(phrase).slice(0, 27).replace(/_+$/, "") || "phrase"}`;
+  return freeId(base, profile.topics || {});
+}
+
+/** Phrase interests and standing stories that are on: what the hourly search runs. */
+export function searchCount(profile) {
+  const phrases = Object.values(profile.topics || {}).filter((t) => isPhraseTopic(t) && t.enabled !== false).length;
+  const stories = (Array.isArray(profile.standing_stories) ? profile.standing_stories : STANDING_DEFAULTS)
+    .filter((s) => s && s.enabled !== false).length;
+  return phrases + stories;
+}
+
+/** Whether typed text can become a phrase interest: {ok, phrase} or {ok: false,
+ * reason}, reason one of empty, long, duplicate (with the id it repeats) or full. */
+export function phraseStatus(profile, text) {
+  const phrase = normalizePhrase(text);
+  if (!phrase) return { ok: false, reason: "empty" };
+  if (phrase.length > PHRASE_MAX) return { ok: false, reason: "long", phrase };
+  const words = textWords(phrase).join(" ");
+  const same = Object.entries(profile.topics || {})
+    .find(([, t]) => isPhraseTopic(t) && textWords(t.phrase).join(" ") === words);
+  if (same) return { ok: false, reason: "duplicate", phrase, id: same[0] };
+  if (searchCount(profile) >= QUERIES_MAX) return { ok: false, reason: "full", phrase };
+  return { ok: true, phrase };
+}
+
+/** Adds a phrase interest at Normal, 24h half-life (the same default any other new
+ * interest gets). Null when phraseStatus refuses the text. */
+export function withPhraseAdded(profile, text) {
+  const status = phraseStatus(profile, text);
+  if (!status.ok) return null;
+  const id = phraseTopicId(profile, status.phrase);
+  const setting = { label: status.phrase, phrase: status.phrase, affinity: 0.6, half_life_hours: 24, enabled: true };
+  return { ...profile, topics: { ...profile.topics, [id]: setting } };
+}
+
 // --- Standing stories (S28): one field of one story, by id. ---
 
 /** "a, b; c" or one per line into a clean keyword list: trimmed, no blanks or repeats. */
@@ -203,6 +264,64 @@ export function withStandingField(profile, id, field, value) {
   const stories = list.slice();
   stories[index] = { ...list[index], [field]: next };
   return { ...profile, standing_stories: stories };
+}
+
+// --- W1: adding and removing a standing story. ---
+//
+// A new story takes the defaults' own floor and alarm (standing.js STANDING_NEW), no
+// tags (a headline with a keyword counts wherever it runs) and no buckets (no sources
+// of its own for the alarm to check). An absent standing_stories field means the two
+// defaults, so the first add or remove writes them out first and keeps them.
+
+export const STANDING_MAX = 12; // profile.schema.json standing_stories maxItems
+export const STANDING_LABEL_MAX = 40;
+
+const storiesOf = (profile) => (Array.isArray(profile.standing_stories)
+  ? profile.standing_stories : structuredClone(STANDING_DEFAULTS));
+
+/** Keywords a standing story can keep: parseKeywords, each 2 to 60 characters, 40 at most. */
+export function standingKeywords(text) {
+  return (Array.isArray(text) ? text : parseKeywords(text)).filter((k) => k.length >= 2 && k.length <= 60).slice(0, 40);
+}
+
+/** Whether a name and keywords can become a standing story: {ok, label, keywords} or
+ * {ok: false, reason}, reason one of name, keywords, duplicate or full. */
+export function standingStatus(profile, { label, keywords }) {
+  const name = String(label ?? "").trim().replace(/\s+/g, " ").slice(0, STANDING_LABEL_MAX);
+  const words = standingKeywords(keywords ?? "");
+  const stories = storiesOf(profile);
+  if (!name) return { ok: false, reason: "name" };
+  if (!words.length) return { ok: false, reason: "keywords", label: name };
+  if (stories.some((s) => String(s.label).toLowerCase() === name.toLowerCase())) return { ok: false, reason: "duplicate", label: name };
+  if (stories.length >= STANDING_MAX) return { ok: false, reason: "full", label: name };
+  return { ok: true, label: name, keywords: words };
+}
+
+/** The id a new standing story gets: its name's letters, unique among the stories. */
+export function standingId(profile, label) {
+  let base = slug(label).slice(0, 29).replace(/_+$/, "");
+  if (!/^[a-z]/.test(base)) base = `s_${base}`.replace(/_+$/, "");
+  if (base.length < 2) base = "story";
+  return freeId(base, new Set(storiesOf(profile).map((s) => s.id)));
+}
+
+/** Appends a standing story, last in priority. Null when standingStatus refuses it. */
+export function withStandingAdded(profile, draft) {
+  const status = standingStatus(profile, draft);
+  if (!status.ok) return null;
+  const stories = storiesOf(profile);
+  const story = {
+    id: standingId(profile, status.label), label: status.label, enabled: true, keywords: status.keywords,
+    tags: [], buckets: [], ...STANDING_NEW,
+  };
+  return { ...profile, standing_stories: [...stories, story] };
+}
+
+/** Removes a standing story by id; null when there is no such story. */
+export function withStandingRemoved(profile, id) {
+  const stories = storiesOf(profile);
+  if (!stories.some((s) => s.id === id)) return null;
+  return { ...profile, standing_stories: stories.filter((s) => s.id !== id) };
 }
 
 // --- Display (U1 reads it): summaries on every story, or only on the lead stories. ---

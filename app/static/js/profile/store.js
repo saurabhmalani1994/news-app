@@ -37,8 +37,12 @@ export class ProfileStore {
    * @param {Function} [opts.migrate] - H2: (profile, nowIso) => {profile, added}; when
    *   `added` is not empty the stored profile is from an older build, and the result is
    *   saved once as a new version (history untouched). migrate.js migrateProfile.
+   * @param {Function} [opts.onSave] - W1: (profile) => void, called after every save that
+   *   wrote a version (an edit, a revert, a migration), never after a refused one. The
+   *   pages pass interests-sync.js's scheduler, so a phrase or standing-story edit reaches
+   *   the hourly search; a throw here never undoes or fails the save.
    */
-  constructor({ storage, schema, seedDefault, now = nowIso, migrate }) {
+  constructor({ storage, schema, seedDefault, now = nowIso, migrate, onSave }) {
     if (!storage) throw new Error("ProfileStore needs a storage adapter");
     if (!schema) throw new Error("ProfileStore needs profile.schema.json");
     this.storage = storage;
@@ -46,6 +50,7 @@ export class ProfileStore {
     this.seedDefault = seedDefault;
     this.now = now;
     this.migrate = migrate;
+    this.onSave = onSave;
     this._migrationChecked = false;
   }
 
@@ -135,6 +140,9 @@ export class ProfileStore {
     if (errors.length) return { ok: false, errors };
     data.history.push({ version: nextVersion, timestamp: candidate.updated_at, profile: candidate, ...(note ? { note } : {}) });
     this._write(data);
+    if (this.onSave) {
+      try { this.onSave(structuredClone(candidate)); } catch { /* the save itself stands */ }
+    }
     return { ok: true, profile: candidate };
   }
 

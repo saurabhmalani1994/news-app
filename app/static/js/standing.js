@@ -53,6 +53,15 @@ export const STANDING_DEFAULTS = Object.freeze([
   }),
 ]);
 
+// W1: the floor and alarm a standing story the owner adds starts with, the defaults'
+// own: one card in the first 15 (both agree), and the shorter of their two silence
+// thresholds, so a quiet day on a story he chose to follow is already a notice.
+export const STANDING_NEW = Object.freeze({
+  floor_slots: STANDING_DEFAULTS[0].floor_slots,
+  floor_within: STANDING_DEFAULTS[0].floor_within,
+  silence_hours: Math.min(...STANDING_DEFAULTS.map((s) => s.silence_hours)),
+});
+
 const HOUR_MS = 3_600_000;
 const byStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
