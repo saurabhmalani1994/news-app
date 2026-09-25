@@ -8,11 +8,11 @@
 // shift nothing, counting every layout-shift entry, even those after input; each
 // section keeps its own scroll position; every tab and nav label is a single text node;
 // the Following and Saved empty states render. Exits 1 on any failure.
-import { createServer } from "node:http";
 import { readFileSync, existsSync, mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
+import { ACCESS_COOKIE, parseHeaders, serve } from "./cdp.mjs";
 
 import { rankPages } from "../../app/static/js/passes.js";
 import { SECTIONS } from "../../app/static/js/sections.js";
@@ -21,16 +21,13 @@ import { buildDefaultProfile } from "../../app/static/js/profile/default-profile
 const [distArg, shotsArg] = process.argv.slice(2);
 const dist = resolve(distArg || "dist");
 const CHROME = process.env.CHROME || ["C:/Program Files/Google/Chrome/Application/chrome.exe", "/usr/bin/google-chrome"].find(existsSync);
-const TYPES = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".woff2": "font/woff2" };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const server = createServer((req, res) => {
-  const path = join(dist, decodeURIComponent(new URL(req.url, "http://x").pathname).replace(/\/$/, "/index.html"));
-  if (!path.startsWith(dist) || !existsSync(path)) { res.writeHead(404).end(); return; }
-  res.writeHead(200, { "content-type": TYPES[extname(path)] || "application/octet-stream" }).end(readFileSync(path));
-}).listen(0, "127.0.0.1");
-await new Promise((r) => server.on("listening", r));
-const origin = `http://127.0.0.1:${server.address().port}`;
+// H5: served as Pages serves it (pretty URLs, the build's own _headers, so the live CSP)
+// behind the simulated Access gate (cdp.mjs serve); the browser gets the login cookie.
+const headerText = readFileSync(join(dist, "_headers"), "utf-8");
+const server = await serve(dist, parseHeaders(headerText), {}, { "/sw.js": parseHeaders(headerText, "/sw.js") });
+const origin = server.origin;
 
 const port = 9300 + Math.floor(Math.random() * 500);
 const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${port}`, `--user-data-dir=${mkdtempSync(join(tmpdir(), "s27-"))}`, "--no-first-run", "about:blank"], { stdio: "ignore" });
@@ -48,6 +45,7 @@ const evaluate = async (expression) => (await send("Runtime.evaluate", { express
 const json = async (expression) => JSON.parse(await evaluate(`JSON.stringify(${expression})`));
 
 await send("Page.enable");
+await send("Network.setCookie", { ...ACCESS_COOKIE, url: `${origin}/` });
 await send("Emulation.setDeviceMetricsOverride", { width: 360, height: 780, deviceScaleFactor: 3, mobile: true });
 await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
 await send("Page.addScriptToEvaluateOnNewDocument", { source: `

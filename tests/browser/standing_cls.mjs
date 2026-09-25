@@ -8,11 +8,11 @@
 // <prefix>-dark.png and <prefix>-light.png at the top of Today, and, when the page has
 // a floor placement, <prefix>-floor-dark.png with the first placed card in view.
 // Exits 1 on CLS above 0 or any mismatch.
-import { createServer } from "node:http";
 import { readFileSync, existsSync, mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
+import { ACCESS_COOKIE, parseHeaders, serve } from "./cdp.mjs";
 import { rankPages } from "../../app/static/js/passes.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
@@ -20,16 +20,13 @@ import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
 const [distArg, shotsArg, prefix = "standing"] = process.argv.slice(2);
 const dist = resolve(distArg || "dist");
 const CHROME = process.env.CHROME || ["C:/Program Files/Google/Chrome/Application/chrome.exe", "/usr/bin/google-chrome"].find(existsSync);
-const TYPES = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".json": "application/json", ".woff2": "font/woff2" };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const server = createServer((req, res) => {
-  const path = join(dist, decodeURIComponent(new URL(req.url, "http://x").pathname).replace(/\/$/, "/index.html"));
-  if (!path.startsWith(dist) || !existsSync(path)) { res.writeHead(404).end(); return; }
-  res.writeHead(200, { "content-type": TYPES[extname(path)] || "application/octet-stream" }).end(readFileSync(path));
-}).listen(0, "127.0.0.1");
-await new Promise((r) => server.on("listening", r));
-const origin = `http://127.0.0.1:${server.address().port}`;
+// H5: served as Pages serves it (pretty URLs, the build's own _headers, so the live CSP)
+// behind the simulated Access gate (cdp.mjs serve); the browser gets the login cookie.
+const headerText = readFileSync(join(dist, "_headers"), "utf-8");
+const server = await serve(dist, parseHeaders(headerText), {}, { "/sw.js": parseHeaders(headerText, "/sw.js") });
+const origin = server.origin;
 
 const port = 9300 + Math.floor(Math.random() * 500);
 const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${port}`, `--user-data-dir=${mkdtempSync(join(tmpdir(), "s28-"))}`, "--no-first-run", "about:blank"], { stdio: "ignore" });
@@ -47,6 +44,7 @@ const evaluate = async (expression) => (await send("Runtime.evaluate", { express
 const capture = async (file) => { if (file) writeFileSync(file, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).result.data, "base64")); };
 
 await send("Page.enable");
+await send("Network.setCookie", { ...ACCESS_COOKIE, url: `${origin}/` });
 await send("Emulation.setDeviceMetricsOverride", { width: 360, height: 780, deviceScaleFactor: 3, mobile: true });
 await send("Page.addScriptToEvaluateOnNewDocument", { source: `
   window.__cls = 0;

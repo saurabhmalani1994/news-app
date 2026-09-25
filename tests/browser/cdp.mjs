@@ -46,16 +46,37 @@ export function parseHeaders(text, rule = "/*") {
 }
 
 /**
- * Serve `dir` on 127.0.0.1 the way Cloudflare Pages does for this app, every response
+ * H5: a simulated Cloudflare Access gate, as BUILDER-RULES asks of every proof. The live
+ * site answers any request without the login cookie with a 302 to Access's login page,
+ * so a fetch that drops the cookie (H3: a service worker script, a manifest) fails here
+ * too instead of passing on a bare server. `launch()` gives its browser the cookie;
+ * a Node-side fetch sends ACCESS_HEADERS. Returns true when it answered the request.
+ */
+export const ACCESS_COOKIE = Object.freeze({ name: "CF_Authorization", value: "ok", httpOnly: true, sameSite: "Lax" });
+export const ACCESS_HEADERS = Object.freeze({ cookie: `${ACCESS_COOKIE.name}=${ACCESS_COOKIE.value}` });
+export const ACCESS_LOGIN = "https://team.cloudflareaccess.com/cdn-cgi/access/login/almanac";
+export function accessGate(req, res) {
+  if (/(?:^|;\s*)CF_Authorization=ok(?:;|$)/.test(req.headers.cookie || "")) return false;
+  res.writeHead(302, { location: `${ACCESS_LOGIN}?redirect_url=${encodeURIComponent(req.url)}` }).end();
+  return true;
+}
+
+/**
+ * Serve `dir` on 127.0.0.1 the way Cloudflare Pages does for this app, behind the
+ * simulated Access gate above (H5), every response
  * carrying `headers` (plus `pathHeaders[path]` for one exact path). H1: including Pages'
  * pretty URLs, since S18's proof missed a blank screen by serving `.html` files as is:
  * `/x.html` answers 308 to `/x` (`/index.html` to `/`), and `/x` serves `x.html`.
  * `extra` maps a path to a body, served as is, or to a `(req, res, headers)` handler
- * that answers the request itself (H1: a redirect to a login page).
+ * that answers the request itself (H1: a redirect to a login page). The returned site's
+ * `gated` starts true; a proof replaying the time before Access existed (sw_pretty_urls'
+ * S18 phone) sets it false for that stretch only.
  */
 export async function serve(dir, headers = {}, extra = {}, pathHeaders = {}) {
   const root = resolve(dir);
+  const site = { gated: true };
   const server = createServer((req, res) => {
+    if (site.gated && accessGate(req, res)) return;
     const url = new URL(req.url, "http://x");
     const pathname = decodeURIComponent(url.pathname);
     const own = { ...headers, ...(pathHeaders[pathname] || {}) };
@@ -77,7 +98,7 @@ export async function serve(dir, headers = {}, extra = {}, pathHeaders = {}) {
     res.writeHead(200, { ...own, "content-type": TYPES[extname(path)] || "application/octet-stream" }).end(readFileSync(path));
   }).listen(0, "127.0.0.1");
   await new Promise((r) => server.on("listening", r));
-  return { origin: `http://127.0.0.1:${server.address().port}`, close: () => server.close() };
+  return Object.assign(site, { origin: `http://127.0.0.1:${server.address().port}`, close: () => server.close() });
 }
 
 /** Launch headless Chrome on one page target; returns send, evaluate, events and close.
@@ -146,5 +167,14 @@ export async function launch(name, { userDataDir } = {}) {
     return m.result?.result?.value;
   };
   const close = () => { try { ws.close(); } catch {} killChrome(); };
+  // H5: this browser holds the Access login cookie for every local origin (a cookie
+  // ignores the port), so each page, worker and manifest request it makes passes
+  // serve()'s gate the way the owner's phone passes Cloudflare Access.
+  try {
+    await send("Network.setCookie", { ...ACCESS_COOKIE, url: "http://127.0.0.1/" });
+  } catch (err) {
+    close();
+    throw err;
+  }
   return { send, evaluate, on: (fn) => listeners.push(fn), close, userDataDir: dir };
 }

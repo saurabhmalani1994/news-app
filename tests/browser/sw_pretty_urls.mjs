@@ -26,7 +26,7 @@ import { cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
+import { ACCESS_HEADERS, launch, parseHeaders, serve, sleep } from "./cdp.mjs";
 import { PYTHON } from "./python.mjs";
 
 const BROKEN_REF = process.argv[2] || "1de9f5b";
@@ -156,7 +156,7 @@ async function sessionA() {
       && pages.join(",") === "/,/health,/profile",
     { entries: entries.length, redirected: entries.filter((e) => e.redirected).length, pages });
 
-  const sw = await fetch(site.origin + "/sw.js");
+  const sw = await fetch(site.origin + "/sw.js", { headers: ACCESS_HEADERS });
   check("A7_sw_js_is_served_no_cache", sw.headers.get("cache-control") === "no-cache", { cacheControl: sw.headers.get("cache-control") });
 
   // pool.json behind a login redirect (a later Cloudflare Access slice): once cached,
@@ -207,6 +207,13 @@ async function sessionB() {
   const allHeaders = parseHeaders(brokenHeaders);
   const pathHeaders = {};
   const site = await serve(site_dir, allHeaders, {}, pathHeaders);
+  // H5: this session replays S18 to H1, which all happened before Cloudflare Access, so
+  // the gate stays open for it. Behind the gate the S18 worker cannot install (its
+  // precache gets the 302), and a phone already holding it never heals: Chrome sends
+  // that worker's /sw.js update check without the login cookie (measured, all three
+  // launches). No phone is in that state now (H1 shipped before Access); h3_photos_check
+  // covers the pre-Access worker that did meet Access (H2's).
+  site.gated = false;
 
   let chrome = await launch("h1-b");
   const profileDir = chrome.userDataDir;

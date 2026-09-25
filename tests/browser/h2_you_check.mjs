@@ -76,17 +76,23 @@ const secondBuild = (src) => {
   appendFileSync(join(src, "app", "static", "profile.css"), "\n/* build 2 */\n");
 };
 
-/** One origin for a whole session; deploy() swaps the files and headers in place. */
-async function site(dist) {
+/** One origin for a whole session; deploy() swaps the files and headers in place.
+ * H5: behind the simulated Access gate (cdp.mjs serve), except while it serves a build
+ * from before Access existed (`gated: false`, OLD_REF and PRE_U1_REF): the phone met those
+ * builds, and installed their workers, with no gate in front. Deploying the build under
+ * test closes the gate, as the live site is today. */
+async function site(dist, { gated = true } = {}) {
   const dir = join(TMP, `site-${Math.random().toString(36).slice(2, 8)}`);
   cpSync(dist, dir, { recursive: true });
   const all = parseHeaders(readFileSync(join(dir, "_headers"), "utf-8"));
   const paths = { "/sw.js": parseHeaders(readFileSync(join(dir, "_headers"), "utf-8"), "/sw.js") };
   const server = await serve(dir, all, {}, paths);
+  server.gated = gated;
   return {
     origin: server.origin,
     close: server.close,
     deploy(next, { keepWorker = false } = {}) {
+      server.gated = true;
       const oldWorker = keepWorker ? readFileSync(join(dir, "sw.js")) : null;
       rmSync(dir, { recursive: true, force: true });
       cpSync(next, dir, { recursive: true });
@@ -279,7 +285,7 @@ const ready = (chrome) => chrome.evaluate("navigator.serviceWorker.ready.then(()
 // ---- A: stale assets across a deploy ----------------------------------------------
 
 async function sessionA(oldDist, newDist) {
-  const s = await site(oldDist);
+  const s = await site(oldDist, { gated: false });
   let chrome = await setup(await launch("h2-a"));
   const dir = chrome.userDataDir;
   await go(chrome, s.origin + "/");
@@ -520,7 +526,7 @@ async function sessionToday(preDist, newDist) {
 
   // (b) the upgrade: the pre-U1 worker installed and Today loaded, then the new build
   // deployed at the same origin and Today reloaded twice, as the phone did.
-  s = await site(preDist);
+  s = await site(preDist, { gated: false });
   chrome = await setup(await launch("h2-tb"));
   chrome.expectDist = preDist;
   await go(chrome, s.origin + "/", 400);

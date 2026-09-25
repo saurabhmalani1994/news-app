@@ -9,6 +9,15 @@ clear message instead of hanging. Each script serves its own `dist/` (Cloudflare
 Pages-shaped: pretty URLs, the build's own `_headers`) and exits 1 on any failure; none of
 this needs a separate `serve` step.
 
+H5: every proof runs behind a simulated Cloudflare Access gate. `cdp.mjs`'s `serve()`
+answers any request without the `CF_Authorization` cookie with a 302 to a login origin,
+as the live site does, and `launch()` gives its browser that cookie for 127.0.0.1 (a
+cookie ignores the port). A Node-side fetch sends `ACCESS_HEADERS`. `images_cls`,
+`rerank_cls`, `standing_cls` and `tabs_cls` used to run their own bare server with no
+`_headers`; they now use `serve()`, so they also run under the live CSP. `h3_photos_check`,
+`s34_check`, `u5_check`, `v1_check` and `w1_check` keep their own gates, which were
+already there.
+
 ## Building a dist to test against
 
 Most proofs just need any current build:
@@ -48,6 +57,16 @@ python tests/browser/fixtures/l1_pool.py /tmp/l1
 python -m app.build --pool /tmp/l1/pool.json --out /tmp/dist_l1
 cp -r /tmp/l1/bodies /tmp/dist_l1/bodies
 node tests/browser/l1_check.mjs /tmp/dist_l1
+```
+
+H5 added one more, for `tabs_cls.mjs`'s Live panel: it takes a real pool and puts the
+story carrying Today's other-side link inside the live event, so the check that no Live
+row carries an other-side link runs every time, not only when the news lines up.
+
+```
+python tests/browser/fixtures/live_other_side_pool.py dist/pool.json > /tmp/lo_pool.json
+python -m app.build --pool /tmp/lo_pool.json --out /tmp/dist_lo
+node tests/browser/tabs_cls.mjs /tmp/dist_lo
 ```
 
 `standing_cls.mjs` still runs fine against golden_pool.json's plain `dist` (its own
@@ -91,10 +110,33 @@ reported rather than fixed in this batch:
 - `tabs_cls.mjs`'s "lists" check: the Live section's other-side link disagrees between
   the build and `passes.js` run standalone on the same input (`others` mismatch on the
   live-event slot only, every other section's list and other-side links agree).
+  **H5: a product bug, fixed.** The Live panel is filled with clones of Today's rows, and
+  `fillLivePanel` never cleared the other-side link a clone brought along; `passes.js`
+  gives Live rows none. It showed only when Today's other-side story was also in the live
+  event. `fixtures/live_other_side_pool.py` now forces that case.
 - `reader_check.mjs`: a missing-body-file note never appears within its 3s wait
   ("missing file and fetch error"), and one hostile-body handler attribute survives
   sanitization uncounted-for by the check's own tally ("hostile body executes
-  nothing", `handlerAttrs: 1`).
+  nothing", `handlerAttrs: 1`). **H5: both were the check, not the reader.** The row it
+  404ed had two members with bodies, so the reader opened the other one (R43, as
+  `l1_check` proves); the note does show for a one-body row and once every member is
+  missing, both now checked. The counted attribute was the reader's own hero photo
+  `style="--box: W / H"` (H4 item 4), not feed markup: the count now covers the sanitized
+  body, and the reader's other markup is held to the same rule with that one style allowed.
+  The hostile story is now always one with a hero. H5 did find and fix one real sanitizer
+  gap: a body opening with `<noscript>` was parsed in the head, where its first `<p>` or
+  `<img>` broke out into the body and showed (sanitized, never live).
 - `u1_check.mjs`: 4 of 515 real Today summaries on the current live pool still meet the
   line clamp (`fitted summaries never meet the line clamp`), all long AP-style dateline
   openings ("WASHINGTON, Sept 25 - ...").
+
+H5 reran every proof behind the Access gate on 2026-09-25 against a fresh real pool (97
+sources, 641 articles). All green but five, and those five fail the same way on
+unmodified main with the same pool (same failing checks, same numbers), so they are not
+H5's and were left as found: `coverage_check` (the `.story-coverage` trigger it clicks is
+missing for the story it picked), `rerank_cls` (`finalMatchesRanker: false` on the
+default and custom profiles), `standing_cls` (default dark and light: the placements
+disagree), `u1_check` (3 clamped summaries, as above) and `v1_check` (no cluster with 11
+or more versions in this pool, its stated caveat). `sw_pretty_urls` session B and
+`h2_you_check`'s old-build phases replay history from before Access, so the gate is
+open for those phases only; see the comments there.
