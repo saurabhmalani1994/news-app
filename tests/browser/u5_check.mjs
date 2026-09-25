@@ -2,16 +2,17 @@
 //   node tests/browser/u5_check.mjs [<screenshot dir>]
 // The owner, on his phone: "the you page now got way too big again. make the individual
 // topics nested again - otherwise its too big ... specifically the news sources page."
-// U2's picker drew all 97 sources at once, grouped but never collapsed. This builds the
-// app from a pool carrying every configured source (golden_pool.json's own articles,
-// sources.json's full source list) twice, once from origin/main (the flat picker) and
-// once from the working tree (this slice's nested one), and serves both the way
-// Cloudflare Pages does (pretty URLs, the build's own _headers) behind a simulated
-// Cloudflare Access gate (BUILDER-RULES: no request answers without the CF_Authorization
-// cookie, else a 302 to a login origin), to headless Chrome as a 360x780 CSS px, DPR 3
-// phone:
+// U2's picker once drew all 97 sources at once, grouped but never collapsed; main is
+// the nested picker now (U5 landed), so there is no older "flat" build left to compare
+// against. H4 item 5: reworked from a flat-build-vs-this-one ratio to a direct claim
+// the owner's fix actually promises, that the collapsed list fits one screen. This
+// builds the app from a pool carrying every configured source (golden_pool.json's own
+// articles, sources.json's full source list), and serves it the way Cloudflare Pages
+// does (pretty URLs, the build's own _headers) behind a simulated Cloudflare Access
+// gate (BUILDER-RULES: no request answers without the CF_Authorization cookie, else a
+// 302 to a login origin), to headless Chrome as a 360x780 CSS px, DPR 3 phone:
 //   1. #sources draws about eight collapsed group rows, not 97 source rows, and the
-//      page is markedly shorter than origin/main's flat build of the same catalog.
+//      whole page fits the one 780px screen with no scroll needed to reach the nav.
 //   2. Opening a group is a forward step to its own sub-view listing every one of its
 //      sources, each with its usual switch and lean marker; the masthead Back returns
 //      to the group list, not all the way to You.
@@ -55,23 +56,11 @@ function fullSourcePool() {
   return path;
 }
 
-/** One git ref's app/ (or the working tree's, ref null), built from `pool`. */
-function build(ref, pool) {
-  const name = ref ? ref.replace(/\W/g, "") : "tree";
-  const dist = join(TMP, `dist-${name}`);
+/** The working tree's app/, built from `pool`. */
+function build(pool) {
+  const dist = join(TMP, "dist-tree");
   rmSync(dist, { recursive: true, force: true });
-  if (!ref) {
-    execFileSync(PY, ["-m", "app.build", "--pool", pool, "--out", dist], { cwd: ROOT, stdio: "ignore" });
-    return dist;
-  }
-  const src = join(TMP, `src-${name}`);
-  rmSync(src, { recursive: true, force: true });
-  mkdirSync(src, { recursive: true });
-  execFileSync("git", ["-C", ROOT, "archive", "-o", join(TMP, `${name}.tar`), ref, "app", "package.json", "topics.json", "sources.json"]);
-  // A relative path, not TMP's own absolute one: Windows tar reads "C:\..." as a
-  // "host:path" remote spec (H3's own fix), so cd into src and go up to find it.
-  execFileSync("tar", ["-xf", `../${name}.tar`], { cwd: src });
-  execFileSync(PY, ["-m", "app.build", "--pool", pool, "--out", dist], { cwd: src, stdio: "ignore" });
+  execFileSync(PY, ["-m", "app.build", "--pool", pool, "--out", dist], { cwd: ROOT, stdio: "ignore" });
   return dist;
 }
 
@@ -108,9 +97,7 @@ function gatedSite(dist) {
 rmSync(TMP, { recursive: true, force: true });
 mkdirSync(TMP, { recursive: true });
 const pool = fullSourcePool();
-const distOld = build("origin/main", pool); // U2/U3/L1's flat picker: every source drawn at once
-const distNew = build(null, pool); // this slice's nested one
-const siteOld = await gatedSite(distOld);
+const distNew = build(pool); // "New" kept (not renamed) to hold the diff to item 5's own scope
 const siteNew = await gatedSite(distNew);
 
 const chrome = await launch("u5-check");
@@ -149,21 +136,18 @@ async function open(origin, path, scheme = "dark") {
   await sleep(300);
 }
 
-// 0. Page height, the flat build (origin/main) vs this slice's collapsed one, same
-// catalog, same viewport, both behind the same Access gate.
-await open(siteOld.origin, "/profile");
-await evaluate("localStorage.clear(); sessionStorage.clear()");
-await open(siteOld.origin, "/profile#sources");
-const heightOld = await pageHeight();
-const oldGroups = await evaluate(`document.querySelectorAll(".source-group").length`);
-
+// 0. Page height: the collapsed list itself, the claim behind U5 ("otherwise its too
+// big"), fits the one 780px screen with no scroll needed to reach the bottom nav. H4
+// item 5: main now ships this same collapsed picker (U5 landed), so there is no older
+// flat build left to compare against; a ratio against one would only ever read ~1.0 and
+// never fail, so it is a direct one-screen claim instead.
 await open(siteNew.origin, "/profile");
 await evaluate("localStorage.clear(); sessionStorage.clear()");
 await open(siteNew.origin, "/profile#sources");
 const heightNew = await pageHeight();
-check("collapsed_list_much_shorter_than_the_old_flat_page", heightNew < heightOld * 0.5,
-  { heightOld, heightNew, ratio: +(heightNew / heightOld).toFixed(2), oldGroups });
-console.log(`page height, #sources: ${heightOld}px flat (main) -> ${heightNew}px collapsed (this slice)`);
+const VIEWPORT_HEIGHT = 780;
+check("collapsed_list_fits_one_screen", heightNew <= VIEWPORT_HEIGHT, { heightNew, viewport: VIEWPORT_HEIGHT });
+console.log(`page height, #sources: ${heightNew}px collapsed, one screen is ${VIEWPORT_HEIGHT}px`);
 
 // 1. The collapsed list: about eight rows, each "N of M on" and a chevron, no source
 // rows drawn at all.
@@ -265,10 +249,9 @@ check("csp_zero", totalCsp === 0, { totalCsp });
 check("no_console_errors", errors.length === 0, { errors });
 
 chrome.close();
-siteOld.close();
 siteNew.close();
 rmSync(TMP, { recursive: true, force: true });
 console.log(JSON.stringify(results, null, 1));
-console.log(`page height: ${heightOld}px (flat, main) -> ${heightNew}px (collapsed, this slice)`);
+console.log(`page height: ${heightNew}px collapsed, fits within ${VIEWPORT_HEIGHT}px`);
 console.log(ok ? "U5 CHECK: PASS" : "U5 CHECK: FAIL");
 process.exit(ok ? 0 : 1);
