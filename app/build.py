@@ -51,7 +51,12 @@ PAGE = """<!doctype html>
 <meta name="apple-mobile-web-app-title" content="Almanac">
 <title>Almanac</title>
 {preloads}
-<link rel="manifest" href="manifest.webmanifest">
+<!-- S34: found by the History screen's own Behind Access proof (tests/browser/
+     s34_check.mjs), an H3-class gap: a <link rel="manifest"> fetch carries no
+     credentials by default, so behind Cloudflare Access it hit the login redirect and
+     tripped manifest-src (CSP). crossorigin="use-credentials" sends the Access cookie
+     like every other request already does. -->
+<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="style.css">
@@ -372,18 +377,42 @@ VIEWS = (
 # S26: the Saved screen. The device fills #saved-list from S24's savesStore
 # (js/saved-screen.js), the same card the river uses (STORY below, reused verbatim), so
 # the build only lays out static chrome here: nothing to hydrate, nothing that can ever
-# mismatch. #saved-segment is a deliberately empty, hidden seam: S34 adds a History
-# segment to this same screen later (a segmented control switching #saved-list between
-# saves and history entries) and fills it there, not here.
+# mismatch.
+#
+# S34: #saved-segment, static chrome like the rest of this view (the seam S26 left
+# empty and hidden), is now the Saved | History segmented control, in the section
+# tabs' own quiet style (the shared .tab look, R34); saved-screen.js only toggles
+# aria-selected and which panel shows. #history-panel is the History segment's own
+# static chrome: a search field and the Seen filter's toggle, a river list grouped by
+# day (saved-screen.js fills #history-groups), its own empty state, and Clear history
+# at the bottom. Nothing here reads history (device-only, R23); the device fills every
+# data-bearing part.
 SAVED_VIEW = """<section class="screen screen--view" id="screen-saved" data-screen="saved" aria-labelledby="saved-title">
 <div class="view view--saved">
 <h1 class="view-title" id="saved-title">Saved</h1>
-<div class="saved-segment" id="saved-segment" hidden></div>
+<div class="saved-segment" id="saved-segment" role="tablist" aria-label="Saved, History">
+<button type="button" class="tab saved-segment-tab" id="segment-saved" role="tab" aria-selected="true" aria-controls="saved-panel">Saved</button>
+<button type="button" class="tab saved-segment-tab" id="segment-history" role="tab" aria-selected="false" aria-controls="history-panel">History</button>
+</div>
+<div class="saved-panel" id="saved-panel" role="tabpanel" aria-labelledby="segment-saved">
 <div class="empty" id="saved-empty">
 <p class="empty-head">Nothing saved yet</p>
 <p class="empty-text">Stories you save will wait here, and the ones with full text stay readable offline.</p>
 </div>
 <ol class="river river--top saved-list" id="saved-list" hidden></ol>
+</div>
+<div class="history-panel" id="history-panel" role="tabpanel" aria-labelledby="segment-history" hidden>
+<div class="history-controls">
+<input type="search" class="history-search" id="history-search" placeholder="Search history" aria-label="Search history">
+<button type="button" class="history-seen" id="history-seen-toggle" role="switch" aria-checked="false">Seen</button>
+</div>
+<div class="empty" id="history-empty" hidden>
+<p class="empty-head" id="history-empty-head">Nothing opened yet</p>
+<p class="empty-text" id="history-empty-text">Stories you open will be grouped here by day, so one the algorithm quietly deprioritizes is never really gone.</p>
+</div>
+<div class="history-groups" id="history-groups" hidden></div>
+<button type="button" class="history-clear" id="history-clear" hidden>Clear history</button>
+</div>
 </div>
 </section>"""
 

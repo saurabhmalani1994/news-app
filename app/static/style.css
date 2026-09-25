@@ -1932,8 +1932,151 @@ body {
   margin: 24px -16px 0;
 }
 
-.saved-segment:not([hidden]) {
-  margin-bottom: 8px;
+/* S34: Saved | History, in the section tabs' own quiet style (reusing .tab, so the
+   typography, the pressed tint and the underline on the selected one all come for
+   free); a small fixed pair, never a scroller, so no ink slider is needed, just the
+   declarative underline .tab[aria-selected="true"] already draws. One hairline below,
+   the same weight the section tabs use, closes off the control from the list under it. */
+.saved-segment {
+  display: flex;
+  margin: 0 calc(var(--space-gutter) * -1) 8px;
+  padding: 0 calc(var(--space-gutter) / 2);
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.saved-segment-tab {
+  height: 44px;
+}
+
+.history-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.history-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 40px;
+  padding: 0 2px;
+  border-style: none;
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+  background: transparent;
+  appearance: none;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: var(--color-headline);
+}
+
+.history-search::placeholder {
+  color: var(--color-meta);
+}
+
+.history-search:focus-visible {
+  outline: none;
+  border-bottom-color: var(--color-headline);
+}
+
+/* The Seen filter: a plain quiet toggle, off by default, in the same voice as a section
+   tab's own selected state (bold plus the underline .tab[aria-selected="true"] already
+   draws) rather than a switch, so no new rounded shape joins the sheet's own (R34: no
+   rounded boxes outside what the measured file shows). */
+.history-seen {
+  flex: none;
+  height: var(--touch-min);
+  padding: 0 4px;
+  border-style: none;
+  background: transparent;
+  appearance: none;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-meta);
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--motion-duration) var(--motion-ease);
+}
+
+/* The same background-image underline .tab[aria-selected="true"] draws (never a
+   border, so test_tokens.py's one-divider-weight rule stays true of every border on
+   the page). */
+.history-seen[aria-checked="true"] {
+  color: var(--color-tab-active);
+  font-weight: 700;
+  background-image: linear-gradient(var(--color-tab-active), var(--color-tab-active));
+  background-repeat: no-repeat;
+  background-size: calc(100% - 8px) 3px;
+  background-position: 50% 100%;
+}
+
+.history-seen:active {
+  background: var(--color-pressed);
+}
+
+.history-seen:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.history-groups[hidden] {
+  display: none;
+}
+
+.history-group + .history-group {
+  margin-top: 12px;
+}
+
+/* A quiet sans label over each day's rows, the same voice as the text-only tier's own
+   module label (never a card, never a color panel). */
+.history-day {
+  margin: 24px 0 0;
+  padding: 0 0 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-meta);
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.history-panel .river {
+  margin-top: 0;
+}
+
+.history-clear {
+  display: block;
+  width: 100%;
+  margin-top: 24px;
+  padding: 14px var(--space-gutter);
+  border-style: none;
+  border-top: var(--divider-weight) solid var(--color-divider);
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--color-headline);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.history-clear:active {
+  background: var(--color-pressed);
+}
+
+.history-clear[hidden] {
+  display: none;
+}
+
+.sheet-message {
+  margin: 4px var(--space-gutter) 12px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-meta);
+}
+
+.sheet-item--destructive {
+  font-weight: 700;
 }
 
 .empty-head {
@@ -2357,9 +2500,11 @@ body {
    exactly but never the class "story-overflow" itself, since story-actions.js's global
    click listener keys off that class alone and would open its own, wrong, seven-item
    menu on a Saved row. ".saved-overflow" gets the identical rules below without ever
-   matching that selector. */
+   matching that selector. S34's History rows reuse the same look again as
+   ".history-overflow", for the same reason. */
 .story-overflow,
-.saved-overflow {
+.saved-overflow,
+.history-overflow {
   position: absolute;
   top: 2px;
   right: calc(var(--space-gutter) - (var(--touch-min) - 22px) / 2);
@@ -2378,12 +2523,14 @@ body {
 }
 
 .story-overflow:active,
-.saved-overflow:active {
+.saved-overflow:active,
+.history-overflow:active {
   background: var(--color-pressed);
 }
 
 .story-overflow:focus-visible,
-.saved-overflow:focus-visible {
+.saved-overflow:focus-visible,
+.history-overflow:focus-visible {
   outline: 2px solid var(--color-headline);
   outline-offset: -2px;
 }
@@ -2397,7 +2544,8 @@ body {
    square box hanging past the thumbnail's edge. The 48dp target is unchanged. */
 .story--hero .story-overflow,
 .story--river .story-overflow,
-.story--river .saved-overflow {
+.story--river .saved-overflow,
+.story--river .history-overflow {
   color: #F8F8F8;
   background: radial-gradient(circle closest-side, rgba(18, 18, 18, 0.5) 15.5px, transparent 16px);
 }
@@ -2408,14 +2556,16 @@ body {
 }
 
 .story--river .story-overflow,
-.story--river .saved-overflow {
+.story--river .saved-overflow,
+.story--river .history-overflow {
   top: 7px;
   right: calc(var(--space-gutter) - 4px);
 }
 
 .story--hero .story-overflow:active,
 .story--river .story-overflow:active,
-.story--river .saved-overflow:active {
+.story--river .saved-overflow:active,
+.story--river .history-overflow:active {
   background: radial-gradient(circle closest-side, rgba(18, 18, 18, 0.72) 15.5px, transparent 16px);
 }
 

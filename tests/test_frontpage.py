@@ -172,9 +172,11 @@ def test_cluster_meta_names_its_source_count_quietly():
 # V1: versions-view.js is the app's own module wiring the versions carousel, no feed data.
 # S26: saved-screen.js is the app's own module wiring the Saved screen, no feed data.
 # L1: lean-view.js is the app's own module wiring the lean sheet, no feed data.
+# S34: the Saved screen's static History chrome adds "input" (the search field), never
+# fed a feed string; the Seen filter is a plain button, no new tag for that.
 APP_TAGS = {"html", "head", "meta", "title", "link", "body", "header", "h1", "main", "ol", "li",
             "a", "span", "section", "h2", "footer", "p", "time", "svg", "circle", "path",
-            "script", "template", "nav", "div", "button", "article"}
+            "script", "template", "nav", "div", "button", "article", "input"}
 APP_SCRIPTS = ['<script src="js/offline-gate.js">', '<script src="js/rank-gate.js">',
                '<script type="module" src="js/tabs.js">', '<script type="module" src="js/reader.js">',
                '<script type="module" src="js/story-actions.js">',
