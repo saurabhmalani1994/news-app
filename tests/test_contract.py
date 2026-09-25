@@ -265,3 +265,91 @@ def test_article_countries_accepts_more_than_two():
     pool["articles"][0]["countries"] = ["US", "CN", "SG", "HK"]
     assert JS.is_valid(pool)
     assert validate(pool) == []
+
+
+# W2 (R50): the optional article `watch` field (hashed query tags) and counts.watch.
+
+TAG_A, TAG_B = "w:0123456789", "w:abcdef0123"
+
+
+def _watch_counts(**over):
+    counts = {"kv": "ok", "queries": 2, "query_drops": {"bad_tag": 1}, "fetched": 5,
+              "candidates": 3, "drops": {"stale": 1, "duplicate": 1}, "merged": 1,
+              "published": 2, "over_budget": 0, "bytes": 900, "budget_bytes": 60000,
+              "errors": {"http_503": 1}}
+    counts.update(over)
+    return counts
+
+
+def test_watch_field_is_optional():
+    assert not any("watch" in a for a in GOLDEN["articles"])
+    assert "watch" not in GOLDEN["counts"]
+    assert JS.is_valid(GOLDEN) and validate(GOLDEN) == []
+
+
+def test_watch_tags_and_counts_accepted_by_both():
+    pool = copy.deepcopy(GOLDEN)
+    pool["articles"][0]["watch"] = [TAG_A, TAG_B]
+    pool["articles"][1]["watch"] = [TAG_B]
+    pool["counts"]["watch"] = _watch_counts()
+    assert JS.is_valid(pool)
+    assert validate(pool) == []
+
+
+@pytest.mark.parametrize("bad", [
+    ["w:ABCDEF0123"],       # upper-case hex
+    ["w:012345678"],        # 9 hex
+    ["w:0123456789a"],      # 11 hex
+    ["x:0123456789"],       # wrong prefix
+    ["w0123456789"],        # no colon
+    [" w:0123456789"],      # leading space
+    ["w:0123456789", "w:0123456789"],  # a tag twice
+    [],                     # present but empty
+    "w:0123456789",         # not an array
+    [123],                  # not a string
+], ids=repr)
+def test_watch_pattern_enforced_by_both(bad):
+    pool = copy.deepcopy(GOLDEN)
+    pool["articles"][0]["watch"] = bad
+    assert not JS.is_valid(pool)
+    assert validate(pool)
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda w: w.update(kv="maybe"),
+    lambda w: w.update(kv="http_40"),
+    lambda w: w["drops"].update(mystery=1),
+    lambda w: w["query_drops"].update(mystery=1),
+    lambda w: w.update(queries=-1),
+    lambda w: w.update(q="not a field"),
+    lambda w: w.pop("budget_bytes"),
+], ids=["kv-word", "kv-code", "drop-key", "query-drop-key", "negative", "extra-field", "missing"])
+def test_watch_counts_shape_enforced_by_both(mutate):
+    pool = copy.deepcopy(GOLDEN)
+    pool["counts"]["watch"] = _watch_counts()
+    mutate(pool["counts"]["watch"])
+    assert not JS.is_valid(pool)
+    assert validate(pool)
+
+
+@pytest.mark.parametrize("kv", ["ok", "no_token", "no_namespace", "http_403", "timeout", "error"])
+def test_watch_kv_statuses_accepted_by_both(kv):
+    pool = copy.deepcopy(GOLDEN)
+    pool["counts"]["watch"] = _watch_counts(kv=kv)
+    assert JS.is_valid(pool)
+    assert validate(pool) == []
+
+
+def test_watch_ledger_invariant_checked_by_the_stdlib_gate():
+    pool = copy.deepcopy(GOLDEN)
+    pool["counts"]["watch"] = _watch_counts(fetched=99)
+    assert JS.is_valid(pool)  # a cross-count JSON Schema cannot express
+    assert any("counts.watch" in e for e in validate(pool))
+
+
+def test_cluster_with_no_listed_lean_accepted_by_both():
+    # W2: a cluster made only of Google News source items claims no lean.
+    pool = _pool_with_cluster()
+    pool["clusters"][0]["lean_buckets"] = []
+    assert JS.is_valid(pool)
+    assert validate(pool) == []

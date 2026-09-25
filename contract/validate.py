@@ -18,6 +18,7 @@ ANNOTATIONS = {"$schema", "$id", "$defs", "$comment", "title", "description"}
 ASSERTIONS = {
     "$ref", "type", "const", "required", "properties", "additionalProperties",
     "items", "minItems", "maxItems", "pattern", "minLength", "maxLength", "minimum", "enum",
+    "uniqueItems",
 }
 
 
@@ -57,6 +58,12 @@ def _same(a, b):
     # JSON Schema equality: booleans are never numbers, 1 equals 1.0.
     if isinstance(a, bool) or isinstance(b, bool):
         return isinstance(a, bool) and isinstance(b, bool) and a == b
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_same(a[k], b[k]) for k in a)
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b))
+    if isinstance(a, (dict, list)) or isinstance(b, (dict, list)):
+        return False
     return a == b
 
 
@@ -108,6 +115,9 @@ def _check(value, schema, root, path, errors):
             errors.append(f"{path}: fewer than {schema['minItems']} items")
         if "maxItems" in schema and len(value) > schema["maxItems"]:
             errors.append(f"{path}: more than {schema['maxItems']} items")
+        if schema.get("uniqueItems") is True and any(
+                _same(value[i], value[j]) for i in range(len(value)) for j in range(i)):
+            errors.append(f"{path}: items are not unique")
         if "items" in schema:
             for i, item in enumerate(value):
                 _check(item, schema["items"], root, f"{path}[{i}]", errors)
@@ -181,6 +191,9 @@ def check_integrity(pool):
     c = pool["counts"]
     if c["fetched"] != c["published"] + sum(c["drops"].values()):
         errors.append("$.counts: fetched does not equal published plus the sum of drops")
+    w = c.get("watch")
+    if w is not None and w["fetched"] != w["candidates"] + sum(w["drops"].values()):
+        errors.append("$.counts.watch: fetched does not equal candidates plus the sum of drops")
     if "feed_states" in c:
         total_feeds = sum(c["feed_states"].values())
         if total_feeds != len(pool["sources"]):

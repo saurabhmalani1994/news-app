@@ -159,8 +159,20 @@
           "minItems": 8,
           "maxItems": 8,
           "items": {"type": "integer"}
+        },
+        "watch": {
+          "description": "W2 (R50): the watch tags of the users' queries (followed phrases, standing-story keywords) whose Google News search found this article, or found a copy of it. A tag is 'w:' plus the first 10 hex characters of SHA-256 of the normalized query (trimmed, lowercased, spaces collapsed), so the pool never carries a query itself. Optional and additive: absent on every article no search found, and on every pool from before W2.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/watch_tag"}
         }
       }
+    },
+    "watch_tag": {
+      "description": "W2: 'w:' and 10 lowercase hex characters, the hashed form of one watch query.",
+      "type": "string",
+      "pattern": "^w:[0-9a-f]{10}$"
     },
     "article_image": {
       "description": "S38: optional, stated by the feed itself, never fetched or probed (R34). Sourced in priority order from media:content, media:thumbnail, an enclosure with an image type, or, as a last resort, the first <img src> inside the item's own description or content:encoded. width and height are only present when the feed states them; credit is attribution or caption text the feed gives, also optional.",
@@ -197,8 +209,8 @@
         },
         "independent_sources": {"type": "integer", "minimum": 1},
         "lean_buckets": {
+          "description": "W2: empty only when no member's outlet has a listed lean, which happens when every member came from fetcher.watch's Google News source (outlets sources.json does not list, so no lean is claimed for them). Such a cluster can never be must-know, which needs two.",
           "type": "array",
-          "minItems": 1,
           "items": {"$ref": "#/$defs/lean_bucket"}
         },
         "story_countries": {
@@ -326,7 +338,7 @@
       }
     },
     "counts": {
-      "description": "Run ledger. drops maps a fixed reason key to count (S02); leniency maps each parser tolerance applied (R9) to count, keys open. feed_states is optional, added by S05 fanout runs: it maps each closed feed-level outcome to a count, and the sum equals the number of configured sources. fetched == published + sum(drops) is asserted on every run. previous_pool_status is optional, added by S06: it records where this run's carried-forward state (source health, event holds) came from: cache (F6, the actions/cache-restored state.json, read before any network call), ok (the live pool.json read succeeded), absent, unreachable, or old_schema (predated this slice's schema, or was not a valid pool, e.g. an Access login page). images is optional, added by S38: found and rejected are closed-set maps of image outcomes for the run. bodies is optional, added by S22: written/skipped/bytes for this run's bodies/<id>.json output. routes is optional, added by F3: how many configured sources are wired to each fetch route (direct, relay, google_news), regardless of whether the run's fetch succeeded.",
+      "description": "Run ledger. drops maps a fixed reason key to count (S02); leniency maps each parser tolerance applied (R9) to count, keys open. feed_states is optional, added by S05 fanout runs: it maps each closed feed-level outcome to a count, and the sum equals the number of configured sources. fetched == published + sum(drops) is asserted on every run. previous_pool_status is optional, added by S06: it records where this run's carried-forward state (source health, event holds) came from: cache (F6, the actions/cache-restored state.json, read before any network call), ok (the live pool.json read succeeded), absent, unreachable, or old_schema (predated this slice's schema, or was not a valid pool, e.g. an Access login page). images is optional, added by S38: found and rejected are closed-set maps of image outcomes for the run. bodies is optional, added by S22: written/skipped/bytes for this run's bodies/<id>.json output. routes is optional, added by F3: how many configured sources are wired to each fetch route (direct, relay, google_news), regardless of whether the run's fetch succeeded. watch is optional, added by W2 (R50): the run's watch searches (watch_counts); its candidates are part of fetched.",
       "type": "object",
       "required": ["fetched", "published", "drops", "leniency"],
       "additionalProperties": false,
@@ -339,7 +351,52 @@
         "previous_pool_status": {"type": "string", "enum": ["ok", "absent", "unreachable", "old_schema", "cache"]},
         "images": {"$ref": "#/$defs/image_counts"},
         "bodies": {"$ref": "#/$defs/body_counts"},
-        "routes": {"$ref": "#/$defs/count_map"}
+        "routes": {"$ref": "#/$defs/count_map"},
+        "watch": {"$ref": "#/$defs/watch_counts"}
+      }
+    },
+    "watch_counts": {
+      "description": "W2 (R50): this run's watch searches, counts only (the queries themselves never leave the fetcher). kv is how the Workers KV read went: ok, no_token (no token or account id in the job's env), no_namespace (almanac-interests does not exist), http_<code> (403 is a token without Workers KV Storage Read), timeout, network, bad_response or error. queries is how many were searched after query_drops. fetched is the raw items across every search feed; each ends as a candidate or in drops, so fetched equals candidates plus the sum of drops. A candidate the pool already had is merged (its tag added to that article); the rest, with pool articles a tag saves from the per-source cap, publish exempt from that cap while bytes (their records, plus the tags on articles that publish anyway) fit budget_bytes; published and over_budget count them. errors counts failed searches by status (http_<code>, timeout, network, too_large, parse_error, error). The main ledger sees each candidate once: merged ones as duplicate_url, over-budget ones as over_cap.",
+      "type": "object",
+      "required": ["kv", "queries", "fetched", "candidates", "drops", "merged", "published", "over_budget", "bytes", "budget_bytes", "errors"],
+      "additionalProperties": false,
+      "properties": {
+        "kv": {"type": "string", "pattern": "^(ok|no_token|no_namespace|timeout|network|bad_response|error|http_[0-9]{3})$"},
+        "queries": {"type": "integer", "minimum": 0},
+        "query_drops": {
+          "description": "Queries not searched, by reason: bad_value (a KV value unreadable or not v1), bad_query (no q, an empty q or one over 100 characters), bad_tag (the tag is not the hash of its q), over_value_cap (past 25 in one value), duplicate (the same tag again), over_cap (past 60 for the run).",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bad_value": {"type": "integer", "minimum": 0},
+            "bad_query": {"type": "integer", "minimum": 0},
+            "bad_tag": {"type": "integer", "minimum": 0},
+            "over_value_cap": {"type": "integer", "minimum": 0},
+            "duplicate": {"type": "integer", "minimum": 0},
+            "over_cap": {"type": "integer", "minimum": 0}
+          }
+        },
+        "fetched": {"type": "integer", "minimum": 0},
+        "candidates": {"type": "integer", "minimum": 0},
+        "drops": {
+          "description": "Search items dropped before they became candidates: the S02 item checks (no_title, bad_url, no_date), stale (older than 3 days), over_query_cap (past a query's newest 10), duplicate (the same article from another query, whose tag it joins).",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "no_title": {"type": "integer", "minimum": 0},
+            "bad_url": {"type": "integer", "minimum": 0},
+            "no_date": {"type": "integer", "minimum": 0},
+            "stale": {"type": "integer", "minimum": 0},
+            "over_query_cap": {"type": "integer", "minimum": 0},
+            "duplicate": {"type": "integer", "minimum": 0}
+          }
+        },
+        "merged": {"type": "integer", "minimum": 0},
+        "published": {"type": "integer", "minimum": 0},
+        "over_budget": {"type": "integer", "minimum": 0},
+        "bytes": {"type": "integer", "minimum": 0},
+        "budget_bytes": {"type": "integer", "minimum": 0},
+        "errors": {"$ref": "#/$defs/count_map"}
       }
     },
     "body_counts": {
