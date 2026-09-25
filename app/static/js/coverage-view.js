@@ -73,9 +73,10 @@ function rowNode(row, now) {
   const head = el("span", "coverage-row-head");
   head.append(el("span", "coverage-outlet", row.sourceName));
   const label = ownershipLabel(row.ownership);
-  // L1: the outlet's lean marker, named for screen readers (js/lean.js). State media
-  // that already carries its ownership label says so once, not twice.
-  const marker = row.lean === "state" && label ? null : leanMarker(row.lean, { labelled: true });
+  // L1: the outlet's lean marker, named for screen readers (js/lean.js); U3: its country
+  // code when it sits outside the US scale. State media that already carries its
+  // ownership label says so once, not twice.
+  const marker = row.lean === "state" && label ? null : leanMarker(row.lean, { labelled: true, country: row.country });
   if (marker) head.append(marker);
   if (label) head.append(el("span", "coverage-ownership", label));
   const time = relativeAge(row.publishedAt, now);

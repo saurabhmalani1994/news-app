@@ -77,14 +77,17 @@ function media(image) {
 
 function metaLine(record) {
   const meta = el("span", "meta");
+  // U3: the meta is a stack of lines (style.css .meta-line); a Saved row has one.
+  const line = el("span", "meta-line");
   const age = relativeAge(record.time, Date.now());
   const saved = age ? `Saved ${age}` : "Saved";
   if (record.source) {
-    meta.append(el("span", "meta-source", record.source));
-    meta.append(el("span", "meta-rest", ` ${MIDDOT} ${saved}`));
+    line.append(el("span", "meta-source", record.source));
+    line.append(el("span", "meta-rest", ` ${MIDDOT} ${saved}`));
   } else {
-    meta.append(el("span", "meta-rest", saved));
+    line.append(el("span", "meta-rest", saved));
   }
+  meta.append(line);
   return meta;
 }
 

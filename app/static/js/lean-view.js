@@ -1,10 +1,10 @@
 // L1: opens the lean sheet (S24's bottom sheet) from any control that names a source
-// with data-lean-source: a story row's .lean-hit button over its dots, and the reader's
-// byline marker. What the page already embeds (#rank-input: names, leans, ownership)
-// fills the sheet at once; the cited basis comes from source-catalog.json (U2's catalog,
-// precached by the service worker, app/source_catalog.py lean_basis), fetched on the
-// first open and kept, so the page itself carries no copy of it. Every string is set as
-// text (R26, js/lean.js).
+// with data-lean-source: a story row's .lean-hit button over its marker (U3: the
+// other-side line's too), and the reader's byline marker. What the page already embeds
+// (#rank-input: names, leans, U3's countries, ownership) fills the sheet at once; the
+// cited basis comes from source-catalog.json (U2's catalog, precached by the service
+// worker, app/source_catalog.py lean_basis), fetched on the first open and kept, so the
+// page itself carries no copy of it. Every string is set as text (R26, js/lean.js).
 import { openSheet } from "./sheet.js";
 import { leanSheetContent, setBasis } from "./lean.js";
 
@@ -43,7 +43,7 @@ document.addEventListener("click", (event) => {
   event.preventDefault();
   const id = control.getAttribute("data-lean-source");
   const data = pageInput();
-  const content = leanSheetContent({ lean: data.leans?.[id], ownership: data.ownership?.[id] });
+  const content = leanSheetContent({ lean: data.leans?.[id], country: data.countries?.[id], ownership: data.ownership?.[id] });
   if (!content) return;
   openSheet({ title: data.names?.[id] || id, content, opener: control });
   leanBases().then((map) => setBasis(content, Object.hasOwn(map, id) ? map[id] : ""));

@@ -397,9 +397,18 @@ body {
   margin-top: 11px;
 }
 
-/* Meta: source, the quiet source count, age. Only the source name may truncate. */
+/* Meta (U3, R45): up to two lines, each one line of meta caps. Line 1 is who and
+   when: the source, its marker, the age. Line 2 is what the row offers: "N sources"
+   (S14's coverage trigger lies over it), "Read here", the outlet whose text opens. The
+   markup fixes which line holds what (app/build.py _meta), never the width, and line 2
+   shows only when it has something, so the build and a device re-rank agree on every
+   row's height before first paint. The source name matters most: at the full measure
+   line 1 holds any name up to 24 characters beside its marker and the longest age, and
+   only a longer name truncates. */
 .meta {
   display: flex;
+  flex-direction: column;
+  row-gap: 5px;
   min-width: 0;
   margin-top: 11px;
   white-space: nowrap;
@@ -421,12 +430,30 @@ body {
   margin-top: 9px;
 }
 
+.meta-line {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.meta-line--2:empty {
+  display: none;
+}
+
+/* A separator never leads a line. */
+.meta-line--2 > .meta-sep:first-child {
+  display: none;
+}
+
 .meta-source {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.meta-sep,
+.meta-age,
+.meta-count,
 .meta-rest {
   flex: none;
   white-space: pre;
@@ -444,9 +471,8 @@ body {
 }
 
 /* R43: when the full text that opens is another outlet's, its name after the mark
-   ("Read here · Reuters"), in the same quietest tone. When the line runs out of room
-   this name gives way first, down to its first letters; then the source name; the
-   source count and the age never do. */
+   ("Read here · Reuters"), in the same quietest tone. When line 2 runs out of room this
+   name gives way, down to its first letters; the source count never does. */
 .meta-read-source {
   flex: 0 1000 auto;
   min-width: 4.6em;
@@ -460,16 +486,56 @@ body {
   content: " \00B7  ";
 }
 
+/* U3: beside a river thumbnail (summaries on the lead stories only, or a row with no
+   summary) the column is 216dp, room for the longest name and its marker but not the
+   age as well. There the age leads line 2 instead (the build writes it as data-age),
+   so every row in that column takes the same two lines, and the name keeps its room. */
+:is(.summaries-top .story--river, .story--river:not(:has(.dek))) .story-body:has(.story-media) .meta-age,
+:is(.summaries-top .story--river, .story--river:not(:has(.dek))) .story-body:has(.story-media) .meta-line:first-child > .meta-sep {
+  display: none;
+}
+
+:is(.summaries-top .story--river, .story--river:not(:has(.dek))) .story-body:has(.story-media) .meta-line--2[data-age] {
+  display: flex;
+}
+
+:is(.summaries-top .story--river, .story--river:not(:has(.dek))) .story-body:has(.story-media) .meta-line--2[data-age]::before {
+  content: attr(data-age);
+  flex: none;
+  white-space: pre;
+}
+
+:is(.summaries-top .story--river, .story--river:not(:has(.dek))) .story-body:has(.story-media) .meta-line--2[data-age] > .meta-sep:first-child {
+  display: inline;
+}
+
+/* That column has no room for R43's other outlet after the mark, so there "Read here"
+   stands alone (the reader names the outlet as it opens), and the rare longest line 2
+   (a two-digit count, a minutes age and the mark) lets the mark give way at its end
+   rather than run under the photo. */
+:is(.summaries-top .story--river, .story--river:not(:has(.dek))) .story-body:has(.story-media) .meta-read-source {
+  display: none;
+}
+
+:is(.summaries-top .story--river, .story--river:not(:has(.dek))) .story-body:has(.story-media) .meta-read {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* L1: the lean marker (js/lean.js leanMarker, app/lean.py), the one block for every
-   place a source name shows. Five 3.5dp dots right after the name, left to right the US
-   scale left, center-left, center, center-right, right; the source's own bucket is
-   filled, the other four faint, all in the meta's own tone, so it reads as metadata and
-   not decoration. It sits inside the meta line's own 11dp line box (never taller than
-   the caps beside it), so it adds no height to any row. "State" for state media is the
-   meta caps a step smaller, in the tertiary tone. An outlet outside the US axis
-   ("non-us") gets nothing. The owner turns markers off (html.lean-off) or colors the
-   filled dot (html.lean-color, muted blue left, muted red right, grey center) under
-   You > Display; rank-gate.js sets both classes before first paint. */
+   place a source name shows. U3: one family. Five 4.5dp dots right after the name, left
+   to right the US scale left, center-left, center, center-right, right: the source's
+   own bucket a solid dot in the meta's full tone, the other four hollow rings at half
+   strength, so the one that counts reads at arm's length (L1's faint discs did not).
+   "State" for state media, and for an outlet outside the US axis ("non-us") its home
+   country's two-letter code: both the meta caps a step smaller, in the meta tone. It
+   sits inside the meta line's own 11dp line box (never taller than the caps beside
+   it), so it adds no height to any row. The owner turns markers off (html.lean-off: no
+   dots, codes or State) or colors the filled dot (html.lean-color, muted blue left,
+   muted red right, grey center; codes and State stay grey) under You > Display;
+   rank-gate.js sets both classes before first paint. */
 .lean,
 .lean-sheet-dots {
   --lean-left: #8FA6C6;
@@ -481,18 +547,25 @@ body {
   align-self: center;
   display: inline-flex;
   align-items: center;
-  gap: 2.5px;
-  margin: 0 2px 0 6px;
+  gap: 3px;
+  margin: 0 2px 0 5px;
   anchor-name: --lean;
 }
 
+/* A word or code marker sits on the meta's baseline, like the caps beside it. */
+.lean--state,
+.lean--country {
+  align-self: baseline;
+}
+
+/* A hollow dot is a 1dp ring drawn as its own background (no border, no shadow). */
 .lean > i {
   display: block;
-  width: 3.5px;
-  height: 3.5px;
+  width: 4.5px;
+  height: 4.5px;
   border-radius: 50%;
-  background: currentColor;
-  opacity: 0.3;
+  background: radial-gradient(circle closest-side, transparent calc(100% - 1.25px), currentColor calc(100% - 1px));
+  opacity: 0.5;
 }
 
 .lean--left > i:nth-child(1),
@@ -500,6 +573,7 @@ body {
 .lean--center > i:nth-child(3),
 .lean--center-right > i:nth-child(4),
 .lean--right > i:nth-child(5) {
+  background: currentColor;
   opacity: 1;
 }
 
@@ -513,14 +587,15 @@ body {
   background: var(--lean-right);
 }
 
-.lean-state {
+.lean-state,
+.lean-code {
   font-family: var(--type-meta-family);
   font-size: 9px;
   line-height: 11px;
   font-weight: var(--type-meta-weight);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--color-meta-tertiary);
+  color: var(--color-meta);
 }
 
 @media (prefers-color-scheme: light) {
@@ -539,7 +614,7 @@ body {
    layout. Where anchor positioning is missing the button stays for keyboards and
    screen readers only, and a tap on the dots opens the story like the rest of the row. */
 .story {
-  anchor-scope: --lean;
+  anchor-scope: --lean, --lean-other;
 }
 
 .lean-hit {
@@ -558,6 +633,23 @@ body {
 
 /* A quiet round tint while pressed, drawn (not a rounded box), the dots still showing
    through it. */
+/* U3: where line 2 shows, the target keeps to line 1 and the air above it (its bottom
+   edge halfway into the gap between the lines), so a tap on "N sources" or "Read here"
+   below the marker still reaches the coverage view or the story. */
+.story:has(.meta-line--2:not(:empty)) .lean-hit:not(.lean-hit--other),
+:is(.summaries-top .story--river, .story--river:not(:has(.dek))):has(.story-media) .lean-hit:not(.lean-hit--other) {
+  top: calc(anchor(bottom) + 2.5px - var(--touch-min));
+}
+
+/* The other-side line's marker has its own target, anchored to that marker. */
+.other-side .lean {
+  anchor-name: --lean-other;
+}
+
+.lean-hit--other {
+  position-anchor: --lean-other;
+}
+
 .lean-hit:active,
 .lean-open:active::before {
   background: radial-gradient(circle closest-side, color-mix(in srgb, var(--color-headline) 10%, transparent) 96%, transparent);
@@ -656,8 +748,8 @@ body {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: currentColor;
-  opacity: 0.28;
+  background: radial-gradient(circle closest-side, transparent calc(100% - 1.75px), currentColor calc(100% - 1.5px));
+  opacity: 0.5;
 }
 
 .lean-sheet-end,
@@ -678,6 +770,16 @@ body {
   line-height: 26px;
   font-weight: 700;
   color: var(--color-headline);
+}
+
+/* U3: under a country's name, what the code means. */
+.lean-sheet-scope {
+  margin: 8px 0 0;
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  line-height: 21px;
+  font-weight: 500;
+  color: var(--color-dek);
 }
 
 .lean-sheet-part {
@@ -741,10 +843,10 @@ body {
 }
 
 .other-side-label {
-  display: block;
-  overflow: hidden;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
   white-space: nowrap;
-  text-overflow: ellipsis;
   font-family: var(--type-meta-family);
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line-height);
@@ -752,6 +854,17 @@ body {
   letter-spacing: var(--type-meta-tracking);
   text-transform: var(--type-meta-transform);
   color: var(--color-meta);
+}
+
+.other-side-kicker {
+  flex: none;
+  white-space: pre;
+}
+
+.other-side-source {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .other-side-title {
@@ -771,13 +884,15 @@ body {
    story-body padding-bottom, the meta line's own height), never from content length, so
    it lines up under "N sources" without moving a single visible pixel. The visible
    "N sources" text stays exactly as it was; this only adds a real, focusable, 48dp tap
-   target quietly on top of it. min-height brings it to 48dp, the same accepted floor
-   .other-side above already adds to a multi-source card's own height. */
+   target quietly on top of it. U3: a multi-outlet row's meta is always two lines
+   ("N sources" leads line 2), so the trigger rises over both and the 5dp between them
+   (.meta row-gap); its 48dp then ends inside the row, and the row's foot is the same
+   as a one-source row's. */
 .story-coverage {
   display: block;
   width: 100%;
   min-height: var(--touch-min);
-  margin-top: calc(-1 * (22px + var(--type-meta-line-height)));
+  margin-top: calc(-1 * (22px + 2 * var(--type-meta-line-height) + 5px));
   padding: 0;
   border-style: none;
   background: transparent;
@@ -786,7 +901,7 @@ body {
 }
 
 .story--text-only .story-coverage {
-  margin-top: calc(-1 * (19px + var(--type-meta-line-height)));
+  margin-top: calc(-1 * (19px + 2 * var(--type-meta-line-height) + 5px));
 }
 
 .story-coverage:active {

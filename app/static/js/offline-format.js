@@ -25,7 +25,7 @@ export function offlineLineText(generatedAt, now) {
 
 const AGE_RE = /\d+(?: min|[hd]) ago$/;
 
-/** A row's existing `.meta-rest` text with only its trailing age token swapped for
+/** A row's existing age text (`.meta-age`, U3) with only its trailing age token swapped for
  * `freshAge`, whatever led it (a source name, "N sources", the middot) kept as is. */
 export function refreshedMetaText(oldText, freshAge) {
   if (!freshAge || !AGE_RE.test(oldText)) return oldText;

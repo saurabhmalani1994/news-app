@@ -50,6 +50,8 @@
       articleById[a.id] = a;
     });
     var now = Date.now();
+    // U3: the age is its own span on the meta's first line, and line 2 carries it as
+    // data-age for the layout that leads line 2 with it (app/build.py _meta).
     var AGE_RE = /\d+(?: min|[hd]) ago$/;
     document.querySelectorAll("li.story[data-sid]").forEach(function (li) {
       var sid = li.dataset.sid;
@@ -57,10 +59,12 @@
       if (!article) return;
       var fresh = relativeAge(article.published_at, now);
       if (!fresh) return;
-      var meta = li.querySelector(".meta-rest");
+      var meta = li.querySelector(".meta-age");
       if (meta && AGE_RE.test(meta.textContent)) {
         meta.textContent = meta.textContent.replace(AGE_RE, fresh);
       }
+      var second = li.querySelector(".meta-line--2[data-age]");
+      if (second) second.setAttribute("data-age", fresh);
     });
   });
 })();

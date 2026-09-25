@@ -6,6 +6,8 @@
 // lead's thumbnail in the river, none elsewhere. Every feed string is set as text only
 // (R26) and only an https url reaches src.
 
+import { leanHit, leanMarker } from "./lean.js";
+
 export const TIERS = [["hero", 1], ["secondary", 2], ["river", 12], ["text-only", 20], ["text-only", Infinity]];
 const HEADLINE = { hero: "headline headline--hero", secondary: "headline headline--river", river: "headline headline--river", "text-only": "headline" };
 
@@ -80,12 +82,15 @@ export function retier(lists, order, rows, deks, images) {
 // S13: the other-side link a pass attached to a row (passes.js), drawn as the build
 // draws it (app/build.py OTHER): its own link after the card's, label then headline,
 // every string as text (R26), an href only for an http(s) url. `record` is the story's
-// other_side ({article_id, source_id, lean}) or null, which clears the row.
+// other_side ({article_id, source_id, lean}) or null, which clears the row. U3: the
+// label names the outlet, then its marker (js/lean.js, the rows' own), and the marker's
+// tap target follows the link as a sibling.
 const WEB = /^https?:\/\/[^\s]+$/i;
 
 export function placeOtherSide(li, record, input) {
   if (!li) return;
   li.querySelector(".other-side")?.remove();
+  li.querySelector(".lean-hit--other")?.remove();
   const link = record && (input.links || {})[record.article_id];
   if (!link) return;
   const [url, title] = link;
@@ -100,10 +105,22 @@ export function placeOtherSide(li, record, input) {
   }
   const label = document.createElement("span");
   label.className = "other-side-label";
-  label.textContent = `Other side \u00b7 ${record.lean} \u00b7 ${(input.names || {})[record.source_id] || record.source_id}`;
+  const kicker = document.createElement("span");
+  kicker.className = "other-side-kicker";
+  kicker.textContent = "Other side \u00b7 ";
+  const source = document.createElement("span");
+  source.className = "other-side-source";
+  source.textContent = (input.names || {})[record.source_id] || record.source_id;
+  label.append(kicker, source);
+  const lean = record.lean || (input.leans || {})[record.source_id];
+  const country = (input.countries || {})[record.source_id];
+  const marker = leanMarker(lean, { country });
+  if (marker) label.append(marker);
   const headline = document.createElement("span");
   headline.className = "other-side-title";
   headline.textContent = title;
   node.append(label, headline);
   li.append(node);
+  const hit = leanHit(record.source_id, lean, document, country, "lean-hit--other");
+  if (hit) li.append(hit);
 }

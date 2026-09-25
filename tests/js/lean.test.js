@@ -10,7 +10,8 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
 import {
-  LEAN_SCALE, basisText, leanHit, leanMark, leanMarker, leanSheetContent, leanWord, setBasis, OUTLET_NOT_STORY,
+  LEAN_SCALE, NOT_ON_US_SCALE, basisText, countryCode, countryName, leanHit, leanMark, leanMarker, leanSheetContent,
+  leanWord, setBasis, OUTLET_NOT_STORY,
 } from "../../app/static/js/lean.js";
 import { readChoice } from "../../app/static/js/reader/core.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
@@ -75,6 +76,58 @@ test("non-us, a missing lean and anything unknown get no marker at all", () => {
   }
   assert.equal(leanWord("non-us"), "");
   assert.equal(leanWord("toString"), "");
+});
+
+// --- U3: one marker family. Outside the US scale, the outlet's home country. ---
+
+test("a non-us outlet shows its home country's code, a US-scale or state one never does", () => {
+  assert.deepEqual(leanMark("non-us", "PK"), { kind: "country", lean: "non-us", code: "PK", label: "Country: PK" });
+  const node = leanMarker("non-us", { country: "PK", doc });
+  assert.equal(node.className, "lean lean--country");
+  assert.equal(node.getAttribute("aria-hidden"), "true");
+  assert.equal(node.children.length, 1);
+  assert.equal(node.children[0].className, "lean-code");
+  assert.equal(node.textContent, "PK");
+  assert.equal(leanMarker("center", { country: "US", doc }).children.length, 5, "dots, not a code");
+  assert.equal(leanMarker("state", { country: "QA", doc }).textContent, "State");
+  const labelled = leanMarker("non-us", { country: "SG", labelled: true, doc });
+  assert.equal(labelled.getAttribute("role"), "img");
+  assert.equal(labelled.getAttribute("aria-label"), "Country: SG");
+  assert.equal(labelled.children[0].getAttribute("aria-hidden"), "true");
+});
+
+test("a country is used only in the ISO alpha-2 shape; anything else is no marker", () => {
+  for (const bad of ["pk", "PAK", "P", "", null, undefined, 7, "<b", "__proto__"]) {
+    assert.equal(countryCode(bad), null, String(bad));
+    assert.equal(leanMark("non-us", bad), null, String(bad));
+    assert.equal(leanMarker("non-us", { country: bad, doc }), null, String(bad));
+    assert.equal(leanHit("dawn_pk", "non-us", doc, bad), null, String(bad));
+  }
+  assert.equal(countryName("pk"), "");
+});
+
+test("the country's tap target is named for it; the other-side line's carries its own class", () => {
+  const hit = leanHit("dawn_pk", "non-us", doc, "PK");
+  assert.deepEqual(hit.attrs, { type: "button", "data-lean-source": "dawn_pk", "aria-haspopup": "dialog", "aria-label": "Country: PK" });
+  assert.equal(hit.className, "lean-hit");
+  assert.equal(leanHit("wsj_world", "center-right", doc, "US", "lean-hit--other").className, "lean-hit lean-hit--other");
+});
+
+test("the country sheet names the country, says US ratings do not apply, and keeps basis and ownership as text", () => {
+  assert.equal(countryName("PK"), "Pakistan");
+  assert.equal(countryName("HK"), "Hong Kong");
+  const evil = '<img src=x onerror="alert(1)">';
+  const content = leanSheetContent({ lean: "non-us", country: "PK", basis: evil, ownership: "state-funded" }, doc);
+  assert.equal(content.querySelector(".lean-sheet-dots"), null, "no scale for an outlet off the US axis");
+  assert.equal(content.querySelector(".lean-sheet-word").textContent, "Pakistan");
+  assert.equal(content.querySelector(".lean-sheet-scope").textContent, NOT_ON_US_SCALE);
+  assert.match(NOT_ON_US_SCALE, /home country/);
+  assert.match(NOT_ON_US_SCALE, /US left and right ratings do not apply/);
+  assert.equal(content.querySelector(".lean-sheet-basis").textContent, evil, "the basis arrives verbatim, as text");
+  assert.equal(content.querySelector(".lean-sheet-label").textContent, "Why no US rating");
+  assert.equal(content.querySelector(".lean-sheet-owner").textContent, "State funded");
+  assert.equal(content.querySelector(".lean-sheet-note"), null, "it rates nothing, so no outlet-not-story line");
+  assert.equal(leanSheetContent({ lean: "non-us" }, doc), null, "no country, no sheet");
 });
 
 test("a labelled marker is an image named for its bucket, its dots hidden", () => {

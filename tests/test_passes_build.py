@@ -10,6 +10,7 @@ import pytest
 from app import frontpage
 from app.build import OTHER_SIDE_MIN_SOURCES, render
 from app.frontpage import build_stories, pass_input, rank_input, ranked_stories, run_ranker
+from app.lean import hit_html, marker_html
 
 NOW = "2026-09-24T12:00:00Z"
 HOSTILE = '<img src=x onerror=alert(1)> "Right" take'
@@ -90,7 +91,13 @@ def test_other_side_link_renders_beside_its_card_as_text_only():
     card, other = row.split('<a class="other-side"', 1)
     assert card.count("<a ") == card.count("</a>") == 1
     assert 'href="https://example.org/c1b"' in other and 'rel="noopener noreferrer"' in other
-    assert "Other side · right · Fox News Politics" in other
+    # U3: the outlet, then the marker its rows show, never the lean in words; the
+    # marker's tap target follows the link as a sibling, never inside it.
+    assert ('<span class="other-side-label"><span class="other-side-kicker">Other side · </span>'
+            '<span class="other-side-source">Fox News Politics</span>' + marker_html("right") + "</span>") in other
+    assert "Other side · right" not in other
+    link, hit = other.split("</a>", 1)
+    assert hit.startswith(hit_html("fox_politics", "right", "US", "lean-hit--other"))
     assert "&lt;img src=x onerror=alert(1)&gt;" in other and "<img src=x" not in page
     # The device gets the same link data, as text, for clusters of 3 or more outlets.
     raw = re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)

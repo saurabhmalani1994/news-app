@@ -1,8 +1,11 @@
 // L1: the lean marker, a quiet five-dot scale after a source name (left, center-left,
-// center, center-right, right; the source's own bucket filled, the other four faint),
-// "STATE" in the meta voice for state media, and nothing at all for an outlet outside
-// the US left-right axis ("non-us") or one sources.json gives no lean. It reads as
-// metadata, in the meta tone, and never adds height to a line (style.css ".lean").
+// center, center-right, right; the source's own bucket filled, the other four hollow
+// rings), "STATE" in the meta voice for state media. U3: one marker family for every
+// source, so an outlet outside the US left-right axis ("non-us") shows the two-letter
+// code of its home country (sources.json `country`, ISO 3166-1 alpha-2) in the same
+// small caps as "STATE", the angle it writes from. Only a source with neither a lean nor
+// a country gets nothing. It reads as metadata, in the meta tone, and never adds height
+// to a line (style.css ".lean").
 //
 // One renderer for every place a source name shows: story rows (app/build.py writes
 // the same markup at build time, app/lean.py), the coverage view, the reader's byline,
@@ -24,13 +27,38 @@ const WORDS = Object.freeze({
   state: "State media",
 });
 
+const COUNTRY = /^[A-Z]{2}$/;
+
+/** `value` when it has the ISO 3166-1 alpha-2 shape (two upper-case letters), else null. */
+export function countryCode(value) {
+  return typeof value === "string" && COUNTRY.test(value) ? value : null;
+}
+
+// Intl's English region names, with the two whose official form reads long in a sheet.
+const COUNTRY_WORDS = Object.freeze({ HK: "Hong Kong", MO: "Macao" });
+
+/** The country's name in English ("Pakistan"), or the code itself where the device has
+ * no region names. */
+export function countryName(code) {
+  if (!countryCode(code)) return "";
+  if (Object.hasOwn(COUNTRY_WORDS, code)) return COUNTRY_WORDS[code];
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(code) || code;
+  } catch {
+    return code;
+  }
+}
+
 /** What a source's marker shows: {kind: "scale", lean, index, label} for a bucket on
- * the scale, {kind: "state", lean, label} for state media, or null (non-us, missing,
- * or anything sources.json might add later) for no marker at all. */
-export function leanMark(lean) {
+ * the scale, {kind: "state", lean, label} for state media, {kind: "country", lean, code,
+ * label} for any other source with a home country (U3: non-us), or null (no lean and no
+ * country) for no marker at all. The label is the same bytes app/lean.py writes. */
+export function leanMark(lean, country) {
   const index = LEAN_SCALE.indexOf(lean);
   if (index >= 0) return { kind: "scale", lean, index, label: `Lean: ${lean}` };
   if (lean === "state") return { kind: "state", lean, label: "Lean: state media" };
+  const code = countryCode(country);
+  if (code) return { kind: "country", lean, code, label: `Country: ${code}` };
   return null;
 }
 
@@ -39,29 +67,30 @@ export function leanWord(lean) {
 }
 
 /**
- * The marker node for `lean`, or null when the source gets none. Five empty <i> dots
- * for a scale bucket (CSS fills the one its `lean--<bucket>` class names), or the word
- * "State" for state media. By default the whole marker is aria-hidden, for a place
- * where a separate control or the text around it already names the lean (a story row's
- * .lean-hit button); `labelled` makes the marker itself an image named "Lean: <bucket>"
- * with its dots hidden, for a place where it stands alone (the coverage view, the
- * source picker). Byte for byte the markup app/lean.py writes at build time.
+ * The marker node for `lean` (and, U3, `country`), or null when the source gets none.
+ * Five empty <i> dots for a scale bucket (CSS fills the one its `lean--<bucket>` class
+ * names), the word "State" for state media, or the country code. By default the whole
+ * marker is aria-hidden, for a place where a separate control or the text around it
+ * already names it (a story row's .lean-hit button); `labelled` makes the marker itself
+ * an image named by its label with its contents hidden, for a place where it stands
+ * alone (the coverage view, the source picker). Byte for byte the markup app/lean.py
+ * writes at build time.
  */
-export function leanMarker(lean, { labelled = false, doc = globalThis.document } = {}) {
-  const mark = leanMark(lean);
+export function leanMarker(lean, { labelled = false, country = null, doc = globalThis.document } = {}) {
+  const mark = leanMark(lean, country);
   if (!mark) return null;
   const node = doc.createElement("span");
-  node.className = `lean lean--${mark.lean}`;
+  node.className = `lean lean--${mark.kind === "country" ? "country" : mark.lean}`;
   if (labelled) {
     node.setAttribute("role", "img");
     node.setAttribute("aria-label", mark.label);
   } else {
     node.setAttribute("aria-hidden", "true");
   }
-  if (mark.kind === "state") {
+  if (mark.kind !== "scale") {
     const word = doc.createElement("span");
-    word.className = "lean-state";
-    word.textContent = "State";
+    word.className = mark.kind === "state" ? "lean-state" : "lean-code";
+    word.textContent = mark.kind === "state" ? "State" : mark.code;
     if (labelled) word.setAttribute("aria-hidden", "true");
     node.append(word);
     return node;
@@ -75,14 +104,15 @@ export function leanMarker(lean, { labelled = false, doc = globalThis.document }
 }
 
 /** The row's 48dp tap target for its marker: a sibling of the row's own link, never
- * inside it, laid over the dots by CSS anchor positioning (style.css .lean-hit), so a
- * tap on the dots opens the lean sheet and a tap anywhere else still opens the story.
- * Named for screen readers; null when the source gets no marker. */
-export function leanHit(sourceId, lean, doc = globalThis.document) {
-  const mark = leanMark(lean);
+ * inside it, laid over the marker by CSS anchor positioning (style.css .lean-hit), so a
+ * tap on the marker opens the lean sheet and a tap anywhere else still opens the story.
+ * Named for screen readers; null when the source gets no marker. `extraClass` names a
+ * second target in the same row (U3: "lean-hit--other", the other-side line's). */
+export function leanHit(sourceId, lean, doc = globalThis.document, country = null, extraClass = "") {
+  const mark = leanMark(lean, country);
   if (!mark || typeof sourceId !== "string" || !sourceId) return null;
   const button = doc.createElement("button");
-  button.className = "lean-hit";
+  button.className = extraClass ? `lean-hit ${extraClass}` : "lean-hit";
   button.setAttribute("type", "button");
   button.setAttribute("data-lean-source", sourceId);
   button.setAttribute("aria-haspopup", "dialog");
@@ -109,17 +139,21 @@ function ownershipWords(value) {
 }
 
 export const OUTLET_NOT_STORY = "This rates the outlet as a whole, not this story.";
+export const NOT_ON_US_SCALE = "The outlet's home country. US left and right ratings do not apply to it.";
 
 /**
  * The lean sheet's content for one source: the scale (or "State media") with the
  * bucket in words, why it is rated so (sources.json lean_basis), who owns it where
  * sources.json says, and one line saying the rating is the outlet's, not the story's.
- * `source` is {lean, basis, ownership}; every value is set as text (R26). `basis` may
- * arrive later (the catalog is fetched on first open): pass undefined and fill the
- * returned node's `.lean-sheet-basis` with setBasis(). Null for a source with no mark.
+ * U3: for a country marker, the country's name and a line saying it is the outlet's
+ * home country and that US left and right ratings do not apply, then the same basis
+ * and ownership. `source` is {lean, country, basis, ownership}; every value is set as
+ * text (R26). `basis` may arrive later (the catalog is fetched on first open): pass
+ * undefined and fill the returned node's `.lean-sheet-basis` with setBasis(). Null for
+ * a source with no mark.
  */
 export function leanSheetContent(source, doc = globalThis.document) {
-  const mark = leanMark(source?.lean);
+  const mark = leanMark(source?.lean, source?.country);
   if (!mark) return null;
   const el = (tag, className, text) => {
     const node = doc.createElement(tag);
@@ -137,10 +171,14 @@ export function leanSheetContent(source, doc = globalThis.document) {
     scale.append(el("span", "lean-sheet-end", "Left"), dots, el("span", "lean-sheet-end", "Right"));
     head.append(scale);
   }
-  head.append(el("p", "lean-sheet-word", leanWord(mark.lean)));
+  if (mark.kind === "country") {
+    head.append(el("p", "lean-sheet-word", countryName(mark.code)), el("p", "lean-sheet-scope", NOT_ON_US_SCALE));
+  } else {
+    head.append(el("p", "lean-sheet-word", leanWord(mark.lean)));
+  }
   wrap.append(head);
   const why = el("div", "lean-sheet-part");
-  why.append(el("p", "lean-sheet-label", "Why this rating"));
+  why.append(el("p", "lean-sheet-label", mark.kind === "country" ? "Why no US rating" : "Why this rating"));
   const basis = el("p", "lean-sheet-basis", basisText(source.basis) || "");
   why.append(basis);
   why.hidden = !basis.textContent;
@@ -151,7 +189,7 @@ export function leanSheetContent(source, doc = globalThis.document) {
     part.append(el("p", "lean-sheet-label", "Ownership"), el("p", "lean-sheet-owner", owner));
     wrap.append(part);
   }
-  wrap.append(el("p", "lean-sheet-note", OUTLET_NOT_STORY));
+  if (mark.kind !== "country") wrap.append(el("p", "lean-sheet-note", OUTLET_NOT_STORY));
   return wrap;
 }
 

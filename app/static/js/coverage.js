@@ -38,6 +38,7 @@ function articleFacts(id, ctx) {
     sourceName: ctx.names?.[article.source_id] || article.source_id || "",
     ownership: ctx.ownership?.[article.source_id] || "",
     lean: ctx.leans?.[article.source_id] || FALLBACK_LEAN,
+    country: ctx.countries?.[article.source_id] || "",
     headline: article.title || "",
     publishedAt: article.published_at || "",
     url: extra.url || "",
@@ -134,6 +135,7 @@ export function coverageContext(input) {
     names: input.names || {},
     leans: input.leans || {},
     ownership: input.ownership || {},
+    countries: input.countries || {},
     coverage: input.coverage || {},
   };
 }

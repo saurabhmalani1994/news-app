@@ -324,7 +324,7 @@ function main(schema, catalog) {
       section("Display", () => [switchRow("summaries", "Summaries on every story", "Off shows them on the lead stories only",
         summariesMode(profile) === "all",
         (on) => commit((p) => withSummaries(p, on ? "all" : "top"), on ? "Summaries on every story" : "Summaries on lead stories only")),
-      switchRow("lean-markers", "Lean markers", "Five dots after a source name, left to right, for where the outlet leans",
+      switchRow("lean-markers", "Lean markers", "After a source name: five dots for where a US outlet leans, or the home country of one outside the US",
         leanMarkersOn(profile),
         (on) => commit((p) => withLeanMarkers(p, on), on ? "Lean markers on" : "Lean markers off")),
       switchRow("lean-color", "Color the markers", "Blue for left, red for right, grey for center",
@@ -574,12 +574,12 @@ function main(schema, catalog) {
   }
 
   /** L1: the source's lean marker after its name in the picker, and its tap target
-   * (collected into `hits`), tied by an anchor name of its own. Nothing for an outlet
-   * outside the US scale. The names are set through the CSSOM, never a style
-   * attribute, so the page's CSP is unchanged. */
+   * (collected into `hits`), tied by an anchor name of its own. U3: an outlet outside
+   * the US scale shows its country code. The names are set through the CSSOM, never a
+   * style attribute, so the page's CSP is unchanged. */
   function placeLean(row, source, hits) {
-    const marker = leanMarker(source.lean);
-    const hit = marker && leanHit(source.id, source.lean);
+    const marker = leanMarker(source.lean, { country: source.country });
+    const hit = marker && leanHit(source.id, source.lean, document, source.country);
     if (!hit) return;
     const anchor = `--lean-${source.id.replace(/[^a-z0-9_-]/gi, "-")}`;
     marker.style.setProperty("anchor-name", anchor);
@@ -591,7 +591,7 @@ function main(schema, catalog) {
   /** The lean sheet for a picker source, sheet.js loaded on this first use. */
   async function openLean(id, opener) {
     const source = sources.find((s) => s.id === id);
-    const content = source && leanSheetContent({ lean: source.lean, ownership: source.ownership });
+    const content = source && leanSheetContent({ lean: source.lean, country: source.country, ownership: source.ownership });
     if (!content) return;
     try {
       const { openSheet } = await import("./sheet.js");

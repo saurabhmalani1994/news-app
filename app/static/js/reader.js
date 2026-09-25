@@ -397,12 +397,13 @@ function swapTo(next, facts) {
 }
 
 /** L1: the byline's source name, then its lean marker as a button into the lean sheet
- * (none for an outlet outside the US scale). */
+ * (U3: the country code for an outlet outside the US scale). */
 function sourceLine(facts) {
   const line = el("p", "reader-source", facts.source);
   const lean = (pageInput().leans || {})[facts.sourceId];
-  const mark = leanMark(lean);
-  const marker = mark && leanMarker(lean);
+  const country = (pageInput().countries || {})[facts.sourceId];
+  const mark = leanMark(lean, country);
+  const marker = mark && leanMarker(lean, { country });
   if (marker) {
     const button = el("button", "lean-open");
     button.type = "button";

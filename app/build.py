@@ -24,7 +24,7 @@ from app.csp import headers_file
 from app.health import render as render_health
 from app.dek import fit_dek
 from app.frontpage import (CHARS_PER_LINE, DEK_LINES, ROW_DEK_LINES, clean_dek, dek_budget, front_page,
-                           pass_input, rank_input, run_ranker, source_ownership)
+                           pass_input, rank_input, run_ranker, source_countries, source_ownership)
 from app.images import THUMB_PX, credit_text, hero_box, hero_media, hero_worthy, image_url, media_for, thumb_ok
 from app.lean import hit_html as lean_hit_html, marker_html as lean_marker_html
 from app.serviceworker import write_service_worker
@@ -445,10 +445,14 @@ STORY = (
 # which and why). Its own link beside the card's, never inside it. tiers.js draws the
 # same markup on the device. Built only for clusters of OTHER_SIDE_MIN_SOURCES or more
 # independent sources, the design's floor, so the page carries link data for no others.
+# U3: the label names the outlet and then its marker, the same one its rows show
+# (app/lean.py), never the lean in words; the marker's tap target is a sibling after the
+# link (lean-hit--other), as a row's is after the row's link.
 OTHER_SIDE_MIN_SOURCES = 3  # passes.js OTHER_SIDE_MIN_SOURCES
 OTHER = ('<{tag} class="other-side" data-aid="{aid}"{href}>'
-         '<span class="other-side-label">Other side {dot} {lean} {dot} {source}</span>'
-         '<span class="other-side-title">{title}</span></{tag}>')
+         '<span class="other-side-label"><span class="other-side-kicker">Other side {dot} </span>'
+         '<span class="other-side-source">{source}</span>{marker}</span>'
+         '<span class="other-side-title">{title}</span></{tag}>{hit}')
 OTHER_HREF = ' href="{url}" target="_blank" rel="noopener noreferrer"'
 # S39 photos (app.images decides which). The url is an attribute value, escaped; alt is
 # empty because the headline beside it carries the meaning. Only the hero loads eagerly.
@@ -508,34 +512,42 @@ def _safe_url(url):
     return None
 
 
-def _meta(story, source_names, now, read_from=None, lean=None):
-    """Source, its lean marker (L1), then the quiet 'N sources' for a multi-outlet
-    cluster, then age, then (U1) 'Read here' when the row opens in the reader: `read_from`
-    is '' when the text is the row's own outlet's, else (R43) that other outlet's name,
-    set after the mark. Only the two outlet names may truncate (style.css); the source
-    count and the age never do."""
+META_SEP = f'<span class="meta-sep"> {MIDDOT} </span>'
+
+
+def _meta(story, source_names, now, read_from=None, lean=None, country=None):
+    """U3 (R45): the meta as two lines, the second shown only when it has something.
+    Line 1 is who and when: the source, its marker (L1, U3), the age. Line 2 is what the
+    row offers: the quiet 'N sources' of a multi-outlet cluster (S14's coverage trigger
+    lies over it), then (U1) 'Read here' when the row opens in the reader, and (R43) the
+    other outlet's name when the text that opens is not the row's own (`read_from` is ''
+    for the row's own outlet). Which line holds what is fixed by the content alone, never
+    by width, so the build and every device redraw agree on the line count before first
+    paint. Line 2 also carries the age as data-age: where the meta sits beside a river
+    thumbnail, too narrow for the name and the age on one line, style.css leads line 2
+    with it instead (every row there takes the second line). Only the outlet names may
+    truncate (style.css); the source count and the age never do."""
     article = story.lead
     source = source_names.get(article.get("source_id"), "")
-    rest = []
-    if story.independent_sources > 1:
-        rest.append(f"{story.independent_sources} sources")
     age = relative_age(article.get("published_at"), now)
-    if age:
-        rest.append(age)
-    parts = []
+    first = []
     if source:
-        parts.append(f'<span class="meta-source">{escape(source)}</span>')
-        parts.append(lean_marker_html(lean))
-    tail = f" {MIDDOT} ".join(rest)
-    if tail:
-        lead_sep = f" {MIDDOT} " if source else ""
-        parts.append(f'<span class="meta-rest">{escape(lead_sep + tail)}</span>')
+        first.append(f'<span class="meta-source">{escape(source)}</span>')
+        first.append(lean_marker_html(lean, country))
+    if age:
+        if source:
+            first.append(META_SEP)
+        first.append(f'<span class="meta-age">{escape(age)}</span>')
+    second = []
+    if story.independent_sources > 1:
+        second.append(META_SEP + f'<span class="meta-count">{story.independent_sources} sources</span>')
     if read_from is not None:
-        sep = f" {MIDDOT} " if parts else ""
-        parts.append(f'<span class="meta-read">{escape(sep)}<span class="meta-read-label">{READ_HERE}</span></span>')
+        second.append(META_SEP + f'<span class="meta-read"><span class="meta-read-label">{READ_HERE}</span></span>')
         if read_from:
-            parts.append(f'<span class="meta-read-source">{escape(read_from)}</span>')
-    return "".join(parts)
+            second.append(f'<span class="meta-read-source">{escape(read_from)}</span>')
+    data_age = f' data-age="{escape(age, quote=True)}"' if age else ""
+    return (f'<span class="meta-line">{"".join(first)}</span>'
+            f'<span class="meta-line meta-line--2"{data_age}>{"".join(second)}</span>')
 
 
 def _media(tier, hero, thumb_image):
@@ -575,23 +587,27 @@ def other_side_links(pool, stories):
     return dict(sorted(links.items()))
 
 
-def _other_side(record, links, source_names, leans):
+def _other_side(record, links, source_names, leans, countries=None):
     """The attached other-side link for a row, or '' (see OTHER)."""
     if not record or record["article_id"] not in links:
         return ""
     url, title = links[record["article_id"]]
+    sid = record["source_id"]
+    lean = record.get("lean") or leans.get(sid)
+    country = (countries or {}).get(sid)
     return OTHER.format(
         tag="a" if url else "span", aid=escape(record["article_id"], quote=True),
         href=OTHER_HREF.format(url=escape(url, quote=True)) if url else "", dot=MIDDOT,
-        lean=escape(record.get("lean") or leans.get(record["source_id"], ""), quote=False),
-        source=escape(source_names.get(record["source_id"], record["source_id"]), quote=False),
-        title=escape(title, quote=False))
+        source=escape(source_names.get(sid, sid), quote=False), marker=lean_marker_html(lean, country),
+        title=escape(title, quote=False), hit=lean_hit_html(sid, lean, country, "lean-hit--other"))
 
 
-def _render_story(story, tier, source_names, now, by_id, other="", coverage="", chars=None, leans=None):
+def _render_story(story, tier, source_names, now, by_id, other="", coverage="", chars=None, leans=None,
+                  countries=None):
     article = story.lead
     source_id = article.get("source_id")
     lean = (leans or {}).get(source_id)
+    country = (countries or {}).get(source_id)
     title = escape(smart_quotes(article["title"]), quote=False)
     dek = ""
     if tier in DEK_TIERS:
@@ -615,8 +631,9 @@ def _render_story(story, tier, source_names, now, by_id, other="", coverage="", 
         close = "</a>"
     return STORY.format(
         tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
-        title=title, dek=dek, meta=_meta(story, source_names, now, read_from=read_from, lean=lean), other=other,
-        coverage=coverage, lean_hit=lean_hit_html(source_id, lean) if source_names.get(source_id) else "",
+        title=title, dek=dek, meta=_meta(story, source_names, now, read_from=read_from, lean=lean, country=country),
+        other=other, coverage=coverage,
+        lean_hit=lean_hit_html(source_id, lean, country) if source_names.get(source_id) else "",
         media=_media(tier, hero_media(_members(story, by_id), article, source_names) if tier == "hero" else None,
                      article.get("image")),
     )
@@ -659,7 +676,8 @@ def _rank_input_json(pool, stories, by_id, source_names, links, chars=None):
     data = {"now": pool.get("generated_at"), "pool": rank_input(pool), "deks": _dek_pairs(stories),
             "images": _image_records(stories, by_id, source_names), **pass_input(pool), "links": links,
             "reader": reader_photos(stories, by_id), "bodies": reader_bodies(stories, by_id, chars or {}),
-            "ownership": source_ownership(pool), "coverage": coverage_articles(pool)}
+            "ownership": source_ownership(pool), "countries": source_countries(pool),
+            "coverage": coverage_articles(pool)}
     return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
 
 
@@ -675,7 +693,9 @@ def render(pool, ranking=None, chars=None):
     shown_stories = [s for name in tiers for s in tiers[name]]
     links = other_side_links(pool, shown_stories)
     leans = pass_input(pool)["leans"]
-    others = {r["id"]: _other_side(r.get("other_side"), links, source_names, leans) for r in ranking["ranked"]}
+    countries = source_countries(pool)
+    others = {r["id"]: _other_side(r.get("other_side"), links, source_names, leans, countries)
+              for r in ranking["ranked"]}
     coverages = {
         sid: STORY_COVERAGE.format(sid=escape(sid, quote=True),
                                     label=escape(coverage_summary_text(cluster, by_id), quote=True))
@@ -684,7 +704,7 @@ def render(pool, ranking=None, chars=None):
 
     def row(story, tier):
         return _render_story(story, tier, source_names, now, by_id, others.get(story.id, ""),
-                              coverages.get(story.id, ""), chars, leans)
+                              coverages.get(story.id, ""), chars, leans, countries)
 
     def rows(names):
         return "\n".join(row(story, tier) for tier in names for story in tiers[tier])
