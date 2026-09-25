@@ -114,6 +114,31 @@ def ledger_sections(counts):
     return sections
 
 
+def _quantity(n, word, plural=None):
+    return f"{n} {word if n == 1 else (plural or word + 's')}"
+
+
+def watch_line(counts):
+    """H4 item 7: W2's watch ledger (fetcher/fanout.py counts["watch"]) as one quiet,
+    counts-only line, '' when the run carried no watch block at all (an older pool, or
+    one with no watch list configured). Never the query text itself (fetcher/watch.py's
+    "queries" is already just a length, not the list) or the per-query drop reasons:
+    the watch list is the owner's own private set of interests, not something this
+    screen repeats back, even to itself."""
+    watch = (counts or {}).get("watch")
+    if not watch:
+        return ""
+    bits = [_quantity(watch.get("queries", 0), "query", "queries")]
+    if watch.get("published"):
+        bits.append(f"{watch['published']} published")
+    if watch.get("over_budget"):
+        bits.append(f"{watch['over_budget']} over budget")
+    errors = sum((watch.get("errors") or {}).values())
+    if errors:
+        bits.append(_quantity(errors, "error"))
+    return "Watch: " + ", ".join(bits) + "."
+
+
 def _fmt_time(value):
     parsed = _parse_time(value) if value else None
     return parsed.strftime("%d %b %H:%M UTC") if parsed else "never"
@@ -267,7 +292,7 @@ PAGE = """<!doctype html>
 <section class="notice health-age-block" id="pool-age-block">
 <p class="notice-kicker">Pool</p>
 <p class="notice-head" id="pool-age" data-generated-at="{generated_at}">Updated {build_age}.</p>
-<p class="notice-text">{summary_line}</p>
+<p class="notice-text">{summary_line}</p>{watch_line}
 </section>
 {ledger}
 <section class="settings-section" aria-labelledby="sources-label">
@@ -319,11 +344,13 @@ def render(pool, sources_path=None, now=None):
     previous_status = counts.get("previous_pool_status")
     if previous_status and previous_status != "ok":
         bits.append(f"previous pool {previous_status}")
+    watch_text = watch_line(counts)
     return PAGE.format(
         generated_at=_esc(generated_at),
         generated_label=_esc(_fmt_time(generated_at)),
         build_age=_esc(_relative_age(age_seconds)),
         summary_line=_esc(", ".join(bits) + "."),
+        watch_line=f'\n<p class="notice-text notice-text--watch" id="watch-counts">{_esc(watch_text)}</p>' if watch_text else "",
         ledger=_render_ledger(counts),
         sources=_render_sources(pool, sources_path),
     )

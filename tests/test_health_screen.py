@@ -9,7 +9,7 @@ from pathlib import Path
 from app.csp import scan
 from app.health import (
     STALE_THRESHOLD_SECONDS, feed_rows, is_stale, ledger_sections, pool_age_seconds,
-    render, sorted_feed_rows,
+    render, sorted_feed_rows, watch_line,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -192,6 +192,59 @@ def test_ledger_includes_feed_states_and_images_when_present():
     assert dict(sections["Feed outcomes"])["Ok"] == 6
     assert dict(sections["Images found"])["media:content"] == 5
     assert dict(sections["Images rejected"])["Not https"] == 2
+
+
+# ---------------------------------------------------------------------------
+# H4 item 7: W2's watch ledger, one quiet counts-only line.
+# ---------------------------------------------------------------------------
+
+def test_watch_line_is_empty_when_the_run_carried_no_watch_block():
+    pool, _ = _fixture_pool()
+    assert watch_line(pool["counts"]) == ""
+    assert watch_line(None) == ""
+
+
+def test_watch_line_reports_counts_only_never_the_query_text():
+    pool, _ = _fixture_pool()
+    pool["counts"]["watch"] = {
+        "kv": "ok", "queries": 3, "query_drops": {},
+        "fetched": 12, "candidates": 9, "drops": {},
+        "merged": 2, "published": 5, "over_budget": 1, "bytes": 900, "budget_bytes": 2000,
+        "errors": {"timeout": 1},
+    }
+    line = watch_line(pool["counts"])
+    assert line == "Watch: 3 queries, 5 published, 1 over budget, 1 error."
+
+
+def test_watch_line_singular_query_and_zero_bits_omitted():
+    pool, _ = _fixture_pool()
+    pool["counts"]["watch"] = {
+        "kv": "ok", "queries": 1, "query_drops": {}, "fetched": 4, "candidates": 4,
+        "drops": {}, "merged": 0, "published": 0, "over_budget": 0, "bytes": 0,
+        "budget_bytes": 500, "errors": {},
+    }
+    assert watch_line(pool["counts"]) == "Watch: 1 query."
+
+
+def test_watch_line_appears_on_the_rendered_health_screen(tmp_path):
+    pool, sources_doc = _fixture_pool()
+    pool["counts"]["watch"] = {
+        "kv": "ok", "queries": 2, "query_drops": {"budget": 1}, "fetched": 6,
+        "candidates": 5, "drops": {}, "merged": 1, "published": 3, "over_budget": 0,
+        "bytes": 400, "budget_bytes": 2000, "errors": {},
+    }
+    sources_path = _write_sources(tmp_path, sources_doc)
+    html = render(pool, sources_path=sources_path, now=NOW)
+    assert "Watch: 2 queries, 3 published." in html
+    assert "watch-counts" in html
+
+
+def test_golden_pool_predates_watch_and_renders_with_no_watch_line():
+    # Golden pool has no counts.watch at all: the line must simply not appear, never
+    # a crash or a stray empty paragraph.
+    html = render(GOLDEN, now=NOW)
+    assert "watch-counts" not in html
+    assert watch_line(GOLDEN["counts"]) == ""
 
 
 # ---------------------------------------------------------------------------

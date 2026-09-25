@@ -155,6 +155,14 @@ body {
   text-wrap: pretty;
 }
 
+/* H4 item 7: the Health screen's watch-ledger line, one step quieter than the pool
+   summary line above it (S17's own meta tone, not the dek color) since it is a second,
+   lower-priority fact about the same pool, never a headline of its own. */
+.notice-text--watch {
+  color: var(--color-meta);
+  font-weight: 400;
+}
+
 .river {
   list-style: none;
   margin: 0;
