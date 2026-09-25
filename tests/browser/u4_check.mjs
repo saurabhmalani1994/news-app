@@ -125,8 +125,9 @@ const sheet0 = JSON.parse(await evaluate(`JSON.stringify({
 })`));
 // must_know (the sole "Guaranteed" entry) is already a starter interest, so it is not
 // "available" yet; only the three groups with something left to offer show up here.
+// W1 put a "Phrase" section (follow a phrase) above the catalog; it has no data-id row.
 check("sheet_opens_with_grouped_catalog", sheet0.open && sheet0.title === "Add interest" && sheet0.rows.length === 7 && sheet0.hasScience
-  && sheet0.groups.every((g) => ["Regions", "Sectors", "Subjects", "Guaranteed"].includes(g))
+  && sheet0.groups.every((g) => ["Phrase", "Regions", "Sectors", "Subjects", "Guaranteed"].includes(g))
   && ["Regions", "Sectors", "Subjects"].every((g) => sheet0.groups.includes(g)), sheet0);
 await shot("add-sheet-dark.png");
 
