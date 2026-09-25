@@ -4,15 +4,17 @@
 // headers) in headless Chrome at 360x780 CSS px, DPR 3, and checks the redesigned You
 // page: every interest is a row with a level word; tapping one opens its page; a level
 // tap writes exactly one version and offers Undo; Back returns to You at the same
-// scroll; the sources page lists every catalog source, search filters by name, a toggle
-// writes mutes.sources; the old S12 deep links land on the new views; the page still
-// renders offline under the service worker. Zero CSP violations and CLS 0 throughout
-// (synthetic clicks are not user input, so any shift they caused would count).
-// Saves you-dark.png, you-light.png, interest-dark.png, sources-dark.png.
+// scroll; the sources page collapses into groups (U5), opening one lists every one of
+// its sources, search filters flat across all of them, a toggle writes mutes.sources;
+// the old S12 deep links land on the new views; the page still renders offline under
+// the service worker. Zero CSP violations and CLS 0 throughout (synthetic clicks are
+// not user input, so any shift they caused would count).
+// Saves you-dark.png, you-light.png, interest-dark.png, sources-dark.png, group-dark.png.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
+import { groupSources } from "../../app/static/js/profile/you-edits.js";
 import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
 
 const [distArg, shotsArg] = process.argv.slice(2);
@@ -112,26 +114,58 @@ await sleep(400);
 const sysBack = JSON.parse(await evaluate("JSON.stringify({ y: scrollY, view: document.getElementById('settings-root').dataset.view })"));
 check("system_back_restores_scroll", sysBack.view === "you" && Math.abs(sysBack.y - beforeY) <= 1, { beforeY, sysBack });
 
-// 5. The sources page: every source once, grouped; search filters; a toggle writes mutes.sources.
+// 5. The sources page (U5): collapsed into about eight groups, not every source at
+// once; opening one lists all of its sources; search filters flat across every group;
+// a toggle writes mutes.sources.
 await evaluate(`document.getElementById("sources-row").click()`);
 await sleep(400);
-const listed = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll("[data-source]")].map((r) => r.dataset.source))`));
-check("sources_all_listed", listed.length === catalog.sources.length && new Set(listed).size === listed.length, { listed: listed.length });
-const firstId = listed[0];
+const expectedGroups = groupSources(catalog.sources);
+const collapsed = JSON.parse(await evaluate(`JSON.stringify({
+  groups: [...document.querySelectorAll("#source-group-list a[data-group]")].map((a) => ({ id: a.dataset.group, value: a.querySelector(".setting-value").textContent })),
+  sourceRowsDrawn: document.querySelectorAll("[data-source]").length,
+})`));
+check("sources_grouped_collapsed", collapsed.sourceRowsDrawn === 0 && collapsed.groups.length === expectedGroups.length
+  && collapsed.groups.every((g, i) => g.id === expectedGroups[i].id && g.value === `${expectedGroups[i].sources.length} of ${expectedGroups[i].sources.length} on`),
+  { collapsed, expected: expectedGroups.map((g) => ({ id: g.id, count: g.sources.length })) });
+await shot("sources-dark.png");
+
+const firstGroup = expectedGroups[0];
+await evaluate(`document.querySelector('a[data-group="${firstGroup.id}"]').click()`);
+await sleep(400);
+const groupPage = JSON.parse(await evaluate(`JSON.stringify({
+  hash: location.hash,
+  listed: [...document.querySelectorAll("[data-source]")].map((r) => r.dataset.source),
+})`));
+check("group_lists_every_one_of_its_sources", groupPage.hash === `#sources/${firstGroup.id}`
+  && groupPage.listed.length === firstGroup.sources.length && new Set(groupPage.listed).size === groupPage.listed.length, groupPage);
+await shot("group-dark.png");
+
+const firstId = groupPage.listed[0];
 const vs = await versions();
 await evaluate(`document.querySelector('[data-source="${firstId}"] input.switch').click()`);
 await sleep(300);
 const muted = JSON.parse(await evaluate(`JSON.stringify(JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)})).history.at(-1).profile.mutes.sources)`));
-const countLine = await evaluate(`document.querySelector(".search-count").textContent`);
-check("source_toggle_mutes", muted.includes(firstId) && (await versions()) === vs + 1 && countLine.startsWith(`${catalog.sources.length - 1} of`), { firstId, muted, countLine });
+check("source_toggle_mutes", muted.includes(firstId) && (await versions()) === vs + 1, { firstId, muted });
+
+await evaluate(`document.getElementById("masthead-back").click()`);
+await sleep(400);
+const backToList = JSON.parse(await evaluate(`JSON.stringify({ hash: location.hash, view: document.getElementById("settings-root").dataset.view })`));
+check("group_back_returns_to_the_sources_list_not_you", backToList.hash === "#sources" && backToList.view === "sources", backToList);
+
 await evaluate(`(() => { const s = document.querySelector(".search-field"); s.focus(); s.value = "times"; s.dispatchEvent(new Event("input")); })()`);
 await sleep(200);
-const filtered = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll("[data-source]")].filter((r) => !r.hidden).map((r) => r.dataset.name))`));
+const filtered = JSON.parse(await evaluate(`JSON.stringify({
+  groupListHidden: document.getElementById("source-group-list").hidden,
+  names: [...document.querySelectorAll("[data-source]")].map((r) => r.dataset.name),
+})`));
 const expected = catalog.sources.filter((s) => s.name.toLowerCase().includes("times")).length;
-check("search_filters", filtered.length === expected && filtered.every((n) => /times/i.test(n)), { filtered, expected });
+check("search_filters_flat_across_groups", filtered.groupListHidden && filtered.names.length === expected && filtered.names.every((n) => /times/i.test(n)), { filtered, expected });
+await evaluate(`(() => { const s = document.querySelector(".search-field"); s.value = ""; s.dispatchEvent(new Event("input")); })()`);
+await sleep(200);
+const cleared = await evaluate(`document.getElementById("source-group-list").hidden`);
+check("clearing_search_restores_the_group_list", cleared === false, { cleared });
 await evaluate("document.activeElement.blur(); scrollTo(0, 0); document.getElementById('toast').hidden = true");
 await sleep(200);
-await shot("sources-dark.png");
 
 // 6. S12's old deep links land on the new views, without an extra Back step.
 await open("/profile#topic-singapore");
@@ -145,14 +179,18 @@ const totalCls = await cls();
 const shiftLog = await evaluate("window.__shifts || []");
 const totalCsp = await csp();
 
-// 7. Offline: once the worker controls the page, the You page and the picker still render.
+// 7. Offline: once the worker controls the page, the You page and the picker still
+// render, the collapsed list and a group's own sub-view alike.
 await evaluate("navigator.serviceWorker.ready.then(() => true)");
 await open("/profile");
 await send("Network.enable");
 await send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
 await open("/profile#sources");
-const offline = JSON.parse(await evaluate(`JSON.stringify({ rows: document.querySelectorAll("[data-source]").length, controlled: !!navigator.serviceWorker.controller })`));
-check("offline_sources", offline.rows === catalog.sources.length, offline);
+const offlineList = JSON.parse(await evaluate(`JSON.stringify({ groups: document.querySelectorAll("#source-group-list a[data-group]").length, controlled: !!navigator.serviceWorker.controller })`));
+check("offline_sources_list", offlineList.groups === expectedGroups.length, offlineList);
+await open(`/profile#sources/${firstGroup.id}`);
+const offlineGroup = JSON.parse(await evaluate(`JSON.stringify({ rows: document.querySelectorAll("[data-source]").length })`));
+check("offline_sources_group", offlineGroup.rows === firstGroup.sources.length, offlineGroup);
 await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
 
 check("cls_zero", totalCls === 0 && (await cls()) === 0, { totalCls, shifts: shiftLog });

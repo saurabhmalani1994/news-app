@@ -334,33 +334,57 @@ for (const scheme of ["dark", "light"]) {
     check(saved.lean_color === true && saved.lean_markers === false, `the switches save display ${JSON.stringify(saved)}`);
     await evaluate("localStorage.clear()");
   }
+  // U5: the picker is now collapsed into about eight groups (#sources), each opening
+  // its own sub-view (#sources/<id>) with every one of that group's rows; walk every
+  // group in turn so this still checks the marker and tap target across the whole
+  // catalog, not just whichever group used to scroll into view on the old flat page.
   await collect();
   await send("Page.navigate", { url: `${site.origin}/profile#sources` });
+  for (let i = 0; i < 40; i++) {
+    if (await evaluate(`!!document.querySelector("#source-group-list a[data-group]")`).catch(() => false)) break;
+    await sleep(100);
+  }
+  await sleep(300);
+  const groupIds = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll("#source-group-list a[data-group]")].map((a) => a.dataset.group))`));
+  let rowsTotal = 0;
+  const markersAll = [];
+  const offAll = [];
+  for (const gid of groupIds) {
+    await send("Page.navigate", { url: `${site.origin}/profile#sources/${gid}` });
+    for (let i = 0; i < 40; i++) {
+      if (await evaluate(`!!document.querySelector(".source-group")`).catch(() => false)) break;
+      await sleep(100);
+    }
+    await sleep(200);
+    const picker = await evaluate(`(() => {
+      const rows = [...document.querySelectorAll("label[data-source]")];
+      const off = [];
+      for (const row of rows) {
+        const lean = row.querySelector(".lean");
+        const hit = document.querySelector('.lean-hit[data-lean-source="' + row.dataset.source + '"]');
+        if (!lean) continue;
+        const a = lean.getBoundingClientRect(), b = hit.getBoundingClientRect();
+        if (Math.abs(a.left + a.width / 2 - (b.left + b.width / 2)) > 1 || Math.abs(a.top + a.height / 2 - (b.top + b.height / 2)) > 1) off.push(row.dataset.source);
+      }
+      return { rows: rows.length, markers: rows.filter((r) => r.querySelector(".lean")).map((r) => r.dataset.source), off };
+    })()`);
+    rowsTotal += picker.rows;
+    markersAll.push(...picker.markers);
+    offAll.push(...picker.off);
+  }
+  const expected = catalog.sources.filter((s) => SCALE.includes(s.lean) || s.lean === "state" || s.country).map((s) => s.id).sort();
+  check(rowsTotal === catalog.sources.length, `picker (${scheme}): every source appears once across the groups (${rowsTotal} of ${catalog.sources.length})`);
+  check(JSON.stringify(markersAll.slice().sort()) === JSON.stringify(expected), `picker (${scheme}): ${markersAll.length} of ${rowsTotal} sources carry a marker, every one with a lean or a country`);
+  check(offAll.length === 0, `picker (${scheme}): every tap target sits on its own dots (${offAll.length} off)`);
+  await send("Page.navigate", { url: `${site.origin}/profile#sources/us_politics` });
   for (let i = 0; i < 40; i++) {
     if (await evaluate(`!!document.querySelector(".source-group")`).catch(() => false)) break;
     await sleep(100);
   }
-  await sleep(400);
-  const picker = await evaluate(`(() => {
-    const rows = [...document.querySelectorAll("label[data-source]")];
-    const off = [];
-    for (const row of rows) {
-      const lean = row.querySelector(".lean");
-      const hit = document.querySelector('.lean-hit[data-lean-source="' + row.dataset.source + '"]');
-      if (!lean) continue;
-      const a = lean.getBoundingClientRect(), b = hit.getBoundingClientRect();
-      if (Math.abs(a.left + a.width / 2 - (b.left + b.width / 2)) > 1 || Math.abs(a.top + a.height / 2 - (b.top + b.height / 2)) > 1) off.push(row.dataset.source);
-    }
-    return { rows: rows.length, markers: rows.filter((r) => r.querySelector(".lean")).map((r) => r.dataset.source), off };
-  })()`);
-  const expected = catalog.sources.filter((s) => SCALE.includes(s.lean) || s.lean === "state" || s.country).map((s) => s.id).sort();
-  check(JSON.stringify(picker.markers.slice().sort()) === JSON.stringify(expected), `picker (${scheme}): ${picker.markers.length} of ${picker.rows} sources carry a marker, every one with a lean or a country`);
-  check(picker.off.length === 0, `picker (${scheme}): every tap target sits on its own dots (${picker.off.length} off)`);
-  await evaluate(`document.querySelector('.source-group[data-bucket="us_politics"]')?.scrollIntoView({ block: "start" })`);
   await sleep(300);
   await shot(`l1-sources-${scheme}.png`);
   if (scheme === "dark") {
-    const opened = await evaluate(`(() => { const hit = document.querySelector('.source-group[data-bucket="us_politics"] .lean-hit');
+    const opened = await evaluate(`(() => { const hit = document.querySelector('.source-group .lean-hit');
       const before = document.querySelector('label[data-source="' + hit.dataset.leanSource + '"] input').checked;
       hit.click();
       return new Promise((r) => setTimeout(() => r({ before, after: document.querySelector('label[data-source="' + hit.dataset.leanSource + '"] input').checked,
