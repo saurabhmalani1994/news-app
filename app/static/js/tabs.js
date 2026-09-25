@@ -171,6 +171,10 @@ export function fillLivePanel(panel, liveSection, rows, input) {
   panel.append(header);
   const ids = liveSection.stories.map((s) => s.id).filter((id) => rows.has(id));
   fillPanel(panel, { id: "live", label: liveSection.label }, ids, rows, input);
+  // H5: the rows are clones of Today's, so one that carries Today's other-side link
+  // would bring it here. An event's own clusters are shown whole with no passes run
+  // (passes.js rankPages), so no Live row has an other-side link: clear each one.
+  for (const id of ids) placeOtherSide(rows.get(id), null, input);
 }
 
 function buildSections() {
