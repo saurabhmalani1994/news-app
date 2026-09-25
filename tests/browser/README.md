@@ -32,6 +32,27 @@ python -m app.build --pool /tmp/saved_pool.json --out /tmp/dist_saved
 node tests/browser/saved_check.mjs /tmp/dist_saved sb1
 ```
 
+H4 added three more, for the same reason: `tests/fixtures/golden_pool.json` (one
+source, five articles) is too small for what these three need to look at.
+
+```
+python tests/browser/fixtures/actions_pool.py > /tmp/actions_pool.json
+python -m app.build --pool /tmp/actions_pool.json --out /tmp/dist_actions
+node tests/browser/actions_check.mjs /tmp/dist_actions
+
+python tests/browser/fixtures/csp_pool.py > /tmp/csp_pool.json
+python -m app.build --pool /tmp/csp_pool.json --out /tmp/dist_csp
+node tests/browser/csp_check.mjs /tmp/dist_csp
+
+python tests/browser/fixtures/l1_pool.py /tmp/l1
+python -m app.build --pool /tmp/l1/pool.json --out /tmp/dist_l1
+cp -r /tmp/l1/bodies /tmp/dist_l1/bodies
+node tests/browser/l1_check.mjs /tmp/dist_l1
+```
+
+`standing_cls.mjs` still runs fine against golden_pool.json's plain `dist` (its own
+fixed conditional-clear bug, not a size problem — see H4 item 6 below).
+
 `sw_pretty_urls.mjs` and `h2_you_check.mjs` build their own dist(s) internally from git
 refs (including the working tree) and take no dist argument.
 
@@ -39,15 +60,16 @@ refs (including the working tree) and take no dist argument.
 
 | Proof | Proves | Node command | Last passed |
 |---|---|---|---|
-| `sw_pretty_urls.mjs` (H1) | Pretty URLs survive a Pages-style 308, the shell never serves a redirected page, and an upgrade from the broken S18 worker heals by the second launch, all offline too. | `node tests/browser/sw_pretty_urls.mjs` | 2026-09-24 |
-| `h2_you_check.mjs` (H2) | Stale assets across a deploy never run a mismatched build's script; old stored profiles migrate forward without error; You opens by every route including deep links, Back and offline; Today keeps its photos and bottom nav after the U1 deploy. | `node tests/browser/h2_you_check.mjs` | 2026-09-24 (27/27) |
-| `h3_photos_check.mjs` (H3) | Behind an Access-like cookie gate, a phone holding a pre-Access worker gets this build's worker on the first launch after the deploy (its script request carries the cookie) and every Today and Asia photo loads; a fresh install behind Access and an upgrade from H2's module worker do too. Photos are stubbed unless `--real-photos`. | `node tests/browser/h3_photos_check.mjs --pool dist/pool.json` | 2026-09-24 (8/8) |
-| `actions_check.mjs` (S24) | The overflow sheet opens/dismisses (close button, scrim, browser back), mute keeps scroll anchored at zero CLS, Undo restores the muted rows. | `node tests/browser/actions_check.mjs dist` | 2026-09-24 |
-| `why_check.mjs` (S12) | Why-this rows sum to the shown total, the point scale is stated once, zero CLS opening it, dismiss by back, a standing-story pass reads in plain words, a quiet story shows no pass section. | `node tests/browser/why_check.mjs /tmp/dist_why` (see fixture above) | 2026-09-24 |
-| `saved_check.mjs` (S26) | Saved's empty state, saving through the ordinary overflow-sheet path, newest-first listing with the river's own card, and the pinned has_body story opening offline from cache at zero CLS. | `node tests/browser/saved_check.mjs /tmp/dist_saved sb1` (see fixture above) | 2026-09-24 |
-| `standing_cls.mjs` (S28) | The page's silence notices and standing-story placements agree with `standing.js` run again on the page's own embedded input (build and device agree), zero CLS, and switching standing stories off before paint drops the placements cleanly. | `node tests/browser/standing_cls.mjs dist` | 2026-09-24 |
-| `csp_check.mjs` (S37) | The CSP header is served and enforced (zero violations on default/section-tab/profile views); the device re-rank loads `rerank.js` and lands on the same order the ranker itself computes; every hostile fixture is neutralized live under the CSP. | `node tests/browser/csp_check.mjs dist` | 2026-09-24 |
-| `v1_check.mjs` (V1) | Behind an Access-like cookie gate with `_headers` applied: every multi-source row's "N sources" opens its versions carousel (lead first), CLS 0 across open, swipe and close, back restores the feed scroll and focus, arrow keys and ARIA roles, an 11-version strip keeps its active chip in view, reduced motion jumps, Read and back, the footer coverage sheet, the word-mark switch, mutes, `#bundle-` addresses, a hostile headline as text; sweep shots light, dark and grayscale. | `node tests/browser/v1_check.mjs dist <shots dir>` | 2026-09-24 |
+| `sw_pretty_urls.mjs` (H1) | Pretty URLs survive a Pages-style 308, the shell never serves a redirected page, and an upgrade from the broken S18 worker heals by the second launch, all offline too. | `node tests/browser/sw_pretty_urls.mjs` | 2026-09-25 |
+| `h2_you_check.mjs` (H2) | Stale assets across a deploy never run a mismatched build's script; old stored profiles migrate forward without error; You opens by every route including deep links, Back and offline; Today keeps its photos and bottom nav after the U1 deploy. | `node tests/browser/h2_you_check.mjs` | 2026-09-25 (27/27) |
+| `h3_photos_check.mjs` (H3) | Behind an Access-like cookie gate, a phone holding a pre-Access worker gets this build's worker on the first launch after the deploy (its script request carries the cookie) and every Today and Asia photo loads; a fresh install behind Access and an upgrade from H2's module worker do too. Photos are stubbed unless `--real-photos`. | `node tests/browser/h3_photos_check.mjs --pool dist/pool.json` | 2026-09-25 (8/8) |
+| `actions_check.mjs` (S24) | The overflow sheet opens/dismisses (close button, scrim, browser back), mute keeps scroll anchored at zero CLS, Undo restores the muted rows. | `node tests/browser/actions_check.mjs /tmp/dist_actions` (H4: own fixture, see above) | 2026-09-25 (9/9) |
+| `why_check.mjs` (S12) | Why-this rows sum to the shown total, the point scale is stated once, zero CLS opening it, dismiss by back, a standing-story pass reads in plain words, a quiet story shows no pass section. | `node tests/browser/why_check.mjs /tmp/dist_why` (see fixture above) | 2026-09-25 (10/10) |
+| `saved_check.mjs` (S26) | Saved's empty state, saving through the ordinary overflow-sheet path, newest-first listing with the river's own card, and the pinned has_body story opening offline from cache at zero CLS. | `node tests/browser/saved_check.mjs /tmp/dist_saved sb1` (see fixture above) | 2026-09-25 (6/6) |
+| `standing_cls.mjs` (S28) | The page's silence notices and standing-story placements agree with `standing.js` run again on the page's own embedded input (build and device agree), zero CLS, and switching standing stories off before paint drops the placements cleanly. | `node tests/browser/standing_cls.mjs dist` | 2026-09-25 (3/3 scenarios; H4 fixed a residual-localStorage bug in its own `visit()`) |
+| `csp_check.mjs` (S37) | The CSP header is served and enforced (zero violations on default/section-tab/profile views); the device re-rank loads `rerank.js` and lands on the same order the ranker itself computes; every hostile fixture is neutralized live under the CSP. | `node tests/browser/csp_check.mjs /tmp/dist_csp` (H4: own fixture, see above) | 2026-09-25 (8/8) |
+| `l1_check.mjs` (L1) | Every US-scale row's lean marker (five dots, its own bucket filled), state media and non-US country codes, a centred 48dp tap target that wins over the headline, the lean sheet's cited basis, markers off/color-on in Display, "Read here · outlet" naming the right member with a trust flip and a missing-body fallback, the You page's source picker and its own sheet, zero CLS and CSP violations. | `node tests/browser/l1_check.mjs /tmp/dist_l1` (H4: own fixture, see above, needs real `bodies/`) | 2026-09-25 (all passed) |
+| `v1_check.mjs` (V1) | Behind an Access-like cookie gate with `_headers` applied: every multi-source row's "N sources" opens its versions carousel (lead first), CLS 0 across open, swipe and close, back restores the feed scroll and focus, arrow keys and ARIA roles, an 11-version strip keeps its active chip in view, reduced motion jumps, Read and back, the footer coverage sheet, the word-mark switch, mutes, `#bundle-` addresses, a hostile headline as text; sweep shots light, dark and grayscale. | `node tests/browser/v1_check.mjs dist <shots dir>` | 2026-09-25 (needs a pool with an 11+-version cluster; not guaranteed by any one real fetch, same caveat as why_check/saved_check) |
 
 ## Other proofs in this directory
 
@@ -57,4 +79,22 @@ file with the exact build/dist shape it expects:
 `coverage_check.mjs` (S14), `d3_polish.mjs` (D3), `health_cls.mjs` (S17),
 `history_check.mjs` (S15), `images_cls.mjs` (S39), `live_overrides_smoke.mjs` (S33, one-off),
 `live_panel_shot.mjs` (S33, one-off), `pwa_cls.mjs` (S18), `reader_check.mjs` (S25),
-`rerank_cls.mjs` (S11), `tabs_cls.mjs` (S27), `u1_check.mjs` (U1), `you_check.mjs` (U2).
+`rerank_cls.mjs` (S11), `tabs_cls.mjs` (S27), `u1_check.mjs` (U1), `u3_check.mjs` (U3),
+`u4_check.mjs` (U4), `w1_check.mjs` (W1), `you_check.mjs` (U2).
+
+All ran green on 2026-09-25 against a fresh real pool (`python -m fetcher.fanout`, 97
+sources, 642 articles) except three pre-existing findings, none touched by H4's diff
+(confirmed by rerunning each with H4's changed files swapped back to `origin/main`,
+same result either way) and none of them item 1-7's own subject, so left as found and
+reported rather than fixed in this batch:
+
+- `tabs_cls.mjs`'s "lists" check: the Live section's other-side link disagrees between
+  the build and `passes.js` run standalone on the same input (`others` mismatch on the
+  live-event slot only, every other section's list and other-side links agree).
+- `reader_check.mjs`: a missing-body-file note never appears within its 3s wait
+  ("missing file and fetch error"), and one hostile-body handler attribute survives
+  sanitization uncounted-for by the check's own tally ("hostile body executes
+  nothing", `handlerAttrs: 1`).
+- `u1_check.mjs`: 4 of 515 real Today summaries on the current live pool still meet the
+  line clamp (`fitted summaries never meet the line clamp`), all long AP-style dateline
+  openings ("WASHINGTON, Sept 25 - ...").
