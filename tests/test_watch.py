@@ -199,7 +199,7 @@ class FakeKV:
         raise AssertionError(parts.path)
 
 
-ENV = {"CLOUDFLARE_ACCOUNT_ID": ACCOUNT, "CLOUDFLARE_WORKERS_TOKEN": "tok-workers",
+ENV = {"CLOUDFLARE_ACCOUNT_ID": ACCOUNT, "CF_PIPELINE_TOKEN": "tok-pipeline",
        "CLOUDFLARE_API_TOKEN": "tok-pages"}
 
 
@@ -210,27 +210,27 @@ def _value(*qs):
 def test_kv_read_finds_the_namespace_by_title_and_reads_every_key():
     kv = FakeKV(values={"user:aaa": _value(Q1, Q2), "user:bbb/with space": _value(Q3)})
     values, status, token = watch.read_interests(ENV, kv)
-    assert status == "ok" and token == "CLOUDFLARE_WORKERS_TOKEN"
+    assert status == "ok" and token == "CF_PIPELINE_TOKEN"
     assert [len(v["queries"]) for v in values] == [2, 1]
     assert any(path.endswith("/values/user%3Abbb%2Fwith%20space") for path, _ in kv.calls)
 
 
 def test_kv_403_on_both_tokens_degrades_to_zero_queries():
-    kv = FakeKV(values={"u": _value(Q1)}, forbidden={"tok-workers", "tok-pages"})
+    kv = FakeKV(values={"u": _value(Q1)}, forbidden={"tok-pipeline", "tok-pages"})
     assert watch.read_interests(ENV, kv) == ([], "http_403", None)
     got = watch.collect(env=ENV, http_get=kv, fetch_fn=lambda *a, **k: pytest.fail("no search"))
     assert got["kv"] == "http_403" and got["queries"] == 0 and got["results"] == []
 
 
 def test_kv_first_token_403_second_token_reads():
-    kv = FakeKV(values={"u": _value(Q1)}, forbidden={"tok-workers"})
+    kv = FakeKV(values={"u": _value(Q1)}, forbidden={"tok-pipeline"})
     values, status, token = watch.read_interests(ENV, kv)
     assert status == "ok" and token == "CLOUDFLARE_API_TOKEN" and len(values) == 1
 
 
 def test_kv_missing_namespace_degrades_to_zero_queries():
     kv = FakeKV(namespaces=[{"id": "1" * 32, "title": "not-it"}])
-    assert watch.read_interests(ENV, kv) == ([], "no_namespace", "CLOUDFLARE_WORKERS_TOKEN")
+    assert watch.read_interests(ENV, kv) == ([], "no_namespace", "CF_PIPELINE_TOKEN")
 
 
 def test_kv_without_a_token_or_account_makes_no_call():
@@ -429,6 +429,7 @@ def _run_main(tmp_path, monkeypatch, kv, fetch):
     for name, value in ENV.items():
         monkeypatch.setenv(name, value)
     monkeypatch.delenv("CLOUDFLARE_ACCOUNTID", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_WORKERS_TOKEN", raising=False)
     monkeypatch.setattr(watch, "_http_get", kv)
     monkeypatch.setattr(watch, "RETRY_PAUSE", 0)
     monkeypatch.setattr(fanout, "fetch_feed", fetch)
@@ -465,7 +466,8 @@ def test_main_logs_counts_only_never_a_query(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
     log = captured.out + captured.err
     assert rc == 0
-    assert "watch: 3 queries (kv ok via CLOUDFLARE_WORKERS_TOKEN)" in log
+    assert "watch: 3 queries (kv ok via CF_PIPELINE_TOKEN)" in log
+    assert "tok-pipeline" not in log
     assert '"http_503": 1' in log
     for q in (Q1, Q2, Q3, SECRET_EXTRA):
         for v in _variants(q):
@@ -484,7 +486,7 @@ def test_main_logs_counts_only_never_a_query(tmp_path, monkeypatch, capsys):
 
 
 def test_main_kv_403_logs_one_line_and_publishes(tmp_path, monkeypatch, capsys):
-    kv = FakeKV(forbidden={"tok-workers", "tok-pages"})
+    kv = FakeKV(forbidden={"tok-pipeline", "tok-pages"})
     rc, out = _run_main(tmp_path, monkeypatch, kv, _live_feed)
     log = capsys.readouterr().out
     assert rc == 0
@@ -521,9 +523,9 @@ def test_main_publishes_without_watch_items_when_they_break_the_build(tmp_path, 
 def test_publish_workflow_passes_the_kv_tokens_to_fetch():
     wf = (ROOT / ".github/workflows/publish.yml").read_text(encoding="utf-8")
     fetch_step = wf.split("- name: Fetch", 1)[1].split("- name:", 1)[0]
-    assert "CLOUDFLARE_WORKERS_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}" in fetch_step
-    assert "CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}" in fetch_step
+    assert "CF_PIPELINE_TOKEN: ${{ secrets.CLOUDFLARE_PIPELINE_TOKEN }}" in fetch_step
     assert "CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNTID }}" in fetch_step
+    assert watch.TOKEN_ENV_NAMES[0] == "CF_PIPELINE_TOKEN"
 
 
 def test_live_event_label_is_withheld_from_the_log_when_a_member_is_watch_tagged():

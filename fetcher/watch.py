@@ -6,9 +6,9 @@ Workers KV namespace titled almanac-interests, one key per user, each value
 {"v":1,"queries":[{"q":"...","tag":"w:<10 hex>"}]}. Every run:
 
 1. read_interests lists the namespace's keys and reads every value through the
-   Cloudflare REST API, trying each token the workflow passes until one can list
-   namespaces. No token, no namespace, a 403 or any other failure degrades to zero
-   queries with a one-word status; it never fails the run.
+   Cloudflare REST API, trying each token in TOKEN_ENV_NAMES that is set until one
+   can list namespaces. No token, no namespace, a 403 or any other failure degrades
+   to zero queries with a one-word status; it never fails the run.
 2. union_queries interleaves the users' lists (everyone's first query, then
    everyone's second...), drops any entry whose tag is not "w:" plus the first 10 hex
    of SHA-256 of its normalized q, dedupes by tag and keeps at most MAX_QUERIES.
@@ -53,7 +53,9 @@ from fetcher.topics import tag_article
 NAMESPACE_TITLE = "almanac-interests"
 CF_API_BASE = "https://api.cloudflare.com/client/v4"
 # Tried in this order; the first that can list the account's namespaces is used.
-TOKEN_ENV_NAMES = ("CLOUDFLARE_WORKERS_TOKEN", "CLOUDFLARE_API_TOKEN")
+# publish.yml passes only CF_PIPELINE_TOKEN (the repo secret CLOUDFLARE_PIPELINE_TOKEN,
+# Workers KV Storage Edit); the other two names serve a local run.
+TOKEN_ENV_NAMES = ("CF_PIPELINE_TOKEN", "CLOUDFLARE_WORKERS_TOKEN", "CLOUDFLARE_API_TOKEN")
 ACCOUNT_ENV_NAMES = ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_ACCOUNTID")
 KV_TIMEOUT = 12
 KV_MAX_BYTES = 2_000_000

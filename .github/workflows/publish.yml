@@ -93,11 +93,10 @@ jobs:
           # which deploys; the fetcher refuses a dump path inside it.
           DUMP_CANDIDATES_PATH: ${{ (github.event_name == 'workflow_dispatch' && inputs.dump_candidates) && 'candidates/candidates.json' || '' }}
           # W2 (R50): the watch searches read every user's queries from the Workers KV
-          # namespace almanac-interests. Both tokens are offered; fetcher/watch.py uses
-          # the first that can list KV namespaces (Workers KV Storage: Read) and logs
-          # only its env name. Without either, or on a 403, the run searches nothing.
-          CLOUDFLARE_WORKERS_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # namespace almanac-interests with the pipeline token (Workers KV Storage).
+          # fetcher/watch.py never prints it and logs only its env name; when it is
+          # missing or refused the run searches nothing and publishes as before.
+          CF_PIPELINE_TOKEN: ${{ secrets.CLOUDFLARE_PIPELINE_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
         run: python3 -m fetcher.fanout --out dist/pool.json --sources sources.json
 
