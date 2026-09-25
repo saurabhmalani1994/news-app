@@ -56,7 +56,16 @@ async function visit(stored, scheme) {
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: scheme }] });
   await send("Page.navigate", { url: `${origin}/index.html` });
   await sleep(800);
-  await evaluate(stored ? `localStorage.setItem(${JSON.stringify(STORAGE_KEY)}, ${JSON.stringify(JSON.stringify(stored))})` : "localStorage.clear()");
+  // H4 item 6: always clear first, even when about to set a stored profile. The two
+  // plain default-page visits (dark, then light) that run before this file's own
+  // "off-dark" case render for seconds each, long enough for R17's seen tracking to
+  // write a history summary under its own key; a clear gated on "no stored profile
+  // given" left that behind for this step's device re-rank, which reads it via
+  // rerank.js's seenPenaltyTerm, while this file's own `want`/order comparison never
+  // did, so the two disagreed on a page a reader had merely looked at, not this step's
+  // own scenario. Same bug, same fix, as csp_check.mjs's load().
+  await evaluate("localStorage.clear()");
+  if (stored) await evaluate(`localStorage.setItem(${JSON.stringify(STORAGE_KEY)}, ${JSON.stringify(JSON.stringify(stored))})`);
   await send("Page.reload", { ignoreCache: true });
   await sleep(2500);
   return JSON.parse(await evaluate(`document.fonts.ready.then(() => JSON.stringify({ cls: window.__cls,

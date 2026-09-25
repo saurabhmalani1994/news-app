@@ -44,7 +44,15 @@ async function load(path, scheme = "dark", stored = null) {
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: scheme }] });
   await send("Page.navigate", { url: `${site.origin}/${path}` });
   await sleep(700);
-  await evaluate(stored ? `localStorage.setItem(${JSON.stringify(STORAGE_KEY)}, ${JSON.stringify(JSON.stringify(stored))})` : "localStorage.clear()");
+  // H4 item 6: always clear first, even when about to set a stored profile. The plain
+  // default-page loads before the stored-profile one (steps 1 and 2) run for seconds
+  // with the page actually rendered, long enough for R17's seen tracking to write a
+  // history summary under its own key; a clear gated on "no stored profile given" left
+  // that behind for step 2's rerank, which reads it, while this file's own `expected`
+  // never did, so the two disagreed on a page a reader had merely looked at, not this
+  // step's own scenario.
+  await evaluate("localStorage.clear()");
+  if (stored) await evaluate(`localStorage.setItem(${JSON.stringify(STORAGE_KEY)}, ${JSON.stringify(JSON.stringify(stored))})`);
   await send("Page.reload", { ignoreCache: true });
   await sleep(2500);
 }
@@ -85,17 +93,20 @@ const rr = JSON.parse(await evaluate(`JSON.stringify({ hidden: document.document
   rerankLoaded: performance.getEntriesByType("resource").some((e) => e.name.includes("/js/rerank.js")),
   order: [...document.querySelectorAll("#section-today li.story[data-sid]")].map((li) => li.dataset.sid),
   input: JSON.parse(document.getElementById("rank-input").content.textContent) })`));
-const opts = { buckets: rr.input.buckets, leans: rr.input.leans, names: rr.input.names };
+const opts = { buckets: rr.input.buckets, leans: rr.input.leans, names: rr.input.names, events: rr.input.events || [] };
 const expected = rankPages(rr.input.pool, custom, rr.input.now, opts).today.map((s) => s.id);
 const builtOrder = rankPages(rr.input.pool, base, rr.input.now, opts).today.map((s) => s.id);
 await shot("csp-rerank-dark.png");
 check("device re-rank", rr.rerankLoaded && !rr.hidden && rr.order.join() === expected.join() && (await violations()).length === 0,
   { rerankLoaded: rr.rerankLoaded, finalMatchesRanker: rr.order.join() === expected.join(), reordered: builtOrder.join() !== rr.order.join(), violations: await violations() });
 
-// 3. Every section tab, tapped.
+// 3. Every section tab, tapped. Scoped to .tabs-scroll (H4 item 6): the Saved screen's
+// segmented control shares the plain ".tab" class for its own look, and an unscoped
+// selector was matching its two buttons too, each with no data-section (a stale test
+// bug, not a product one, the same collision u1_check.mjs had).
 const tabs = JSON.parse(await evaluate(`(async () => {
   const out = [];
-  for (const tab of [...document.querySelectorAll(".tab")].filter((t) => !t.hidden)) {
+  for (const tab of [...document.querySelectorAll(".tabs-scroll .tab")].filter((t) => !t.hidden)) {
     tab.click();
     await new Promise((r) => setTimeout(r, 400));
     const panel = document.getElementById(tab.getAttribute("aria-controls"));
