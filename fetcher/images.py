@@ -41,6 +41,18 @@ IMG_WIDTH_ATTR_RE = re.compile(_ATTR.format(name=r"\bwidth"), re.IGNORECASE)
 IMG_HEIGHT_ATTR_RE = re.compile(_ATTR.format(name=r"\bheight"), re.IGNORECASE)
 
 
+def _unescape_amp(url):
+    """Some feeds (i0.wp.com, The Conversation observed) double-escape the ampersand
+    in an image query string: the source XML holds "&amp;amp;", so plain XML entity
+    decoding (one pass, done by the parser before this module ever sees the value)
+    leaves a literal "&amp;" sitting in the url text instead of the "&" it should be.
+    That literal text breaks the query string the host reads, so it falls back to a
+    thumbnail instead of the full-size original. Unescaping once more here recovers
+    the real separator. A url that was escaped correctly the first time never has a
+    literal "&amp;" left in it, so this is safe to apply to every url unconditionally."""
+    return url.replace("&amp;", "&") if url else url
+
+
 def _int_or_none(raw):
     if raw is None or raw == "":
         return None
@@ -80,7 +92,7 @@ def _element_text(el):
 def _from_media_content(item, rejected):
     candidates = []
     for el in item.findall(f"{{{MEDIA_NS}}}content"):
-        url = (el.get("url") or "").strip()
+        url = _unescape_amp((el.get("url") or "").strip())
         medium = (el.get("medium") or "").strip().lower()
         mime = (el.get("type") or "").strip().lower()
         if medium != "image" and not mime.startswith("image/"):
@@ -99,7 +111,7 @@ def _from_media_content(item, rejected):
 def _from_media_thumbnail(item, rejected):
     candidates = []
     for el in item.findall(f"{{{MEDIA_NS}}}thumbnail"):
-        url = (el.get("url") or "").strip()
+        url = _unescape_amp((el.get("url") or "").strip())
         width = _int_or_none(el.get("width"))
         height = _int_or_none(el.get("height"))
         if not _validate(url, width, height, rejected):
@@ -118,7 +130,7 @@ def _from_enclosure(item, rejected):
         mime = (el.get("type") or "").strip().lower()
         if not mime.startswith("image/"):
             continue
-        url = (el.get("url") or "").strip()
+        url = _unescape_amp((el.get("url") or "").strip())
         if not _validate(url, None, None, rejected):
             continue
         candidates.append({"url": url, "width": None, "height": None, "credit": ""})
@@ -130,7 +142,7 @@ def _from_enclosure(item, rejected):
         mime = (el.get("type") or "").strip().lower()
         if not mime.startswith("image/"):
             continue
-        url = (el.get("href") or "").strip()
+        url = _unescape_amp((el.get("href") or "").strip())
         if not _validate(url, None, None, rejected):
             continue
         candidates.append({"url": url, "width": None, "height": None, "credit": ""})
@@ -154,7 +166,7 @@ def _first_img_src(html_text, rejected):
     src_match = IMG_SRC_ATTR_RE.search(tag)
     if not src_match:
         return None
-    url = (src_match.group(1) or src_match.group(2) or "").strip()
+    url = _unescape_amp((src_match.group(1) or src_match.group(2) or "").strip())
     width = _dim(IMG_WIDTH_ATTR_RE, tag)
     height = _dim(IMG_HEIGHT_ATTR_RE, tag)
     if not _validate(url, width, height, rejected):

@@ -127,6 +127,36 @@ def test_priority_order_media_content_beats_everything_else():
     assert image["url"] == "https://img.example/best.jpg"
 
 
+def test_double_escaped_ampersand_unescaped_once_media_content():
+    # H4 item 2: i0.wp.com and The Conversation feeds double-escape the query string
+    # ampersand ("&amp;amp;" in the source XML), which XML entity decoding turns into
+    # a literal "&amp;" left in the url text. That literal text breaks the query
+    # string the host reads for the full-size original, so the host falls back to a
+    # smaller stock image. Unescape once more at extraction.
+    item = _item(
+        '<media:content url="https://i0.wp.com/example.com/photo.jpg?w=1200&amp;amp;ssl=1" '
+        'medium="image" width="1200" height="800"/>'
+    )
+    image, method = extract_image(item, Counter())
+    assert method == "media_content"
+    assert image["url"] == "https://i0.wp.com/example.com/photo.jpg?w=1200&ssl=1"
+    assert "&amp;" not in image["url"]
+
+
+def test_double_escaped_ampersand_unescaped_once_content_img():
+    # The Conversation's description is escaped HTML text (not CDATA), so the XML
+    # parser's own single decode pass turns the feed's double-escaped "&amp;amp;" into
+    # a literal "&amp;" by the time this module sees it; one more unescape recovers "&".
+    item = _item(
+        "<description>&lt;p&gt;Look "
+        '&lt;img src="https://theconversation.com/photo.jpg?width=1200&amp;amp;fit=clip"&gt; '
+        "at this&lt;/p&gt;</description>"
+    )
+    image, method = extract_image(item, Counter())
+    assert method == "content_img"
+    assert image["url"] == "https://theconversation.com/photo.jpg?width=1200&fit=clip"
+
+
 def test_no_image_field_at_all_is_a_clean_miss():
     item = _item("<title>No pictures here</title>")
     assert extract_image(item, Counter()) == (None, None)
