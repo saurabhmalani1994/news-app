@@ -1,9 +1,11 @@
 // S14 browser proof, run by hand (needs Chrome, so not in the node --test glob):
 //   node tests/browser/coverage_check.mjs <built dist dir> [<screenshot dir>]
 // Headless Chrome at 360x780 CSS px, DPR 3, dark. Checks: the "N sources" meta trigger
-// opens the coverage sheet, the summary line and every group/row/also-carried-by match
+// opens the versions carousel (V1), whose footer "All versions by lean" opens the
+// coverage sheet; the summary line and every group/row/also-carried-by match
 // the cluster's own fields, zero layout shift on open, dismiss by the browser back
-// button, zero CSP violations throughout. Exits 1 on any failure.
+// button (the sheet first, then the carousel under it), zero CSP violations throughout.
+// Exits 1 on any failure.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -39,6 +41,19 @@ async function shot(name) {
   writeFileSync(join(shotsArg, name), Buffer.from(png, "base64"));
 }
 const violations = () => evaluate("window.__csp");
+// Since V1 the row trigger opens the versions carousel; the sheet is its footer link.
+async function openSheetFor(sid) {
+  await evaluate(`document.querySelector('.story-coverage[data-sid="${sid}"]').click()`);
+  await sleep(500);
+  await evaluate(`document.getElementById("bv-all").click()`);
+  await sleep(500);
+}
+async function backTwice() {
+  await evaluate("history.back()");
+  await sleep(400);
+  await evaluate("history.back()");
+  await sleep(400);
+}
 
 const results = {};
 let ok = true;
@@ -60,9 +75,8 @@ const biggest = JSON.parse(await evaluate(`(() => {
 check("the biggest live cluster carries a coverage trigger", biggest.buttonExists, biggest);
 await shot("initial-dark.png");
 
-// 1. Open the sheet from the biggest cluster's card.
-await evaluate(`document.querySelector('.story-coverage[data-sid="${biggest.sid}"]').click()`);
-await sleep(500);
+// 1. Open the sheet from the biggest cluster's card, through its versions carousel.
+await openSheetFor(biggest.sid);
 const opened = JSON.parse(await evaluate(`(() => {
   const summary = document.querySelector(".coverage-summary")?.textContent || "";
   const groupLabels = [...document.querySelectorAll(".coverage-group-label")].map((h) => h.textContent);
@@ -110,10 +124,8 @@ check("opening the sheet caused zero layout shift", clsAfterOpen === 0, { clsAft
 // 4. A cluster with a near-duplicate group shows "also carried by" and still accounts
 // for every one of its articles.
 if (biggest.dupSid) {
-  await evaluate("history.back()");
-  await sleep(400);
-  await evaluate(`document.querySelector('.story-coverage[data-sid="${biggest.dupSid}"]').click()`);
-  await sleep(500);
+  await backTwice();
+  await openSheetFor(biggest.dupSid);
   const dupCheck = JSON.parse(await evaluate(`(() => {
     const input = JSON.parse(document.getElementById("rank-input").content.textContent);
     const cluster = input.pool.clusters.find((c) => c.id === "${biggest.dupSid}");
@@ -125,17 +137,21 @@ if (biggest.dupSid) {
   check("a near-duplicate group collapses under one row reading 'also carried by'",
     dupCheck.also.length > 0 && dupCheck.also.every((t) => t.startsWith("Also carried by ")) && dupCheck.rowCount < dupCheck.articleCount,
     dupCheck);
-  await evaluate("history.back()");
-  await sleep(400);
+  await backTwice();
 }
 
-// 5. Reopen the biggest cluster and dismiss by the browser's own back button.
-await evaluate(`document.querySelector('.story-coverage[data-sid="${biggest.sid}"]').click()`);
-await sleep(500);
+// 5. Reopen the biggest cluster and dismiss by the browser's own back button: the sheet
+// first (the carousel stays under it), then the carousel, and the page is usable again.
+await openSheetFor(biggest.sid);
 await evaluate("history.back()");
 await sleep(400);
-const closedByBack = JSON.parse(await evaluate('JSON.stringify({ hidden: document.getElementById("sheet-root").hidden, underHome: !document.getElementById("screen-home").inert })'));
-check("dismiss by the browser back button, page underneath usable again", closedByBack.hidden === true && closedByBack.underHome, closedByBack);
+const sheetClosed = JSON.parse(await evaluate('JSON.stringify({ hidden: document.getElementById("sheet-root").hidden, carouselOpen: !document.getElementById("bv").hidden })'));
+await evaluate("history.back()");
+await sleep(400);
+const closedByBack = JSON.parse(await evaluate('JSON.stringify({ hidden: document.getElementById("sheet-root").hidden, carouselHidden: document.getElementById("bv").hidden, underHome: !document.getElementById("screen-home").inert })'));
+check("dismiss by the browser back button, page underneath usable again",
+  sheetClosed.hidden === true && sheetClosed.carouselOpen && closedByBack.hidden === true && closedByBack.carouselHidden && closedByBack.underHome,
+  { sheetClosed, closedByBack });
 
 check("zero CSP violations for the whole run", (await violations()).length === 0, { violations: await violations() });
 

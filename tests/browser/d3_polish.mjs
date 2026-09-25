@@ -165,8 +165,13 @@ async function sweepScheme(scheme) {
     await evaluate(`document.querySelector("#section-today .story-coverage").scrollIntoView({ block: "center" })`);
     await evaluate(`document.querySelector("#section-today .story-coverage").click()`);
     await sleep(600);
+    // Since V1 the trigger opens the versions carousel; the sheet is its footer link.
+    await evaluate(`document.getElementById("bv-all")?.click()`);
+    await sleep(600);
     await shot(`sweep-coverage-${scheme}.png`);
     await evaluate(`document.getElementById("sheet-close")?.click()`);
+    await sleep(400);
+    await evaluate(`document.getElementById("bv-close")?.click()`);
     await sleep(400);
   }
   await evaluate(`document.getElementById("section-today").scrollTop = 900`);

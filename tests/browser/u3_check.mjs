@@ -258,8 +258,12 @@ await sleep(400);
 const below = await evaluate(`(() => { const li = document.querySelector('#section-today li.story[data-sid="${two}"]');
   const m = li.querySelector(".meta .lean").getBoundingClientRect(); const c = li.querySelector(".meta-count").getBoundingClientRect();
   const at = document.elementFromPoint(m.left + m.width / 2, c.top + c.height / 2);
-  return { at: at?.className, gap: document.elementFromPoint(m.left + m.width / 2, c.bottom + 4)?.className }; })()`);
-check(below.at !== "lean-hit" && below.gap === "story-coverage",
+  const gap = document.elementFromPoint(m.left + m.width / 2, c.bottom + 4);
+  // V1: the trigger is a 48dp band over "N sources" itself, so under a marker past it
+  // the row's own link answers; either way it is the row's, never the marker's.
+  const rows = (n) => !!n && n.closest("li.story") === li && !n.classList.contains("lean-hit");
+  return { at: at?.className, gap: gap?.className, own: rows(at) && rows(gap) }; })()`);
+check(below.own,
   `on a two-line row, line 2 under the marker is the row's, not the marker's (${below.at}; under it, ${below.gap})`);
 
 // 4. The other-side line: the outlet then its marker, never the lean in words.
