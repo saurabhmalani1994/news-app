@@ -1,6 +1,7 @@
 // S18: the service worker's routing decision, kept pure and separate from the cache
 // side effects in sw.js, so it is unit-testable under Node (tests/js/sw-routes.test.js)
-// and importable unchanged by the module service worker.
+// and, H3, written into the classic service worker by the build (app/serviceworker.py
+// inline_routes) with its `export` words removed, so it stays plain declarations only.
 //
 // `bodies/*` is S25's: the reader fetches article bodies lazily and caches them in
 // IndexedDB. This module always returns BYPASS for them, so the service worker never

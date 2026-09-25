@@ -1,6 +1,16 @@
 // S18: Almanac's service worker. Registered from the external js/sw-register.js (the
-// CSP forbids inline script). A module worker, so it can import the same routing
-// decision sw-routes.js uses in its Node unit test (tests/js/sw-routes.test.js).
+// CSP forbids inline script).
+//
+// H3: a classic worker, one self-contained file. The routing decision is js/sw-routes.js,
+// the module its Node unit test imports (tests/js/sw-routes.test.js); the build writes
+// that module's own text into this file with its `export` words removed, so the worker
+// runs the tested code without importing anything. A module worker cannot work behind
+// Cloudflare Access: Chrome fetches a module worker's script with credentials "omit", so
+// no Access cookie goes with it, Access answers with a redirect to its login page, and
+// every install and update fails ("The script resource is behind a redirect"). The
+// phone kept the last worker installed before Access, which fetched every article photo
+// itself under connect-src 'self' and had each one refused, so H2's fix never reached
+// it. A classic worker's script is fetched with credentials "same-origin", cookie and all.
 //
 // The cache version and the precache URL list below are filled in by
 // app/serviceworker.py at build time: the version is a hash of every precached file's
@@ -31,7 +41,7 @@
 // offline copy always matches this cache. Activate keeps the one previous build's cache
 // next to this one, so a page from that build still open when this worker takes over
 // keeps getting its own files; every older cache is deleted.
-import { STRATEGY, strategyFor } from "./js/sw-routes.js";
+@@SW_ROUTES@@
 
 const VERSION = "@@CACHE_VERSION@@";
 const SHELL_CACHE = `almanac-shell-${VERSION}`;

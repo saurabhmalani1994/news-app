@@ -24,15 +24,25 @@ new page now names URLs no older cache holds, so it can only ever run its own bu
 Each page also carries `<meta name="almanac-build" content="<version>">`, which the
 worker checks before it stores a page. Stamping is idempotent: the version hashes the
 files with any earlier stamp removed.
+
+H3: sw.js is a classic worker, one file with no import. Chrome fetches a module worker's
+script with credentials "omit", so behind Cloudflare Access (a cookie) its every install
+and update was answered with a login redirect and failed. The routing decision stays in
+js/sw-routes.js, the ES module its Node test imports; the build writes that module's own
+text into sw.js with its `export` words removed (`inline_routes`), so the worker runs the
+tested code. The module is still precached, so a change to it still changes the version.
 """
 import hashlib
 import re
 from pathlib import Path
 
 TEMPLATE = Path(__file__).resolve().parent / "sw_template.js"
+ROUTES = "js/sw-routes.js"
+EXPORT_RE = re.compile(r"^export\s+(?=(?:const|let|var|function|class)\b)", re.M)
+MODULE_SYNTAX_RE = re.compile(r"^\s*(?:import|export)\b", re.M)
 
 # Extensions that make up the app shell: HTML, CSS, JS (including the router module the
-# worker imports), fonts and the manifest. Icons are added separately (a whole
+# worker inlines), fonts and the manifest. Icons are added separately (a whole
 # directory). pool.json, _headers and sw.js itself are never precached.
 SHELL_EXTENSIONS = (".html", ".css", ".js", ".woff2", ".webmanifest")
 # S24: profile.schema.json is the one data file that is app shell, not feed data: S10's
@@ -128,6 +138,15 @@ def precache_url(rel: str, version: str) -> str:
     return page_url(rel) + (f"?v={version}" if is_versioned(rel) else "")
 
 
+def inline_routes(dist: Path) -> str:
+    """The built js/sw-routes.js as classic script: its declarations without `export`.
+    Refuses (ValueError) a module that would still need import or export to run."""
+    text = EXPORT_RE.sub("", (dist / ROUTES).read_text(encoding="utf-8"))
+    if MODULE_SYNTAX_RE.search(text):
+        raise ValueError(f"{ROUTES} must be plain declarations to run in a classic worker")
+    return text.rstrip("\n")
+
+
 def build_service_worker(dist: Path) -> str:
     rel_paths = precache_files(dist)
     version = cache_version(dist, rel_paths)
@@ -139,6 +158,9 @@ def build_service_worker(dist: Path) -> str:
     # is the belt to that comment's suspenders.
     text = text.replace("@@CACHE_VERSION@@", version, 1)
     text = text.replace("@@PRECACHE_URLS@@", urls, 1)
+    routes = inline_routes(dist)
+    assert "@@" not in routes, "the routing module must not carry a template sentinel"
+    text = text.replace("@@SW_ROUTES@@", routes, 1)
     assert "@@" not in text, "a template sentinel was left unfilled"
     return text
 

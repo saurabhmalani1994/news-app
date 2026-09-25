@@ -116,10 +116,13 @@ def test_cache_version_changes_when_a_shell_file_changes(tmp_path):
     assert v1 != v2
 
 
-def test_build_writes_a_module_service_worker_with_fetch_install_activate_and_skip_waiting(tmp_path):
+def test_build_writes_a_classic_service_worker_with_fetch_install_activate_and_skip_waiting(tmp_path):
     out = _build(tmp_path)
     sw = (out / "sw.js").read_text(encoding="utf-8")
-    assert 'import { STRATEGY, strategyFor } from "./js/sw-routes.js";' in sw
+    # H3: the routing module is written into the worker, not imported (a module worker
+    # cannot install behind Cloudflare Access; tests/test_h3_worker.py).
+    assert "function strategyFor(request, origin)" in sw
+    assert not re.search(r"^\s*(?:import|export)\b", sw, re.M)
     for handler in ('addEventListener("install"', 'addEventListener("activate"', 'addEventListener("fetch"'):
         assert handler in sw
     # H1 reverses S18's no-skipWaiting rule: a phone stuck on a broken worker must be
