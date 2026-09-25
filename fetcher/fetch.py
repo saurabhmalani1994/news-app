@@ -30,7 +30,7 @@ import time
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html.entities import name2codepoint
 from pathlib import Path
@@ -249,6 +249,21 @@ def _utc(dt):
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# H6 item 2: a feed date more than this far in the past, or beyond a day in the future,
+# is a feed error (one france24 article carried 2013, which turned a standing story's
+# "no coverage" notice into "112093 hours"), not a real published time.
+ABSURD_PAST_DAYS = 30
+ABSURD_FUTURE_DAYS = 1
+
+
+def _absurd_date(published, now):
+    """True when `published` (the ISO string _published_at returns) is more than
+    ABSURD_PAST_DAYS before `now` or more than ABSURD_FUTURE_DAYS after it."""
+    dt = datetime.strptime(published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    age = now.astimezone(timezone.utc) - dt
+    return age > timedelta(days=ABSURD_PAST_DAYS) or age < -timedelta(days=ABSURD_FUTURE_DAYS)
+
+
 def _assert_ledger_invariant(counts):
     """R9/S02: fetched must equal published plus the sum of drops, every run."""
     total_drops = sum(counts["drops"].values())
@@ -305,6 +320,9 @@ def build_pool(data, now, source=SOURCE, limit=5):
         published = _published_at(_item_date_raw(item, kind), leniency)
         if published is None:
             drops["no_date"] += 1
+            continue
+        if _absurd_date(published, now):
+            drops["absurd_date"] += 1
             continue
         if len(articles) >= limit:
             drops["over_cap"] += 1

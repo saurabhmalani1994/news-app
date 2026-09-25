@@ -262,7 +262,8 @@
         "no_date": {"type": "integer", "minimum": 0},
         "bad_url": {"type": "integer", "minimum": 0},
         "duplicate_url": {"type": "integer", "minimum": 0},
-        "over_cap": {"type": "integer", "minimum": 0}
+        "over_cap": {"type": "integer", "minimum": 0},
+        "absurd_date": {"type": "integer", "minimum": 0}
       }
     },
     "feed_states": {

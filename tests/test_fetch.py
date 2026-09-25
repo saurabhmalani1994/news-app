@@ -75,6 +75,25 @@ def test_unusable_items_dropped_with_a_reason():
     assert c["fetched"] == c["published"] + sum(c["drops"].values())
 
 
+def test_absurd_past_and_future_dates_dropped_and_counted():
+    # H6 item 2: one france24 article carried 2013 (a feed error, not a real published
+    # time), which turned a standing story's "no coverage" notice into "112093 hours".
+    pool = build_pool(_feed(
+        "<item><title>Stale 2013 date</title><link>https://e.org/old</link>"
+        "<pubDate>Tue, 01 Jan 2013 00:00:00 GMT</pubDate></item>"
+        "<item><title>31 days back</title><link>https://e.org/old2</link>"
+        "<pubDate>Sun, 24 Aug 2026 03:00:00 GMT</pubDate></item>"
+        "<item><title>2 days ahead</title><link>https://e.org/future</link>"
+        "<pubDate>Wed, 26 Sep 2026 04:00:00 GMT</pubDate></item>"
+        "<item><title>Fine</title><link>https://e.org/fine</link>" + DATE + "</item>"
+    ), NOW)
+    c = pool["counts"]
+    assert [a["title"] for a in pool["articles"]] == ["Fine"]
+    assert c["drops"] == {"absurd_date": 3}
+    assert c["fetched"] == c["published"] + sum(c["drops"].values())
+    assert validate(pool) == []
+
+
 def test_s02_proof_titleless_dateless_duplicate_url():
     # QUEUE.md S02 proof line: a run seeded with a titleless item, a dateless item and
     # a duplicate url ends with fetched == published + sum(drops), each of those three

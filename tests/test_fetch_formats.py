@@ -229,10 +229,12 @@ def test_malformed_rdf_repairs_and_counts_leniency():
 
 
 def test_rdf_over_cap_and_duplicate_url_still_drop_correctly():
+    # H6 item 2: every date stays inside the fetcher's own bounds (30 days back, 1
+    # ahead of NOW) so the cap drop this test checks is never shadowed by a date drop.
     items = "".join(
         f'<item rdf:about="https://example.org/rdf-cap-{n}">'
         f"<title>Item {n}</title><link>https://example.org/rdf-cap-{n}</link>"
-        f"<dc:date>2026-09-2{n}T00:00:00Z</dc:date></item>"
+        f"<dc:date>2026-09-24T0{n}:00:00Z</dc:date></item>"
         for n in range(1, 7)
     )
     pool = build_pool(_rdf(items), NOW, limit=5)

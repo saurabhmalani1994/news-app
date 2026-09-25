@@ -68,6 +68,16 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const listWords = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
+// H6 item 2: an hours figure above this reads as days instead ("112093 hours" from one
+// absurdly dated article). The fetcher now drops any article dated more than 30 days
+// back, so a real gap tops out near there; this still caps the wording even if the
+// whole pool is that old (the no-coverage case's `span` looks at every story, not one).
+const SPAN_HOURS_CAP = 72;
+function spanWords(hours) {
+  if (hours <= SPAN_HOURS_CAP) return plural(hours, "hour", "hours");
+  return plural(Math.round(hours / 24), "day", "days");
+}
+
 /** The profile's standing stories that are switched on, in the profile's own order
  * (its order is the owner's priority when two floors compete for one place). An absent
  * field means the defaults, so a profile stored before S28 still gets them; an empty
@@ -143,7 +153,7 @@ export function silenceNotices(stories, profile, nowMs, opts = {}) {
       }
       return listWords([...groups].map(([key, names]) => `${listWords(names)} (${key})`));
     };
-    const gap = age === null ? `No ${def.label} coverage in the last ${plural(hours, "hour", "hours")}` : `No new ${def.label} coverage in ${plural(hours, "hour", "hours")}`;
+    const gap = age === null ? `No ${def.label} coverage in the last ${spanWords(hours)}` : `No new ${def.label} coverage in ${spanWords(hours)}`;
     let kind = "no-coverage";
     let head = gap;
     let text;
