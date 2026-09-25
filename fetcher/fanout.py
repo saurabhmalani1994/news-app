@@ -37,6 +37,14 @@ clusterer saw, before the per-source cap, to its own file for gold-set labeling
 (fetcher/bundle_eval.py, tests/fixtures/bundles/README.md). It never enters pool.json,
 and a path inside the deployed directory is refused. Off unless asked.
 
+W2 (R50): before the feeds, main() reads the users' watch queries from Workers KV and
+searches Google News for each (fetcher/watch.py). build_pool_fanout adds the results
+to the candidates, so they cluster like everything else; an item already in the pool
+only adds its tag to that article's `watch`. Watch items, and pool articles a watch
+tag saves from the per-source cap, are exempt from that cap but share one byte budget
+(fetcher.watch.BUDGET_BYTES), reported in counts.watch. A watch failure of any kind
+publishes the pool without watch items; it never fails the run.
+
 Usage: python -m fetcher.fanout --out dist/pool.json --sources sources.json
 """
 import argparse
@@ -63,6 +71,7 @@ from fetcher.geo import tag_geo
 from fetcher.topics import hard_news_topics, load_topics, tag_article
 from fetcher.health import compute_source_health, fetch_previous_pool, parse_previous_health
 from fetcher.state import DEFAULT_STATE_PATH, load_state, write_state
+from fetcher import watch as wsearch
 from fetcher.fetch import (
     DEK_MAX,
     TITLE_MAX,
@@ -299,7 +308,8 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
 def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP,
                       cluster_extra_cap=CLUSTER_EXTRA_CAP, timings=None, topics_doc=None,
                       previous_health=None, previous_pool_status="absent", bodies_out=None,
-                      previous_events=None, candidates_out=None):
+                      previous_events=None, candidates_out=None, watch=None,
+                      watch_budget=wsearch.BUDGET_BYTES):
     """Turn fetch results for every source into one pool dict. Pure: no network, no clock.
 
     timings, if a dict is passed, receives the clustering wall time in seconds.
@@ -322,6 +332,13 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     B1: candidates_out, if a dict is passed, receives {"dump": candidate_dump(...)}, the
     whole pre-cap candidate list, so main() can write it to its own file. The returned
     pool never carries it.
+
+    W2: watch is fetcher.watch.collect's result (KV status, query count, one search
+    result per query), or None for a run without watch searches (no counts.watch).
+    Watch items join the candidates before clustering; one the pool already has only
+    tags that article. When any query ran, the pool gains fetcher.watch.SOURCE (with a
+    feed state and health entry) for items from outlets sources.json does not list.
+    Watch-only items never enter the candidate dump (its artifact is public).
     """
     if topics_doc is None:
         topics_doc = load_topics()
@@ -379,6 +396,26 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             if article["id"] not in seen_ids:  # one url is one article to the clusterer
                 seen_ids.add(article["id"])
                 candidates.append(article)
+
+    # W2: watch items join here, so the clusterer sees them like any other candidate.
+    pool_sources = list(sources)
+    watch_only_ids = set()
+    wcounts = None
+    merged = 0
+    if watch is not None:
+        items, wcounts, wstate, wnewest = wsearch.watch_items(
+            watch["results"], sources, now, topics_doc, leniency, image_rejected, _extract_article)
+        fetched_total += wcounts["candidates"]
+        new_items, merged = wsearch.merge_into(candidates, items)
+        if merged:
+            drops["duplicate_url"] += merged  # the pool already has it: tagged, not added
+        for item in new_items:
+            watch_only_ids.add(item["id"])
+            candidates.append(item)
+        if watch["queries"]:
+            pool_sources.append(wsearch.SOURCE)
+            feed_states[wstate] += 1
+            run_states[wsearch.SOURCE["id"]] = (wstate, wcounts["fetched"], wnewest)
     t0 = time.perf_counter()
     all_clusters = cluster_items(candidates)
     if timings is not None:
@@ -393,6 +430,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
 
     articles = []
     published_urls = set()
+    exempt = []  # W2: watch-tagged articles past the cap, budgeted below
     for source in sources:
         kept = extra = 0
         for article in per_source.get(source["id"], []):
@@ -403,11 +441,36 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                 kept += 1
             elif article["id"] in multi_source and extra < cluster_extra_cap:
                 extra += 1
+            elif article.get("watch"):
+                exempt.append(article)
+                continue
             else:
                 drops["over_cap"] += 1
                 continue
             published_urls.add(article["url"])
             articles.append(article)
+
+    # W2: the watch byte budget. Tags on articles that publish anyway count first; then
+    # watch-only items and tagged articles past the cap, round robin across queries
+    # (every query's newest item, then every query's second...), while bytes remain.
+    watch_bytes = sum(wsearch.tag_bytes(a) for a in articles if a.get("watch"))
+    watch_published = over_budget = 0
+    exempt.extend(c for c in candidates if c["id"] in watch_only_ids)
+    for article in sorted(exempt, key=lambda a: (a["_watch_order"], a["id"])):
+        if article["url"] in published_urls:
+            drops["duplicate_url"] += 1
+            continue
+        size = wsearch.record_bytes(article)
+        if watch_bytes + size > watch_budget:
+            drops["over_cap"] += 1
+            over_budget += 1
+            continue
+        watch_bytes += size
+        watch_published += 1
+        published_urls.add(article["url"])
+        articles.append(article)
+    for article in candidates:
+        article.pop("_watch_order", None)
 
     # S38: the repeated-placeholder check needs every published article for a source
     # at once, so it runs here, after capping, as a second pass; tally_found then
@@ -418,7 +481,8 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     # S22: bodies are computed from the final published article list (post-cap,
     # post-dedup), so only articles that actually made the pool ever get a file
     # (R12: old bodies need not be kept, only current pool articles need files).
-    bodies, body_counts = collect_bodies(sources, articles, body_candidates)
+    bodies, body_counts = collect_bodies(
+        sources, [a for a in articles if a["id"] not in watch_only_ids], body_candidates)
     for article in articles:
         if article["id"] in bodies:
             article["has_body"] = True
@@ -433,9 +497,10 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     generated_at = _utc(now)
     if candidates_out is not None:
         candidates_out["dump"] = candidate_dump(candidates, all_clusters,
-                                                {a["id"] for a in articles}, generated_at)
-    source_health = compute_source_health(sources, run_states, previous_health, generated_at)
-    events = build_events(articles, clusters, sources, now, hard_news_topics(topics_doc),
+                                                {a["id"] for a in articles}, generated_at,
+                                                hidden=watch_only_ids)
+    source_health = compute_source_health(pool_sources, run_states, previous_health, generated_at)
+    events = build_events(articles, clusters, pool_sources, now, hard_news_topics(topics_doc),
                           previous_events)
 
     # F3: how many sources are configured on each fetch route, regardless of whether
@@ -456,11 +521,27 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
         "bodies": body_counts,
         "routes": {r: route_counts.get(r, 0) for r in ROUTES},
     }
+    if watch is not None:
+        counts["watch"] = {
+            "kv": watch["kv"],
+            "queries": watch["queries"],
+            "query_drops": {k: watch["query_drops"][k] for k in wsearch.QUERY_DROP_KEYS
+                            if watch["query_drops"].get(k)},
+            "fetched": wcounts["fetched"],
+            "candidates": wcounts["candidates"],
+            "drops": wcounts["drops"],
+            "merged": merged,
+            "published": watch_published,
+            "over_budget": over_budget,
+            "bytes": watch_bytes,
+            "budget_bytes": watch_budget,
+            "errors": wcounts["errors"],
+        }
     _assert_ledger_invariant(counts)
     return {
         "schema_version": 1,
         "generated_at": generated_at,
-        "sources": [_pool_source(s) for s in sources],
+        "sources": [_pool_source(s) for s in pool_sources],
         "articles": articles,
         "clusters": clusters,
         "counts": counts,
@@ -469,30 +550,33 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     }
 
 
-def candidate_dump(candidates, all_clusters, published_ids, generated_at):
+def candidate_dump(candidates, all_clusters, published_ids, generated_at, hidden=frozenset()):
     """B1: every candidate the clusterer saw, before the per-source cap, with the fields a
     gold-set labeler needs. s07_cluster names the candidate's whole-run S07 group, by its
     earliest member (so it can differ from the published cluster id, which is seeded by
-    the earliest published member); null means S07 left it alone."""
+    the earliest published member); null means S07 left it alone. W2: hidden names
+    watch-only candidates, left out because the dump is a public artifact and a list of
+    search results would say what someone searched for."""
     by_id = {a["id"]: a for a in candidates}
     group = {}
     for cl in all_clusters:
         seed = min(cl["article_ids"], key=lambda i: (by_id[i]["published_at"], i))
         for i in cl["article_ids"]:
             group[i] = f"c_{seed}"
+    shown = [a for a in candidates if a["id"] not in hidden]
     return {
         "generated_at": generated_at,
         "counts": {
-            "candidates": len(candidates),
-            "clustered": len(group),
-            "groups": len(all_clusters),
-            "published": sum(1 for a in candidates if a["id"] in published_ids),
+            "candidates": len(shown),
+            "clustered": sum(1 for a in shown if a["id"] in group),
+            "groups": len({group[a["id"]] for a in shown if a["id"] in group}),
+            "published": sum(1 for a in shown if a["id"] in published_ids),
         },
         "candidates": [{
             "id": a["id"], "source_id": a["source_id"], "url": a["url"], "title": a["title"],
             "dek": a.get("dek", "")[:DUMP_DEK_CHARS], "published_at": a["published_at"],
             "s07_cluster": group.get(a["id"]), "published": a["id"] in published_ids,
-        } for a in candidates],
+        } for a in shown],
     }
 
 
@@ -536,6 +620,41 @@ def _published_clusters(all_clusters, published, by_id, source_lean=None, source
     return out
 
 
+def live_event_rows(pool):
+    """[id, label, hype, hold_state, live_since] per live event, for the public run log.
+    W2: an event holding any watch-tagged article may be named after someone's query,
+    so its label is withheld from the log (the pool, behind Access, still has it)."""
+    watched = {a["id"] for a in pool["articles"] if a.get("watch")}
+    members = {c["id"]: c["article_ids"] for c in pool["clusters"]}
+    rows = []
+    for e in pool["events"]:
+        if not e["live"]:
+            continue
+        hit = any(aid in watched for cid in e["cluster_ids"] for aid in members.get(cid, ()))
+        rows.append([e["id"], "(withheld: watch)" if hit else e["label"], e["hype"],
+                     e["hold_state"], e.get("live_since")])
+    return rows
+
+
+def watch_log_line(wc, watch_input, seconds):
+    """W2: the run's one watch line. Counts, statuses and an env var name only: the
+    log is public, so no query, tag or item text is ever in it."""
+    kv = watch_input["kv"]
+    if kv != "ok":
+        head = f"watch: {watch_input['queries']} queries (kv unavailable: {wsearch.status_words(kv)})"
+    else:
+        head = f"watch: {watch_input['queries']} queries (kv ok via {watch_input['token']})"
+    if wc is None:
+        return f"{head} dropped from this pool after a failed build seconds={seconds:.2f}"
+    return (
+        f"{head} query_drops={json.dumps(wc['query_drops'])} fetched={wc['fetched']} "
+        f"kept={wc['candidates']} item_drops={json.dumps(wc['drops'])} merged={wc['merged']} "
+        f"published={wc['published']} over_budget={wc['over_budget']} "
+        f"errors={json.dumps(wc['errors'])} bytes={wc['bytes']}/{wc['budget_bytes']} "
+        f"seconds={seconds:.2f}"
+    )
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default="dist/pool.json")
@@ -570,6 +689,10 @@ def main(argv=None):
         return 1
 
     t0 = time.monotonic()
+    # W2: the watch searches first (KV read, then Google News). Never raises; a KV or
+    # search failure is a status in the ledger and the log line below.
+    watch_input = wsearch.collect(fetch_fn=fetch_feed, timeout=args.timeout, retries=args.retries)
+    watch_seconds = time.monotonic() - t0
     fetch_results = fetch_all(sources, timeout=args.timeout, retries=args.retries)
 
     # F6: state.json restored by actions/cache is tried first; only when it is
@@ -590,12 +713,29 @@ def main(argv=None):
     timings = {}
     bodies_out = {}
     candidates_out = {} if dump_path is not None else None
-    pool = build_pool_fanout(
-        sources, fetch_results, datetime.now(timezone.utc), per_source_cap=args.per_source_cap,
-        timings=timings, previous_health=previous_health, previous_pool_status=previous_pool_status,
-        bodies_out=bodies_out, previous_events=previous_events, candidates_out=candidates_out,
-    )
-    errors = validate(pool)
+    now = datetime.now(timezone.utc)
+
+    def _build(watch):
+        return build_pool_fanout(
+            sources, fetch_results, now, per_source_cap=args.per_source_cap,
+            timings=timings, previous_health=previous_health, previous_pool_status=previous_pool_status,
+            bodies_out=bodies_out, previous_events=previous_events, candidates_out=candidates_out,
+            watch=watch,
+        )
+
+    # W2: a pool that watch items broke (an exception, or a pool that fails the
+    # contract) is rebuilt without them, so a watch bug can never stop a publish. Only
+    # the exception's type or the first error's path is logged, never item text.
+    try:
+        pool = _build(watch_input)
+        errors = validate(pool)
+    except Exception as exc:  # noqa: BLE001
+        pool, errors = None, [type(exc).__name__]
+    if errors:
+        print(f"watch: pool with watch items failed ({len(errors)} error(s), first at "
+              f"{errors[0].split(':')[0]}); publishing without them", file=sys.stderr)
+        pool = _build(None)
+        errors = validate(pool)
     if errors:
         print(f"INVALID POOL, not written: {errors[:10]}", file=sys.stderr)
         return 1
@@ -650,12 +790,16 @@ def main(argv=None):
     )
     routed = sorted(s["id"] for s in sources if _route_for(s) != "direct")
     print(f"routes={json.dumps(c['routes'])} routed_sources={json.dumps(routed)}")
+    print(watch_log_line(c.get("watch"), watch_input, watch_seconds))
     with_image = sum(1 for a in pool["articles"] if "image" in a)
     hero_worthy = sum(1 for a in pool["articles"] if a.get("image", {}).get("width", 0) >= 600)
     bucket_by_source = {s["id"]: s.get("bucket") for s in sources}
-    bucket_totals = Counter(bucket_by_source.get(a["source_id"]) for a in pool["articles"])
+    # W2: the Google News source has no bucket; it is listed under its own id.
+    bucket_totals = Counter(bucket_by_source.get(a["source_id"]) or a["source_id"]
+                            for a in pool["articles"])
     bucket_with_image = Counter(
-        bucket_by_source.get(a["source_id"]) for a in pool["articles"] if "image" in a
+        bucket_by_source.get(a["source_id"]) or a["source_id"]
+        for a in pool["articles"] if "image" in a
     )
     share_by_bucket = {
         b: f"{bucket_with_image.get(b, 0)}/{n}" for b, n in sorted(bucket_totals.items())
@@ -687,7 +831,7 @@ def main(argv=None):
     print(
         f"previous_events_status={previous_events_status} events={len(ev)} "
         f"eligible={sum(e['eligible'] for e in ev)} live={len(live)} "
-        f"live_events={json.dumps([[e['id'], e['label'], e['hype'], e['hold_state'], e['live_since']] for e in live], ensure_ascii=False)} "
+        f"live_events={json.dumps(live_event_rows(pool), ensure_ascii=False)} "
         f"held={sum(e['hold_state'] == 'holding' for e in ev)} "
         f"released={sum(e['hold_state'] == 'released' for e in ev)}"
     )
