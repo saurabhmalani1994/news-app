@@ -1,0 +1,28 @@
+{
+ "about": "DESIGN-bundles section 1's 21 same-story cross-outlet pairs that S07 left unclustered in the live run generated 2026-09-24T14:33:56Z, over 8 stories, as article ids in gold_2026-09-24.json. Section 1 gives counts per story, not the partners, so B2 reconstructed them from its table: each stranded article is paired with the other-outlet member of its story's main S07 cluster published closest in time, or with the article the table names (LiveMint with The Hill); where the table strands several articles of one story, the pairs among them count too (Ethiopia's three; Al Jazeera, CNA and NPR on the Xi summit; the two 'still barred' pieces). Under R47 the Xi pieces belong to the White House talks. `was`: alone when one article stood alone, split when both sat in different clusters (17 and 4 here; section 1's text says 16 and 5). B2's proof: at least 16 joined when the clusterer runs on fixture 1. `floor_joined` is what the current clusterer joins; CI holds it, and like floors.json it only ratchets up.",
+ "fixture": "gold_2026-09-24.json",
+ "floor_joined": 12,
+ "pairs": [
+  {"story": "st-wh-media-ban-ruling", "ids": ["1b6ceb8da8b6ac5d", "52cbfd175b74ca97"], "was": "split"},
+  {"story": "st-wh-media-ban-ruling", "ids": ["f2c0ff20d4bea9d8", "6c1b5b6f307d6f75"], "was": "split"},
+  {"story": "st-wh-media-ban-ruling", "ids": ["0da613afe030ad44", "800475df084c8bda"], "was": "alone"},
+  {"story": "st-wh-media-ban-ruling", "ids": ["180a9a65ea61af8f", "5005d7e0795b26ec"], "was": "alone"},
+  {"story": "st-wh-media-ban-ruling", "ids": ["0da613afe030ad44", "f2c0ff20d4bea9d8"], "was": "alone"},
+  {"story": "st-xi-white-house-talks", "ids": ["4564427b013074ed", "961e7e3ddc2c2b03"], "was": "alone"},
+  {"story": "st-xi-white-house-talks", "ids": ["3c3a88ac49ddc1b3", "d167fc4a57d79273"], "was": "alone"},
+  {"story": "st-xi-white-house-talks", "ids": ["405f3d789833f412", "d167fc4a57d79273"], "was": "split"},
+  {"story": "st-xi-white-house-talks", "ids": ["4564427b013074ed", "3c3a88ac49ddc1b3"], "was": "alone"},
+  {"story": "st-xi-white-house-talks", "ids": ["4564427b013074ed", "405f3d789833f412"], "was": "alone"},
+  {"story": "st-xi-white-house-talks", "ids": ["3c3a88ac49ddc1b3", "405f3d789833f412"], "was": "alone"},
+  {"story": "st-netanyahu-un-speech", "ids": ["86f4dee9cadba202", "fec66fa398d16643"], "was": "alone"},
+  {"story": "st-netanyahu-un-speech", "ids": ["32872d09f88bac13", "fec66fa398d16643"], "was": "alone"},
+  {"story": "st-netanyahu-un-speech", "ids": ["357a5461ac884156", "fec66fa398d16643"], "was": "split"},
+  {"story": "st-ethiopia-fighting", "ids": ["b11bec9d09e7f161", "01e07f482a47679d"], "was": "alone"},
+  {"story": "st-ethiopia-fighting", "ids": ["b11bec9d09e7f161", "61aa7ffb925b5ac6"], "was": "alone"},
+  {"story": "st-ethiopia-fighting", "ids": ["01e07f482a47679d", "61aa7ffb925b5ac6"], "was": "alone"},
+  {"story": "st-pezeshkian-un-speech", "ids": ["4dcb53e3691638b9", "c4442cabc501a521"], "was": "alone"},
+  {"story": "st-el-sayed-iran", "ids": ["44d4c0034f7a9662", "23132e1e0b3319cb"], "was": "alone"},
+  {"story": "st-jobless-claims", "ids": ["97bdc92aec005e37", "a5ecaeed57ca4404"], "was": "alone"},
+  {"story": "st-israel-election-panel", "ids": ["4ac0ae0a90a107c3", "37f65933a6c62e5f"], "was": "alone"}
+ ]
+}

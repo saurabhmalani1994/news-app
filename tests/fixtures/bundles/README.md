@@ -14,6 +14,10 @@ private repo, testing only. No article bodies, no URLs, deks cut to 600 characte
   versions found in the dump: 250 articles, 84 stories (20 with 2+ articles, 17 across 2+
   outlets), 62 events. Hard calls are in its `notes`, keyed by article id.
 - `floors.json`: per fixture, the scores the current clusterer must reach. CI runs it.
+  B2 raised both fixtures' floors to its own numbers.
+- `missed_pairs_2026-09-24.json`: section 1's 21 same-story pairs S07 left apart in
+  fixture 1, with `floor_joined`, how many the current clusterer must join (B2: 12; the
+  design's target is 16). Tested in `tests/test_cluster_b2.py`.
 - Scorer and tools: `fetcher/bundle_eval.py`. Tests: `tests/test_bundle_eval.py`.
 
 **Labeling rule.** `story`: the same development within 48 h. An explainer pegged to it
@@ -72,7 +76,7 @@ added as it lands. Work outside the repo for steps 1 to 5; the raw dump is never
    `python -m fetcher.bundle_eval spotcheck tests/fixtures/bundles/gold_<date>.json --draw <YYYYMMDD>`
    `python -m fetcher.bundle_eval score tests/fixtures/bundles/gold_<date>.json`
 7. Ratchet the floors: add an entry for the new file in `floors.json` with the numbers
-   from the "S07 re-run on fixture" line (or the current clusterer's, after B2), each
-   rounded down to 4 decimals. Never lower an existing floor. The suite fails until a
+   from the "S07 re-run on fixture" line (it runs the current clusterer, B2's since B2),
+   each rounded down to 4 decimals. Never lower an existing floor. The suite fails until a
    `gold_*.json` has its floors.
 8. Run the full suite, then commit the fixture and floors together.
