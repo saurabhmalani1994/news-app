@@ -614,7 +614,7 @@ body {
    layout. Where anchor positioning is missing the button stays for keyboards and
    screen readers only, and a tap on the dots opens the story like the rest of the row. */
 .story {
-  anchor-scope: --lean, --lean-other;
+  anchor-scope: --lean, --lean-other, --count;
 }
 
 .lean-hit {
@@ -878,17 +878,20 @@ body {
   text-wrap: pretty;
 }
 
-/* S14: the coverage view trigger. An invisible sibling button, never nested inside the
-   card's own <a> (same rule as .story-overflow), laid over the meta line's own rendered
-   spot with a negative top margin sized from two fixed tokens (a tier's own
-   story-body padding-bottom, the meta line's own height), never from content length, so
-   it lines up under "N sources" without moving a single visible pixel. The visible
-   "N sources" text stays exactly as it was; this only adds a real, focusable, 48dp tap
-   target quietly on top of it. U3: a multi-outlet row's meta is always two lines
-   ("N sources" leads line 2), so the trigger rises over both and the 5dp between them
-   (.meta row-gap); its 48dp then ends inside the row, and the row's foot is the same
-   as a one-source row's. */
+/* S14: the coverage view trigger; V1: it opens the versions carousel. An invisible
+   sibling button, never nested inside the card's own <a> (same rule as
+   .story-overflow), so a tap on it never also opens the story. V1 found why a tap on
+   "N sources" opened the story instead: the meta is a grid item, painted as an atomic
+   inline block after every block background, so it sat above this in-flow button and
+   took the tap. The trigger is now positioned, which paints it above the meta (z-index
+   auto: still under the lean marker's target and the bottom nav, both z-index 1).
+   Where anchor positioning works it is a 48dp band laid over "N sources" itself
+   (anchored to .meta-count, 12dp either side, centred on its line), so the headline,
+   the dek, the photo and the rest of the meta still open the story; it never adds
+   height. Elsewhere it keeps S14's full-width band over the meta lines. The pressed
+   tint is translucent, so the words under it stay readable. */
 .story-coverage {
+  position: relative;
   display: block;
   width: 100%;
   min-height: var(--touch-min);
@@ -904,8 +907,33 @@ body {
   margin-top: calc(-1 * (19px + 2 * var(--type-meta-line-height) + 5px));
 }
 
+@supports (anchor-name: --count) {
+  .meta-count {
+    anchor-name: --count;
+  }
+
+  .story .story-coverage,
+  .story--text-only .story-coverage {
+    position: absolute;
+    position-anchor: --count;
+    top: calc(anchor(center) - var(--touch-min) / 2);
+    left: calc(anchor(left) - 12px);
+    right: calc(anchor(right) - 12px);
+    width: auto;
+    min-width: var(--touch-min);
+    height: var(--touch-min);
+    min-height: 0;
+    margin: 0;
+  }
+
+  /* Never without its anchor: the build writes the trigger only beside "N sources". */
+  .story:not(:has(.meta-count)) .story-coverage {
+    display: none;
+  }
+}
+
 .story-coverage:active {
-  background: var(--color-pressed);
+  background: color-mix(in srgb, var(--color-headline) 8%, transparent);
 }
 
 .story-coverage:focus-visible {
@@ -1026,6 +1054,442 @@ body {
   .story-coverage,
   .coverage-row {
     transition: none;
+  }
+}
+
+/* ---- V1 versions carousel ------------------------------------------------------
+   (js/versions-view.js, docs/DESIGN-bundles.md section 5.) One full-screen layer like
+   the reader, set in the same measured tokens: a 56dp top bar (close, "Versions", the
+   count, the word-mark switch), the index strip set like the section tabs (one text
+   chip per outlet, the active one bold and underlined with the tabs' 3dp ink, each
+   chip reserving its bold width so nothing moves), then the slides on a native
+   scroll-snap track, and the reader's bottom bar as the footer. Each slide scrolls on
+   its own. Slides are text only in fixed boxes, so opening, swiping and closing move
+   nothing (CLS 0). No card, no shadow, no color coding. */
+.bv {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 180ms var(--motion-ease), transform 180ms var(--motion-ease);
+}
+
+.bv[hidden] {
+  display: none;
+}
+
+.bv.is-open {
+  opacity: 1;
+  transform: none;
+}
+
+.bv-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: calc(var(--chrome-masthead) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) calc(var(--space-gutter) - 13px) 0;
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.bv-close,
+.bv-marks {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-min);
+  height: var(--touch-min);
+  padding: 0;
+  border-style: none;
+  background: transparent;
+  color: var(--color-headline);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease), color var(--motion-duration) var(--motion-ease);
+}
+
+.bv-icon {
+  fill: currentColor;
+}
+
+/* The switch is a U over a bar: the bar shows while marks are on and goes when they
+   are off, so its state reads from its shape, not its color alone. */
+.bv-marks[aria-pressed="false"] {
+  color: var(--color-nav-inactive);
+}
+
+.bv-marks[aria-pressed="false"] .bv-marks-bar {
+  visibility: hidden;
+}
+
+.bv-marks:disabled {
+  color: var(--color-nav-inactive);
+  opacity: 0.45;
+}
+
+.bv-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0 0 0 5px;
+  font-family: var(--type-tab-label-family);
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--color-headline);
+}
+
+/* "2 of 7", in a box as wide as "24 of 24" in tabular figures, so a changing count
+   never moves the switch beside it. */
+.bv-count {
+  flex: none;
+  width: 8.5ch;
+  margin: 0 2px 0 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--color-meta);
+}
+
+.bv-strip {
+  position: relative;
+  display: flex;
+  flex: none;
+  height: var(--touch-min);
+  padding: 0 calc(var(--space-gutter) / 2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.bv-chip {
+  position: relative;
+  flex: none;
+  margin: 0;
+  padding: 0 calc(var(--space-gutter) / 2);
+  border-width: 0;
+  background: none;
+  appearance: none;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: var(--type-tab-label-family);
+  font-size: var(--type-tab-label-size);
+  line-height: var(--type-tab-label-line-height);
+  font-weight: var(--type-tab-label-weight);
+  letter-spacing: var(--type-tab-label-tracking);
+  color: var(--color-tab-inactive);
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--motion-duration) var(--motion-ease), background-color var(--motion-duration) var(--motion-ease);
+}
+
+.bv-chip[aria-selected="true"] {
+  color: var(--color-tab-active);
+  font-weight: 700;
+  background-image: linear-gradient(var(--color-tab-active), var(--color-tab-active));
+  background-repeat: no-repeat;
+  background-size: calc(100% - 12px) 3px;
+  background-position: 50% 100%;
+}
+
+.bv-chip::after {
+  content: attr(data-label);
+  content: attr(data-label) / "";
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: 700;
+}
+
+/* The word-mark key (the "key" treatment): one quiet line under the strip, its first
+   word drawn with the very mark it explains. Shown only on a bundle that can carry
+   marks; with marks off it keeps its line but goes blank, so nothing below moves. */
+.bv-key {
+  display: none;
+  flex: none;
+  margin: 0;
+  padding: 12px var(--space-gutter) 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--color-meta-tertiary);
+}
+
+.bv--markable[data-marks="key"] .bv-key {
+  display: block;
+}
+
+.bv--plain .bv-key {
+  visibility: hidden;
+}
+
+.bv-track {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+}
+
+.bv-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.bv-slide-in {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 22px var(--space-gutter) 32px;
+}
+
+.bv-outlet {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--color-headline);
+}
+
+.bv-outlet-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.bv-outlet .lean-open {
+  flex: none;
+}
+
+/* Beside a 15dp name a country code or "State" sits mid-height, as the dots do, not on
+   the meta caps' baseline it keeps in a row, where it would ride high like a footnote. */
+.bv-outlet .lean--country,
+.bv-outlet .lean--state {
+  align-self: center;
+}
+
+.bv-meta {
+  margin: 2px 0 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--color-dek);
+}
+
+.bv-meta[hidden] {
+  display: none;
+}
+
+.bv-headline {
+  margin: 16px 0 0;
+  font-family: var(--type-hero-headline-family);
+  font-size: var(--type-hero-headline-size);
+  line-height: var(--type-hero-headline-line-height);
+  font-weight: var(--type-hero-headline-weight);
+  letter-spacing: var(--type-hero-headline-tracking);
+  color: var(--color-headline);
+  text-wrap: balance;
+  overflow-wrap: break-word;
+}
+
+.bv-dek {
+  margin: var(--space-headline-to-dek) 0 0;
+  font-family: var(--type-dek-family);
+  font-size: var(--type-dek-size);
+  line-height: var(--type-dek-line-height);
+  font-weight: var(--type-dek-weight);
+  color: var(--color-dek);
+  text-wrap: pretty;
+  overflow-wrap: break-word;
+}
+
+.bv-also {
+  margin: 14px 0 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--color-meta-tertiary);
+}
+
+/* "Read" (the reader) or "Open at <outlet>" (out): the reader's own end-of-article
+   link row, hairline above and below, the whole row the target. */
+.bv .bv-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  margin-top: 24px;
+  padding: 0;
+  border-top: var(--divider-weight) solid var(--color-divider);
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--color-headline);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.bv-action-icon {
+  flex: none;
+  fill: currentColor;
+}
+
+.bv-action-icon--out {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.bv-more {
+  margin-top: 30px;
+}
+
+.bv-more-label {
+  margin: 0 0 8px;
+  font-family: var(--type-meta-family);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
+  font-weight: var(--type-meta-weight);
+  letter-spacing: var(--type-meta-tracking);
+  text-transform: var(--type-meta-transform);
+  color: var(--color-meta-tertiary);
+}
+
+.bv .bv-more-row {
+  display: block;
+  min-height: var(--touch-min);
+  margin: 0;
+  padding: 12px 0 13px;
+  border-top: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--type-text-only-headline-family);
+  font-size: var(--type-text-only-headline-size);
+  line-height: var(--type-text-only-headline-line-height);
+  font-weight: var(--type-text-only-headline-weight);
+  color: var(--color-headline);
+  text-decoration: none;
+  text-wrap: pretty;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.bv-foot {
+  display: flex;
+  flex: none;
+  height: calc(var(--chrome-bottom-nav) + env(safe-area-inset-bottom));
+  padding: 0 0 env(safe-area-inset-bottom);
+  background: var(--color-nav-surface);
+}
+
+.bv-all {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 calc(var(--space-gutter) - 4px) 0 var(--space-gutter);
+  border-style: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--color-headline);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.bv-close:active,
+.bv-marks:active,
+.bv-chip:active,
+.bv .bv-action:active,
+.bv .bv-more-row:active,
+.bv-all:active {
+  background-color: var(--color-pressed);
+}
+
+.bv-close:focus-visible,
+.bv-marks:focus-visible,
+.bv-chip:focus-visible,
+.bv .bv-action:focus-visible,
+.bv .bv-more-row:focus-visible,
+.bv-all:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+/* Word marks (R40 answer 8): the design sweep's four treatments, picked by the dev
+   flag (versions-view.js WORD_MARKS ships one). Never color alone (WCAG 1.4.1): an
+   underline or a heavier stroke, each drawn without changing a glyph's advance, so
+   switching marks on or off moves no word. <mark> keeps the headline's own color. */
+.bv-mark {
+  background: none;
+  color: inherit;
+}
+
+.bv[data-marks="underline"] .bv-mark,
+.bv[data-marks="key"] .bv-mark,
+.bv[data-marks="key"] .bv-key-mark,
+.bv--swiped[data-marks="swipe"] .bv-mark {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+  text-decoration-color: var(--color-meta);
+}
+
+.bv[data-marks="key"] .bv-key-mark {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.bv[data-marks="weight"] .bv-mark {
+  -webkit-text-stroke: 0.65px currentColor;
+}
+
+.bv.bv--plain[data-marks] .bv-mark {
+  text-decoration-line: none;
+  -webkit-text-stroke: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bv,
+  .bv-close,
+  .bv-marks,
+  .bv-chip,
+  .bv .bv-action,
+  .bv .bv-more-row,
+  .bv-all {
+    transition: none;
+  }
+
+  .bv {
+    transform: none;
   }
 }
 

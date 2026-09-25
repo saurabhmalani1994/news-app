@@ -1,6 +1,8 @@
-// S14: wires the card's "N sources" meta trigger (js/coverage.js's pure grouping) into
-// the S24 sheet. DESIGN-v1 section 6 / DESIGN-v1.1 section 5: real headlines side by
-// side, grouped by lean, never an AI summary (R13). Bottom sheet, not a full page: the
+// S14: the coverage view (js/coverage.js's pure grouping) in the S24 sheet. V1: the
+// card's "N sources" trigger now opens the versions carousel (js/versions-view.js),
+// whose footer, "All versions by lean", opens this sheet for the same cluster.
+// DESIGN-v1 section 6 / DESIGN-v1.1 section 5: real headlines side by side, grouped
+// by lean, never an AI summary (R13). Bottom sheet, not a full page: the
 // content is a flat, scrollable list of short rows, the same shape and density the
 // sheet already carries for story actions, and .sheet already scrolls past 80vh
 // (style.css), so no cluster size runs out of room.
@@ -122,14 +124,13 @@ function coverageContent(cluster, ctx) {
   return wrap;
 }
 
-document.addEventListener("click", (event) => {
-  const button = event.target.closest(".story-coverage");
-  if (!button) return;
-  event.preventDefault();
-  const sid = button.dataset.sid;
+/** Opens the coverage sheet for cluster `sid`; `opener` takes focus back on close.
+ * False when the page holds no such cluster. */
+export function openCoverage(sid, opener) {
   const input = getInput();
   const cluster = (input.pool?.clusters || []).find((c) => c.id === sid);
-  if (!cluster) return;
+  if (!cluster) return false;
   const content = coverageContent(cluster, coverageContext(input));
-  openSheet({ title: "Coverage", content, opener: button });
-});
+  openSheet({ title: "Coverage", content, opener });
+  return true;
+}

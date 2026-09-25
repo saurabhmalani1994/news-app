@@ -61,6 +61,7 @@ PAGE = """<!doctype html>
 <script type="module" src="js/reader.js"></script>
 <script type="module" src="js/story-actions.js"></script>
 <script type="module" src="js/coverage-view.js"></script>
+<script type="module" src="js/versions-view.js"></script>
 <script type="module" src="js/lean-view.js"></script>
 <script type="module" src="js/history/observe.js"></script>
 <script type="module" src="js/live-actions.js"></script>
@@ -95,6 +96,7 @@ PAGE = """<!doctype html>
 {views}
 </div>
 {nav}
+{versions}
 {reader}
 {sheet}
 {toast}
@@ -156,6 +158,26 @@ READER = """<div class="reader" id="reader" role="dialog" aria-modal="true" aria
 <button class="reader-back" id="reader-back" type="button" aria-label="Back"><svg class="reader-bar-icon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20z"></path></svg></button>
 <a class="reader-out" id="reader-out" target="_blank" rel="noopener noreferrer" aria-label="Read at the source" hidden><svg class="reader-bar-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3zM19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z"></path></svg></a>
 </nav>
+</div>"""
+
+# V1: the story versions carousel (js/versions-view.js, docs/DESIGN-bundles.md section 5),
+# one full-screen layer like the reader, under it in the stack so a "Read" inside opens
+# the reader above it. Static chrome only: the top bar (close, "Versions", the "2 of 7"
+# count, the word-mark switch), the empty index strip and track the device fills from
+# #rank-input, the word-mark key, and the footer into S14's coverage sheet.
+VERSIONS = """<div class="bv" id="bv" role="dialog" aria-modal="true" aria-labelledby="bv-title" hidden>
+<header class="bv-bar">
+<button class="bv-close" id="bv-close" type="button" aria-label="Close"><svg class="bv-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7 4.3 4.3l6.3 6.3 6.3-6.3z"></path></svg></button>
+<h2 class="bv-title" id="bv-title">Versions</h2>
+<p class="bv-count" id="bv-count"></p>
+<button class="bv-marks" id="bv-marks" type="button" aria-pressed="true" aria-label="Word marks" aria-describedby="bv-key"><svg class="bv-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 16.5c3 0 5.5-2.5 5.5-5.5V3.5h-2.2V11a3.3 3.3 0 0 1-6.6 0V3.5H6.5V11c0 3 2.5 5.5 5.5 5.5z"></path><path class="bv-marks-bar" d="M5 19h14v2H5z"></path></svg></button>
+</header>
+<div class="bv-strip" id="bv-strip" role="tablist" aria-label="Versions"></div>
+<p class="bv-key" id="bv-key"><span class="bv-key-mark">Underlined</span>: words only this outlet used</p>
+<div class="bv-track" id="bv-track" role="region" aria-roledescription="carousel" aria-label="Versions of this story"></div>
+<footer class="bv-foot">
+<button class="bv-all" id="bv-all" type="button" aria-haspopup="dialog"><span>All versions by lean</span><svg class="bv-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9.4 5.6 8 7l5 5-5 5 1.4 1.4 6.4-6.4z"></path></svg></button>
+</footer>
 </div>"""
 
 # S24: the reusable bottom sheet (js/sheet.js), an NYT-style overflow/share sheet.
@@ -295,6 +317,24 @@ def coverage_summary_text(cluster, by_id):
     return f"{outlets} outlets, {independent} independent, across {leans} {lean_word}"
 
 
+def version_deks(pool):
+    """V1: {article_id: dek} for every article of a cluster of 2 or more independent
+    sources that has a dek worth showing, fitted to the hero's budget (the slide sets
+    its headline in the hero type), so the versions carousel paints every slide from the
+    page itself, nothing fetched (docs/DESIGN-bundles.md section 5). Typeset as the
+    build sets deks; sorted by id for a byte-stable page."""
+    by_id = {a["id"]: a for a in pool.get("articles", [])}
+    ids = {aid for c in pool.get("clusters", []) if c.get("independent_sources", 0) > 1
+           for aid in c.get("article_ids", [])}
+    out = {}
+    for aid in sorted(ids):
+        article = by_id.get(aid)
+        text = fit_dek(clean_dek(article), dek_budget("hero")) if article else ""
+        if text:
+            out[aid] = smart_quotes(text)
+    return out
+
+
 def coverage_articles(pool):
     """{article_id: {url, has_body}} for every article belonging to a cluster of 2 or
     more independent sources, kept apart from rank_input's compact fields (S14) so the
@@ -419,7 +459,8 @@ STORY_OVERFLOW = (
     '<path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"></path>'
     "</svg></button>"
 )
-# S14: the coverage view trigger. It never changes what the meta line shows (still
+# S14: the coverage view trigger; V1: it opens the versions carousel (js/versions-view.js),
+# whose footer opens the coverage view. It never changes what the meta line shows (still
 # reads as quiet meta, R34): it is an invisible sibling button laid over the meta
 # line's own rendered position with a negative top margin sized to the tier's own fixed
 # padding-bottom plus the meta line-height (both design tokens, never content-length
@@ -431,7 +472,7 @@ STORY_OVERFLOW = (
 # for clusters of 2 or more independent sources, the same floor DESIGN-v1 sets for the
 # coverage view itself.
 STORY_COVERAGE = ('<button class="story-coverage" type="button" data-sid="{sid}" '
-                   'aria-haspopup="dialog" aria-label="See coverage: {label}"></button>')
+                   'aria-haspopup="dialog" aria-label="Compare versions: {label}"></button>')
 # One row shape for every tier; the tier only changes classes, whether a dek shows and
 # whether a photo shows. The photo goes first inside .story-body; its box is sized by
 # width, height and aspect-ratio before a byte arrives (style.css), so text never moves.
@@ -677,7 +718,7 @@ def _rank_input_json(pool, stories, by_id, source_names, links, chars=None):
             "images": _image_records(stories, by_id, source_names), **pass_input(pool), "links": links,
             "reader": reader_photos(stories, by_id), "bodies": reader_bodies(stories, by_id, chars or {}),
             "ownership": source_ownership(pool), "countries": source_countries(pool),
-            "coverage": coverage_articles(pool)}
+            "coverage": coverage_articles(pool), "vdeks": version_deks(pool)}
     return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
 
 
@@ -703,8 +744,12 @@ def render(pool, ranking=None, chars=None):
     }
 
     def row(story, tier):
+        # V1: the trigger lies over the row's own "N sources", so a row shows it only
+        # when that count shows (two or more versions); a cluster whose members are all
+        # one syndicated copy has one version and no carousel.
+        coverage = coverages.get(story.id, "") if story.independent_sources > 1 else ""
         return _render_story(story, tier, source_names, now, by_id, others.get(story.id, ""),
-                              coverages.get(story.id, ""), chars, leans, countries)
+                              coverage, chars, leans, countries)
 
     def rows(names):
         return "\n".join(row(story, tier) for tier in names for story in tiers[tier])
@@ -729,6 +774,7 @@ def render(pool, ranking=None, chars=None):
         panels=panels,
         views=views,
         nav=bottom_nav("home"),
+        versions=VERSIONS,
         reader=READER,
         sheet=SHEET,
         toast=TOAST,

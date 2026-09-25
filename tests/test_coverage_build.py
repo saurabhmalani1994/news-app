@@ -71,7 +71,8 @@ def test_story_coverage_button_renders_for_the_cluster_and_never_for_a_single_so
     assert before_button.count("<a ") == before_button.count("</a>") == 1
     button = re.search(r'<button class="story-coverage"[^>]*>', row).group(0)
     assert 'data-sid="c1"' in button
-    assert 'aria-label="See coverage: 3 outlets, 3 independent, across 3 leans"' in button
+    # V1: the trigger opens the versions carousel, whose footer opens the coverage view.
+    assert 'aria-label="Compare versions: 3 outlets, 3 independent, across 3 leans"' in button
     solo_row = re.search(r'<li class="story[^"]*" data-sid="solo">(.*?)</li>', page, re.S).group(1)
     assert "story-coverage" not in solo_row
 
