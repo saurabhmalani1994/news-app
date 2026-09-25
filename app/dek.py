@@ -12,6 +12,10 @@ Punctuation: a leftover ASCII "--" becomes a spaced en dash. Nothing here ever e
 em dash; the em dash below is only ever matched, as a dateline separator, and removed.
 """
 import re
+import unicodedata
+
+from app.dek_widths import DEK_BOX_PX, DEK_FONT_PX, WIDTHS
+from app.typography import smart_quotes
 
 EN_DASH = chr(0x2013)
 EM_DASH = chr(0x2014)
@@ -121,24 +125,90 @@ def _is_complete(sentence):
     return bool(_COMPLETE.search(sentence))
 
 
-def fit_dek(text, max_chars):
+_WIDEST = max(WIDTHS.values())
+
+
+def _char_em(ch):
+    """One character's advance in em: the dek face's own measured width; a full-width
+    (CJK) character one em, as every CJK face sets it; an accented letter its base
+    letter's; anything else the face's widest glyph, so an unknown never under-counts."""
+    width = WIDTHS.get(ord(ch))
+    if width is not None:
+        return width
+    if unicodedata.east_asian_width(ch) in ("W", "F"):
+        return 1.0
+    base = unicodedata.normalize("NFD", ch)[:1]
+    return WIDTHS.get(ord(base), _WIDEST) if base else _WIDEST
+
+
+def dek_lines(text, box_px=DEK_BOX_PX, font_px=DEK_FONT_PX):
+    """R2: the lines `text` takes in the dek box, wrapping greedily as the browser does:
+    at spaces, and between any two full-width characters (CJK sets without spaces). It
+    breaks nowhere else (not after a hyphen), glyph widths are summed without kerning,
+    and a word wider than the box is split anywhere: each can only add lines, never
+    hide one, so a text this counts as fitting fits on the page."""
+    room = box_px / font_px
+    units = []  # (space before it, width in em)
+    word, gap = 0.0, False
+    for ch in text:
+        if ch.isspace():
+            if word:
+                units.append((gap, word))
+            word, gap = 0.0, True
+        elif unicodedata.east_asian_width(ch) in ("W", "F"):
+            if word:
+                units.append((gap, word))
+                gap = False
+            units.append((gap, _char_em(ch)))
+            word, gap = 0.0, False
+        else:
+            word += _char_em(ch)
+    if word:
+        units.append((gap, word))
+    space = _char_em(" ")
+    lines, used = 0, None
+    for gap, width in units:
+        if used is not None and used + (space if gap else 0) + width <= room:
+            used += (space if gap else 0) + width
+            continue
+        lines += 1
+        while width > room:
+            lines += 1
+            width -= room
+        used = width
+    return lines
+
+
+def fit_dek(text, max_chars, lines=None):
     """The longest run of whole leading sentences within max_chars.
 
     max_chars is the tier's line budget in characters (lines times a conservative
     characters-per-line at 360dp). A trailing fragment the feed cut short never counts
     as a sentence. Only when no complete sentence fits does the dek end on an ellipsis,
     and then at a clause break or a word, never inside a word (see `_shorten`).
+
+    R2: `lines`, when given, is the tier's line clamp, and the fitted dek must also wrap
+    into that many lines in the dek box (`dek_lines`). A character count alone let a
+    run of wide capitals, long words or CJK text (one em a character) meet the CSS
+    clamp: u1_check.mjs found 3 of 515 on a real pool.
     """
     if not text:
         return ""
+    fits = (lambda t: True) if lines is None else (lambda t: dek_lines(smart_quotes(t)) <= lines)
     parts = sentences(text)
     kept = ""
     for part in parts:
         candidate = f"{kept} {part}".strip()
-        if len(candidate) > max_chars or not _is_complete(part):
+        if len(candidate) > max_chars or not _is_complete(part) or not fits(candidate):
             break
         kept = candidate
-    return kept or _shorten(parts[0], max_chars)
+    if kept:
+        return kept
+    for budget in range(max_chars, 1, -1):
+        short = _shorten(parts[0], budget)
+        if fits(short):
+            return short
+    return ""
 
 
 _CLAUSE_BREAK = re.compile(r"[,;:]\s|\s" + EN_DASH + r"\s|\s" + EM_DASH + r"\s")

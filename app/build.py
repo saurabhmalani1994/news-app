@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 from app.csp import headers_file
 from app.health import render as render_health
 from app.dek import fit_dek
-from app.frontpage import (CHARS_PER_LINE, DEK_LINES, ROW_DEK_LINES, clean_dek, dek_budget, front_page,
+from app.frontpage import (CHARS_PER_LINE, DEK_LINES, ROW_DEK_LINES, clean_dek, dek_budget, dek_clamp, front_page,
                            pass_input, rank_input, run_ranker, source_countries, source_ownership,
                            visible_source_count)
 from app.images import THUMB_PX, credit_text, hero_box, hero_media, hero_worthy, image_url, media_for, thumb_ok
@@ -690,7 +690,7 @@ def _render_story(story, tier, source_names, now, by_id, other="", coverage="", 
     title = escape(smart_quotes(article["title"]), quote=False)
     dek = ""
     if tier in DEK_TIERS:
-        text = fit_dek(clean_dek(article), dek_budget(tier))
+        text = fit_dek(clean_dek(article), dek_budget(tier), dek_clamp(tier))
         if text:
             dek = DEK.format(dek=escape(smart_quotes(text), quote=False))
     url = _safe_url(article.get("url"))
@@ -727,7 +727,7 @@ def _dek_pairs(stories):
     for story in stories:
         dek = clean_dek(story.lead)
         if dek:
-            fitted = [smart_quotes(fit_dek(dek, dek_budget(t))) for t in ("hero", "secondary", "river")]
+            fitted = [smart_quotes(fit_dek(dek, dek_budget(t), dek_clamp(t))) for t in ("hero", "secondary", "river")]
             while len(fitted) > 1 and fitted[-1] == fitted[-2]:
                 fitted.pop()
             pairs[story.id] = fitted

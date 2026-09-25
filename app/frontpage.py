@@ -37,6 +37,12 @@ ROW_DEK_LINES = {"river": 2, "text_only": 2}
 ROW_CHARS_PER_LINE = 32
 
 
+def dek_clamp(tier):
+    """R2: the tier's CSS line clamp (style.css .dek), which the fitted dek must wrap
+    inside as well as keep to its character budget (app.dek fit_dek `lines`)."""
+    return DEK_LINES.get(tier) or ROW_DEK_LINES[tier]
+
+
 def dek_budget(tier):
     """The dek's character budget for a tier: its line limit times its measure's fill."""
     if tier in DEK_LINES:

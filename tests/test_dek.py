@@ -141,3 +141,48 @@ def test_rendered_deks_are_clean_and_end_on_a_sentence():
     hero = next(d for d, t in shown if t == "hero")
     lead = next(d for d, t in shown if t == "secondary")
     assert len(hero) > len(lead)  # four lines hold more than three
+
+
+# R2: a fitted dek must also wrap inside its tier's line clamp, measured in the dek face
+# (app/dek_widths.py). Three shapes a character budget alone let through on a real pool
+# (u1_check.mjs: 3 of 515 Today summaries met the clamp), written here, not copied.
+CJK = "".join(chr(0x6771 + i % 40) for i in range(90)) + chr(0x3002)
+
+
+def test_dek_lines_counts_wide_text_and_whole_words():
+    from app.dek import dek_lines
+    assert dek_lines("") == 0
+    assert dek_lines("A short dek.") == 1
+    # One em a CJK character: 64 of them never fit two lines of a 280px box at 16.5px.
+    assert dek_lines(CJK[:64]) >= 4
+    # A word never splits at a hyphen or mid word: the same letters wrap later as one.
+    assert dek_lines("x " * 30) <= dek_lines("x" * 59)
+    # Capitals are wider than lowercase.
+    assert dek_lines("W" * 40) > dek_lines("i" * 40)
+
+
+@pytest.mark.parametrize("tier, text", [
+    ("text_only", "In Walvis Bay, the African Development Bank Group will provide loans."),
+    ("secondary", "Several newly elected assembly members protest at an event led by an anti-war veterans "
+                  "group alongside Hernandez, a former mayor. The rest follows."),
+    ("text_only", CJK),
+    ("hero", "WWWW MMMM " * 30),
+])
+def test_fitted_deks_wrap_inside_the_clamp(tier, text):
+    from app.dek import dek_lines
+    from app.frontpage import dek_budget, dek_clamp
+    from app.typography import smart_quotes
+    assert dek_lines(smart_quotes(fit_dek(text, dek_budget(tier)))) > dek_clamp(tier)  # the old fit overflowed
+    fitted = fit_dek(text, dek_budget(tier), dek_clamp(tier))
+    assert fitted and len(fitted) <= dek_budget(tier)
+    assert dek_lines(smart_quotes(fitted)) <= dek_clamp(tier)
+    assert fitted.endswith(ELLIPSIS) or text.startswith(fitted)
+
+
+def test_the_clamp_only_ever_shortens_the_character_fit():
+    text = ("Lawyers for three outlets asked a judge to restore their access. "
+            "The White House says access is a privilege. A ruling is expected next week.")
+    for tier in ("hero", "secondary", "river", "text_only"):
+        from app.frontpage import dek_budget, dek_clamp
+        plain, clamped = fit_dek(text, dek_budget(tier)), fit_dek(text, dek_budget(tier), dek_clamp(tier))
+        assert plain.startswith(clamped.rstrip(ELLIPSIS)) or clamped == plain
