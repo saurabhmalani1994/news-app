@@ -11,7 +11,7 @@
 //   whole subtree goes (script, style, iframe, object, form, svg, math and the like);
 // - an element outside the HTML namespace (SVG, MathML) goes with its subtree;
 // - an attribute not on ATTRIBUTES is never read, so every on* handler, style, srcdoc,
-//   class, id and srcset is gone by construction;
+//   class, id, srcset and formaction is gone by construction, in any letter case;
 // - a link is kept only if it resolves to https (http is upgraded), and always gets
 //   target="_blank" and rel="noopener noreferrer"; any other scheme (javascript:,
 //   data:, vbscript:, file:, blob:) leaves the link's text as plain text;
@@ -169,6 +169,10 @@ export function sanitizeTree(root, doc, base) {
  *   relative links resolve to the source; doc defaults to the page's document
  */
 export function sanitizeBody(html, { base, doc = globalThis.document } = {}) {
-  const parsed = new doc.defaultView.DOMParser().parseFromString(String(html ?? ""), "text/html");
+  // H5: the leading <body> puts the parser straight into the body. Without it, a body
+  // that opens with <noscript> is parsed in the head, where (DOMParser runs with
+  // scripting off) the first <p> or <img> inside closes the noscript and lands in the
+  // body, so markup the feed meant never to show came through, sanitized but visible.
+  const parsed = new doc.defaultView.DOMParser().parseFromString(`<body>${String(html ?? "")}`, "text/html");
   return sanitizeTree(parsed.body, doc, base);
 }
