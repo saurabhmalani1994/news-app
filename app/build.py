@@ -315,9 +315,17 @@ def coverage_summary_text(cluster, by_id):
     """'N outlets, M independent, across K leans', plain numbers only (no AI text, R13):
     the sheet's own header (js/coverage.js summarize()) shows the same three numbers
     from the same cluster fields, so the button's accessible name matches what opening
-    it shows."""
-    outlets = coverage_outlet_count(cluster.get("article_ids", []), by_id)
-    independent = cluster.get("independent_sources", 0)
+    it shows.
+
+    H6 item 3: `independent` is visible_source_count (empty mute set, the build's own
+    default profile), the same fold-a-wire-copy-group-to-one definition the row's own
+    "N sources" and V1's carousel use, not the cluster's `independent_sources` field
+    (fanout.py's fetch-time syndication-table count, not this cluster's own detected
+    duplicates), which could and did disagree on a wire copy."""
+    article_ids = cluster.get("article_ids", [])
+    outlets = coverage_outlet_count(article_ids, by_id)
+    members = [by_id[aid] for aid in article_ids if aid in by_id]
+    independent = visible_source_count(members, cluster.get("near_duplicates", []), ())
     leans = len(cluster.get("lean_buckets", []))
     lean_word = "lean" if leans == 1 else "leans"
     return f"{outlets} outlets, {independent} independent, across {leans} {lean_word}"

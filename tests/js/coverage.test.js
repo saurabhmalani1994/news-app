@@ -130,3 +130,41 @@ test("a source with no recorded lean falls back to a bucket rather than being dr
   const seen = groups.flatMap((g) => g.rows.map((r) => r.id));
   assert.deepEqual(seen.sort(), ["a_center", "a_unknown"]);
 });
+
+// H6 item 3: the sheet's "independent" count must never read the cluster's own stale
+// `independent_sources` field (fanout.py's fetch-time syndication-table count), only
+// its own near_duplicates fold, the same definition the row's "N sources" and V1's
+// carousel use. This cluster's field is deliberately wrong (99) to prove it is ignored.
+test("the independent count is computed fresh from near_duplicates, never read off the cluster's own stale field", () => {
+  const cluster = { ...CLUSTER, independent_sources: 99 };
+  const { summary } = buildCoverage(cluster, CTX);
+  assert.equal(summary.independent, 4);
+  assert.notEqual(summary.independent, cluster.independent_sources);
+});
+
+// H6 item 3: a muted outlet never appears in the sheet and is never counted, in either
+// number, matching versions.js buildVersions and app/frontpage.py visible_source_count.
+test("a muted outlet is dropped from the sheet's rows and from both summary counts", () => {
+  const ctx = coverageContext(
+    {
+      pool: { articles: POOL_ARTICLES },
+      names: { npr: "NPR", pbs_newshour: "PBS NewsHour", fox_politics: "Fox News Politics", bbc_world: "BBC World", kyodo_news: "Kyodo News" },
+      leans: { npr: "center-left", pbs_newshour: "center-left", fox_politics: "right", bbc_world: "center", kyodo_news: "non-us" },
+      ownership: { kyodo_news: "member-owned" },
+      coverage: {
+        a_wire1: { url: "https://npr.example/a", has_body: false },
+        a_wire2: { url: "https://pbs.example/a", has_body: false },
+        a_right1: { url: "https://fox.example/1", has_body: true },
+        a_right2: { url: "https://fox.example/2", has_body: false },
+        a_center: { url: "https://bbc.example/a", has_body: false },
+        a_intl: { url: "https://kyodo.example/a", has_body: false },
+      },
+    },
+    { muted: ["fox_politics"] },
+  );
+  const { summary, groups } = buildCoverage(CLUSTER, ctx);
+  const seen = groups.flatMap((g) => g.rows.map((r) => r.id));
+  assert.ok(!seen.includes("a_right1") && !seen.includes("a_right2"));
+  assert.equal(summary.outlets, 4);
+  assert.equal(summary.independent, 3);
+});

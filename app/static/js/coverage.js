@@ -57,12 +57,17 @@ function groupIndexOf(nearDuplicates) {
 }
 
 /** One row per near-duplicate group (its lowest article id is the row, deterministic
- * and content-independent) plus one row per article outside any group. */
+ * and content-independent) plus one row per article outside any group. A muted outlet's
+ * article never forms or joins a row (H6 item 3: the sheet shows the same outlets the
+ * row's "N sources" and V1's carousel count, so a mute never leaves it over-counted). */
 function buildRows(cluster, ctx) {
+  const muted = ctx.muted || new Set();
   const groupOf = groupIndexOf(cluster.near_duplicates);
   const groups = new Map(); // index -> ids[]
   const singles = [];
   for (const id of cluster.article_ids) {
+    const article = ctx.articleById.get(id);
+    if (article && muted.has(article.source_id)) continue;
     const g = groupOf.get(id);
     if (g === undefined) { singles.push(id); continue; }
     if (!groups.has(g)) groups.set(g, []);
@@ -93,15 +98,38 @@ function rowOrder(a, b) {
   return a.id.localeCompare(b.id);
 }
 
-/** Distinct outlets that carried the story in any form, syndicated copies included
- * (independent_sources, the cluster's own field, folds one wire-copy group to one). */
+/** Distinct unmuted outlets that carried the story in any form, syndicated copies
+ * included (the larger of the sheet's two numbers; "independent" below is the one that
+ * folds a wire-copy group to one). */
 function outletCount(cluster, ctx) {
+  const muted = ctx.muted || new Set();
   const ids = new Set();
   for (const aid of cluster.article_ids) {
     const article = ctx.articleById.get(aid);
-    if (article) ids.add(article.source_id);
+    if (article && !muted.has(article.source_id)) ids.add(article.source_id);
   }
   return ids.size;
+}
+
+/** Distinct unmuted outlets, a near-duplicate group (syndicated copies of one piece)
+ * folded to one voice and one outlet counted once however many pieces it ran. The one
+ * definition of "independent" (H6 item 3), shared with the row's "N sources"
+ * (app/frontpage.py visible_source_count) and V1's carousel (versions.js buildVersions,
+ * js/tiers.js visibleSourceCount): the same wire-copy story never shows a different
+ * count in different places. Never reads the cluster's own `independent_sources` field,
+ * which fanout.py sets from a fetch-time syndication table, not this cluster's own
+ * detected duplicates, and is never mute-aware. */
+function independentCount(cluster, ctx) {
+  const muted = ctx.muted || new Set();
+  const groupOf = groupIndexOf(cluster.near_duplicates);
+  const units = new Set();
+  for (const id of cluster.article_ids) {
+    const article = ctx.articleById.get(id);
+    if (!article || muted.has(article.source_id)) continue;
+    const group = groupOf.get(id);
+    units.add(group !== undefined ? `g${group}` : `s${article.source_id}`);
+  }
+  return units.size;
 }
 
 /** {summary: {outlets, independent, leans, text}, groups: [{bucket, label, rows}]} for
@@ -118,7 +146,7 @@ export function buildCoverage(cluster, ctx) {
     .filter((bucket) => byBucket.has(bucket))
     .map((bucket) => ({ bucket, label: LEAN_LABELS[bucket], rows: [...byBucket.get(bucket)].sort(rowOrder) }));
   const outlets = outletCount(cluster, ctx);
-  const independent = cluster.independent_sources || 0;
+  const independent = independentCount(cluster, ctx);
   const leans = (cluster.lean_buckets || []).length;
   const leanWord = leans === 1 ? "lean" : "leans";
   return {
@@ -128,8 +156,9 @@ export function buildCoverage(cluster, ctx) {
 }
 
 /** The page's own embedded facts, shaped for buildCoverage: input is the parsed
- * #rank-input JSON (app/build.py _rank_input_json). */
-export function coverageContext(input) {
+ * #rank-input JSON (app/build.py _rank_input_json). `muted` is the viewer's
+ * profile.mutes.sources (H6 item 3), an array or Set; the shipped default has none. */
+export function coverageContext(input, { muted = [] } = {}) {
   return {
     articleById: new Map((input.pool?.articles || []).map((a) => [a.id, a])),
     names: input.names || {},
@@ -137,5 +166,6 @@ export function coverageContext(input) {
     ownership: input.ownership || {},
     countries: input.countries || {},
     coverage: input.coverage || {},
+    muted: new Set(muted),
   };
 }

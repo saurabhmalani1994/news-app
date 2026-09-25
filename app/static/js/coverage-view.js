@@ -10,6 +10,7 @@ import { openSheet, closeSheet, isSheetOpen } from "./sheet.js";
 import { buildCoverage, coverageContext, LEAN_LABELS } from "./coverage.js";
 import { relativeAge } from "./offline-format.js";
 import { leanMarker } from "./lean.js";
+import { STORAGE_KEY } from "./profile/store.js";
 
 let cachedInput = null;
 function getInput() {
@@ -21,6 +22,22 @@ function getInput() {
     }
   }
   return cachedInput;
+}
+
+/** The stored profile's mutes.sources, read fresh at each open so a mute saved since
+ * the page loaded counts (H6 item 3: the sheet's outlet counts must agree with the
+ * row's "N sources" and V1's carousel, both of which drop a muted outlet). [] when
+ * storage cannot be read or nothing is stored: the shipped default mutes nothing. */
+function storedMutes() {
+  try {
+    const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null")?.history;
+    if (Array.isArray(history) && history.length) {
+      return history[history.length - 1].profile?.mutes?.sources || [];
+    }
+  } catch {
+    // storage blocked: fall through
+  }
+  return window.almanacProfile?.mutes?.sources || [];
 }
 
 function el(tag, className, text) {
@@ -130,7 +147,7 @@ export function openCoverage(sid, opener) {
   const input = getInput();
   const cluster = (input.pool?.clusters || []).find((c) => c.id === sid);
   if (!cluster) return false;
-  const content = coverageContent(cluster, coverageContext(input));
+  const content = coverageContent(cluster, coverageContext(input, { muted: storedMutes() }));
   openSheet({ title: "Coverage", content, opener });
   return true;
 }
