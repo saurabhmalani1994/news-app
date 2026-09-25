@@ -29,7 +29,7 @@ const passNames = (list) => [...new Set(list.flatMap((s) => s.passes.map((e) => 
 const QUIET = [art("q1", "s1", 1, ["ai"]), art("q2", "s2", 2, ["ai"]), art("q3", "s3", 3, ["ai"])];
 
 test("the stated order, and which pages run which passes", () => {
-  assert.deepEqual(PASS_ORDER, ["mute", "dedup", "lean-quota", "exploration", "other-side", "must-know", "standing-story"]);
+  assert.deepEqual(PASS_ORDER, ["mute", "dedup", "repeat-cap", "lean-quota", "exploration", "other-side", "must-know", "standing-story"]);
   assert.deepEqual(TODAY_PASSES, PASS_ORDER.slice(2));
   assert.deepEqual(SECTION_PASSES, ["lean-quota", "other-side"]);
   assert.deepEqual(PASS_DEFAULTS.lean_quota, { window: 10, max_share: 0.6 });
@@ -74,6 +74,49 @@ test("dedup alone: the same headline twice keeps the fuller story and names the 
   assert.match(pages.removed[0].passes[0].text, /^Removed by dedup: .*story d1/);
   assert.deepEqual(pages.today.map((s) => s.passes.map((e) => e.text)), [[], ["Moved up by dedup: from 3 to 2, a duplicate above it was removed"], ["Moved up by dedup: from 4 to 3, a duplicate above it was removed"]]);
   assert.deepEqual(passNames(pages.today), ["dedup"]);
+});
+
+test("repeat cap alone: at most 2 cards per S32 event, and a headline twin, held to the top 12", () => {
+  // 15 singleton stories, all the same topic, one hour apart so score order is exactly
+  // creation order (s00 newest/highest through s14 oldest/lowest). s01/s02/s04 share one
+  // S32 event (only 2 of the three may stay in the top 12); s05 and s06 are unrelated to
+  // any event but their headlines share the same rare proper noun and topic word.
+  const titles = {
+    s01: "Wildfire crews reach the ridge by nightfall",
+    s02: "State parks close ahead of the holiday weekend",
+    s04: "Ferry service resumes after the harbor repair",
+    s05: "Vaneswaran unveils a downtown stadium proposal",
+    s06: "City council reviews Vaneswaran's stadium proposal",
+  };
+  const arts = [];
+  for (let i = 0; i < 15; i++) {
+    const id = `s${String(i).padStart(2, "0")}`;
+    arts.push(art(id, `src${i}`, i * 2, ["ai"], titles[id] || `Regional report number ${i} filed overnight`));
+  }
+  const events = [{ id: "e1", label: "Ridge wildfire", cluster_ids: ["s01", "s02", "s04"] }];
+  const { list } = applyPasses(["mute", "dedup", "repeat-cap"], poolOf(arts), profile(), NOW, { events });
+  assert.deepEqual(ids(list), [
+    "s00", "s01", "s02", "s03", "s05", "s07", "s08", "s09", "s10", "s11", "s12", "s13", "s04", "s06", "s14",
+  ]);
+  const by = Object.fromEntries(list.map((s) => [s.id, s.passes.filter((e) => e.pass === "repeat-cap")]));
+  assert.equal(by.s04.length, 1);
+  assert.match(by.s04[0].text, /^Moved down by repeat cap: from 5 to 13, 2 cards from this event \(Ridge wildfire\) already in the top 12$/);
+  assert.equal(by.s06.length, 1);
+  assert.match(by.s06[0].text, /^Moved down by repeat cap: from 7 to 14, shares most rare headline words with story s05 already in the top 12$/);
+  // Collateral shifts (cards pulled up to fill the freed places) are named too, but not
+  // as a repeat-cap move of their own.
+  assert.match(list.find((s) => s.id === "s05").passes.find((e) => e.pass === "repeat-cap").text, /^Moved up by repeat cap: from 6 to 5/);
+  // s14 never moves: it was last before the cap and stays last after it.
+  assert.deepEqual(list.find((s) => s.id === "s14").passes.filter((e) => e.pass === "repeat-cap"), []);
+});
+
+test("repeat cap alone: a page of 12 or fewer never has anywhere to push a card down to", () => {
+  const arts = [];
+  for (let i = 0; i < 12; i++) arts.push(art(`s${i}`, `src${i}`, i, ["ai"]));
+  const events = [{ id: "e1", label: "Test", cluster_ids: ["s0", "s1", "s2"] }];
+  const { list } = applyPasses(["mute", "dedup", "repeat-cap"], poolOf(arts), profile(), NOW, { events });
+  assert.deepEqual(ids(list), arts.map((a) => a.id));
+  assert.deepEqual(passNames(list), []);
 });
 
 test("lean quota alone: a card is held back while its lean would pass the cap, both moves named", () => {
@@ -184,12 +227,15 @@ function busyPool() {
     const bucketSet = [...new Set(members.map((id) => leans[`s${Number(id.slice(1)) % 14}`]))].sort();
     clusters.push(clu(`c${c}`, members, 3 + (c % 2), bucketSet, members[0]));
   }
-  return { pool: poolOf(articles, clusters), leans, buckets: { s2: "singapore", s3: "us_politics", s1: "general" } };
+  // H4 item 1: an S32 event across 3 of the top-ranked clusters, so repeat-cap has a
+  // third card to push down (the event's own cluster_ids, only 2 per event allowed).
+  const events = [{ id: "e0", label: "Busy event", cluster_ids: ["c5", "c0", "c3"] }];
+  return { pool: poolOf(articles, clusters), leans, buckets: { s2: "singapore", s3: "us_politics", s1: "general" }, events };
 }
 
 test("every pass runs on the busy fixture, and entries appear in the stated order", () => {
-  const { pool, leans, buckets } = busyPool();
-  const pages = rankPages(pool, profile((x) => { x.mutes.sources = ["s13"]; }), NOW, { leans, buckets });
+  const { pool, leans, buckets, events } = busyPool();
+  const pages = rankPages(pool, profile((x) => { x.mutes.sources = ["s13"]; }), NOW, { leans, buckets, events });
   const seen = new Set([...pages.today, ...pages.removed].flatMap((s) => s.passes.map((e) => e.pass)));
   assert.deepEqual([...seen].sort(), [...PASS_ORDER].sort());
   for (const s of pages.today) {

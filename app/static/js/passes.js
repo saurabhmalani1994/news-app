@@ -7,25 +7,32 @@
 // Order, and where each pass runs:
 //   1 mute         every tab   a muted source or topic never appears
 //   2 dedup        every tab   one card per piece of copy
-//   3 lean-quota   each tab    at most max_share of any `window` cards from one lean
-//   4 exploration  Today       positions 4, 14, 24 by recency + importance only
-//   5 other-side   each tab    one attached link on a 3+ source, 2+ lean cluster, from
+//   3 repeat-cap   Today       H4: at most 2 cards per S32 event, and never two whose
+//                              lead headlines share most rare words, in the top 12
+//   4 lean-quota   each tab    at most max_share of any `window` cards from one lean
+//   5 exploration  Today       positions 4, 14, 24 by recency + importance only
+//   6 other-side   each tab    one attached link on a 3+ source, 2+ lean cluster, from
 //                              the lean least represented in the page's first screen
-//   6 must-know    Today       floor_slots R16-eligible stories at the top
-//   7 standing-    Today       S28: each standing story (standing.js) holds at least its
+//   7 must-know    Today       floor_slots R16-eligible stories at the top
+//   8 standing-    Today       S28: each standing story (standing.js) holds at least its
 //     story                    floor_slots cards in the first floor_within places
 // Mute and dedup are facts about the pool for this owner, so they run once and every
 // tab is filtered from their result. A section tab is the same list filtered (S27),
 // then its own lean quota and other-side slot, since each tab is its own screen
-// ("no single side dominates a screen", OWNER-BRIEF). Exploration and the must-know
-// floor belong to the front page: a section tab is already a chosen topic, and the
-// floor is "at the top of the front page" (OWNER-BRIEF, derived). The standing-story
-// floor runs last so no later pass can push its card back out of the zone, and its one
-// move (a card swapped into the zone's lowest free place) never disturbs the must-know
-// slots or an exploration slot above it. Mute runs before it and wins: a mute is the
-// owner's explicit word that a source or topic never appears (S13), and R19 exempts the
-// floor only from thumbs. The silence alarm still reads the whole pool, so a mute never
-// turns into a claim that nobody covered the story.
+// ("no single side dominates a screen", OWNER-BRIEF). Repeat-cap, exploration and the
+// must-know floor belong to the front page: a section tab is already a chosen topic, and
+// the floor is "at the top of the front page" (OWNER-BRIEF, derived). Repeat-cap runs
+// first among Today's own passes, right after dedup and for the same reason: dedup
+// already removes a literal duplicate headline pool-wide, but the same event or story
+// told in different words is not a duplicate anywhere else on the page, only a repeat
+// crowding Today's own top; it moves cards rather than removing them, so every other
+// Today pass places into the already-thinned order. The standing-story floor runs last
+// so no later pass can push its card back out of the zone, and its one move (a card
+// swapped into the zone's lowest free place) never disturbs the must-know slots or an
+// exploration slot above it. Mute runs before everything and wins: a mute is the owner's
+// explicit word that a source or topic never appears (S13), and R19 exempts the floor
+// only from thumbs. The silence alarm still reads the whole pool, so a mute never turns
+// into a claim that nobody covered the story.
 //
 // Pure and deterministic like the ranker: the same pool, profile and time give the
 // same pages byte for byte, at build under Node and on the device.
@@ -33,9 +40,10 @@ import { rank, HARD_NEWS, TAG_TO_TOPIC } from "./ranker.js";
 import { SECTIONS, inSection } from "./sections.js";
 import { standingStories, qualifies, silenceNotices } from "./standing.js";
 import { currentLiveEvent } from "./live.js";
+import { wordKey } from "./versions.js";
 
-export const PASS_ORDER = Object.freeze(["mute", "dedup", "lean-quota", "exploration", "other-side", "must-know", "standing-story"]);
-export const TODAY_PASSES = Object.freeze(["lean-quota", "exploration", "other-side", "must-know", "standing-story"]);
+export const PASS_ORDER = Object.freeze(["mute", "dedup", "repeat-cap", "lean-quota", "exploration", "other-side", "must-know", "standing-story"]);
+export const TODAY_PASSES = Object.freeze(["repeat-cap", "lean-quota", "exploration", "other-side", "must-know", "standing-story"]);
 export const SECTION_PASSES = Object.freeze(["lean-quota", "other-side"]);
 
 // Defaults for profile.passes. Design-set: window 10 and 60% (DESIGN-v1 section 6, R29),
@@ -81,6 +89,12 @@ function leadOf(story, ctx) {
 export function cardLean(story, ctx) {
   const article = ctx.articles.get(leadOf(story, ctx));
   return (article && ctx.leans[article.source_id]) || null;
+}
+
+/** The headline a card shows: its lead article's title, or "" (H4 item 1's repeat cap). */
+function leadTitle(story, ctx) {
+  const article = ctx.articles.get(leadOf(story, ctx));
+  return (article && article.title) || "";
 }
 
 const nameOf = (ctx, sourceId) => ctx.names[sourceId] || sourceId;
@@ -154,7 +168,103 @@ function dedup(list, ctx) {
   return kept;
 }
 
-// 3. Lean quota. Cards are placed in score order, except that a card is held back
+// 3. Repeat cap (H4 item 1, Today only). Dedup only catches the same headline arriving
+// twice; the same event or story told in different copy still is not a duplicate
+// anywhere else, but it crowds Today's own top. Scanning score order, a card is held
+// back from the top REPEAT_CAP_WINDOW places (kept lower down, in place) once its S32
+// event already has REPEAT_CAP_MAX_PER_EVENT cards there, or once its lead headline
+// shares most of its rare words (pool-wide document frequency, stopwords aside) with a
+// card already in that top. The next card that clears both checks fills the freed
+// place, exactly as lean-quota's own "held back" cards do; nothing is ever removed.
+export const REPEAT_CAP_WINDOW = 12;
+export const REPEAT_CAP_MAX_PER_EVENT = 2;
+// A word is "rare" once it sits at or under this share of Today's own stories (never
+// fewer than RARE_WORD_MIN_DF, so a handful of stories reusing the same words never
+// makes every word "rare" by an accident of a small pool): about right for a proper
+// noun or a specific phrase two tellings of one story would both use, while any word
+// common enough to also land in unrelated stories stays out.
+const RARE_WORD_MAX_SHARE = 0.02;
+const RARE_WORD_MIN_DF = 2;
+const RARE_WORD_SHARE = 0.5;
+const HEADLINE_WORD_RE = /[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu;
+
+function headlineWords(title) {
+  const words = new Set();
+  for (const m of String(title || "").matchAll(HEADLINE_WORD_RE)) {
+    const key = wordKey(m[0]);
+    if (key) words.add(key);
+  }
+  return words;
+}
+
+/** True when the rarer of the two headlines' rare words (pool-wide df at or under
+ * `maxDf`) is more than RARE_WORD_SHARE covered by the other: "shares most of its rare
+ * words", not merely a few, so two stories in the same broad topic but told from
+ * different angles ("inflation" in both, nothing else in common) never collide. */
+function sharesRareWords(wordsA, wordsB, df, maxDf) {
+  const rareOf = (words) => [...words].filter((w) => (df.get(w) || 0) <= maxDf);
+  const rareA = rareOf(wordsA);
+  const rareB = rareOf(wordsB);
+  if (!rareA.length || !rareB.length) return false;
+  const setB = new Set(rareB);
+  const shared = rareA.filter((w) => setB.has(w)).length;
+  return shared / Math.min(rareA.length, rareB.length) > RARE_WORD_SHARE;
+}
+
+function repeatCap(list, ctx) {
+  // Nothing to push down to below a window that already holds the whole page.
+  if (list.length <= REPEAT_CAP_WINDOW) return list;
+  const window = REPEAT_CAP_WINDOW;
+  const eventOf = new Map();
+  const eventLabel = new Map();
+  for (const event of ctx.events || []) {
+    eventLabel.set(event.id, event.label || event.id);
+    for (const cid of event.cluster_ids || []) if (!eventOf.has(cid)) eventOf.set(cid, event.id);
+  }
+  const wordsOf = new Map(list.map((s) => [s.id, headlineWords(leadTitle(s, ctx))]));
+  const df = new Map();
+  for (const words of wordsOf.values()) for (const w of words) df.set(w, (df.get(w) || 0) + 1);
+  const maxDf = Math.max(RARE_WORD_MIN_DF, Math.floor(list.length * RARE_WORD_MAX_SHARE));
+
+  const kept = [];
+  const held = [];
+  const reasons = new Map();
+  const eventCount = new Map();
+  for (const story of list) {
+    if (kept.length >= window) { held.push(story); continue; }
+    const event = eventOf.get(story.id);
+    const seen = event ? eventCount.get(event) || 0 : 0;
+    if (event && seen >= REPEAT_CAP_MAX_PER_EVENT) {
+      reasons.set(story.id, { kind: "event", event });
+      held.push(story);
+      continue;
+    }
+    const words = wordsOf.get(story.id);
+    const twin = kept.find((s) => sharesRareWords(words, wordsOf.get(s.id), df, maxDf));
+    if (twin) {
+      reasons.set(story.id, { kind: "headline", twin: twin.id });
+      held.push(story);
+      continue;
+    }
+    kept.push(story);
+    if (event) eventCount.set(event, seen + 1);
+  }
+  const out = [...kept, ...held];
+  const was = new Map(list.map((s, i) => [s.id, i + 1]));
+  out.forEach((story, i) => {
+    const reason = reasons.get(story.id);
+    if (!reason) return;
+    const to = i + 1;
+    const text = reason.kind === "event"
+      ? `Moved down by repeat cap: from ${was.get(story.id)} to ${to}, ${REPEAT_CAP_MAX_PER_EVENT} cards from this event (${eventLabel.get(reason.event) || reason.event}) already in the top ${window}`
+      : `Moved down by repeat cap: from ${was.get(story.id)} to ${to}, shares most rare headline words with story ${reason.twin} already in the top ${window}`;
+    note(story, "repeat-cap", text, { from: was.get(story.id), to });
+  });
+  markShifts(list, out, "repeat-cap", shiftText("repeat cap", "a repeat above it was pushed down"));
+  return out;
+}
+
+// 4. Lean quota. Cards are placed in score order, except that a card is held back
 // while placing it would put more than max_share of any `window` consecutive cards
 // in its outlet's lean bucket; the next card that fits takes the place. A card of no
 // known lean never counts. When nothing left fits, order resumes unchanged.
@@ -206,7 +316,7 @@ function quotaBreaks(list, ctx) {
 /** `list` with the story at index `from` moved to index `to`. */
 const moved = (list, from, to) => { const out = [...list]; out.splice(to, 0, ...out.splice(from, 1)); return out; };
 
-// 4. Exploration. Each slot position (1-based) takes the best story at or below it
+// 5. Exploration. Each slot position (1-based) takes the best story at or below it
 // scored by recency and importance only, affinity and boosts zeroed, so a story from a
 // topic the owner does not follow can still reach the page. Of those, the best whose
 // move keeps the lean quota as the quota pass left it; the best outright only when no
@@ -232,7 +342,7 @@ function exploration(list, ctx) {
   return out;
 }
 
-// 5. Other side. The first `per_page` cards whose cluster has at least 3 independent
+// 6. Other side. The first `per_page` cards whose cluster has at least 3 independent
 // sources across at least 2 lean buckets each get one attached link: that cluster's
 // newest article from the lean least represented among the page's first `window`
 // cards, other than the card's own lean and any muted source. Between equally rare
@@ -265,7 +375,7 @@ function otherSide(list, ctx) {
   });
 }
 
-// 6. Must-know floor (R16, OWNER-BRIEF). The top floor_slots places hold eligible
+// 7. Must-know floor (R16, OWNER-BRIEF). The top floor_slots places hold eligible
 // stories: hard news covered by independent outlets across at least two lean buckets.
 // Eligible stories already there count; the rest are the best eligible stories below,
 // by recency and importance alone (the must_know affinity is zeroed by design), however
@@ -294,7 +404,7 @@ function mustKnow(list, ctx) {
   return out;
 }
 
-// 7. Standing-story floor (R2, S28). For each standing story in the profile's order:
+// 8. Standing-story floor (R2, S28). For each standing story in the profile's order:
 // when fewer than floor_slots of the first floor_within cards qualify and the list
 // holds a qualifying story below them, the best of those by recency and importance
 // alone (affinity zeroed, as must-know and exploration do, so a story the owner never
@@ -360,6 +470,7 @@ function standingFloor(list, ctx) {
 export const PASSES = Object.freeze({
   mute: { name: "mute", fn: mute },
   dedup: { name: "dedup", fn: dedup },
+  "repeat-cap": { name: "repeat-cap", fn: repeatCap },
   "lean-quota": { name: "lean-quota", fn: leanQuota },
   exploration: { name: "exploration", fn: exploration },
   "other-side": { name: "other-side", fn: otherSide },
@@ -379,6 +490,7 @@ function passContext(pool, profile, opts) {
     standing: standingStories(profile),
     articles: new Map((pool.articles || []).map((a) => [a.id, { ...a, ms: epoch(a.published_at) }])),
     leads: new Map((pool.clusters || []).filter((c) => c.lead).map((c) => [c.id, c.lead])),
+    events: opts.events || [],
     removed: [],
   };
 }
