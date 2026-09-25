@@ -152,7 +152,7 @@ def test_fixture_1_is_the_whole_published_pool_section_1_judged():
     assert fx["pool_generated_at"] == "2026-09-24T14:33:56Z"
     assert len(arts) == 415
     assert len(stored_clusters(arts)) == 50
-    assert len({a["story"] for a in arts}) == 321
+    assert len({a["story"] for a in arts}) == 322  # 321 before R47 split the Xi summit story
     assert len({a["event"] for a in arts}) == 260
 
 

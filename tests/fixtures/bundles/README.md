@@ -5,7 +5,9 @@ private repo, testing only. No article bodies, no URLs, deks cut to 600 characte
 
 - `gold_2026-09-24.json`: fixture 1, the whole published pool of the run generated
   2026-09-24T14:33:56Z (415 articles, 50 S07 clusters), the pool section 1 judged by hand.
-  321 stories (45 with 2+ articles, 41 across 2+ outlets), 260 events.
+  322 stories (46 with 2+ articles, 42 across 2+ outlets), 260 events. R47 split its
+  Xi summit story in two, Wednesday's arrival and Thursday's White House talks, as fixture 2
+  labels them; the calls are in its `notes`.
 - `gold_2026-09-24b.json`: fixture 2 (B1b), the first pre-cap dump: a local fetcher run
   generated 2026-09-24T23:12:25Z (5,118 candidates, 296 S07 groups). The 7 largest groups
   (the 20 largest held 241 articles) plus 50 singletons, seed 20260924, then 50 other
