@@ -119,6 +119,30 @@ test("repeat cap alone: a page of 12 or fewer never has anywhere to push a card 
   assert.deepEqual(passNames(list), []);
 });
 
+test("H6 item 1: exploration slot 4 never pulls back a card the repeat cap just pushed out", () => {
+  // 15 same-topic singleton stories, i*2 hours old (s00 freshest). e1 owns the top
+  // three by score (s00, s01, s02); the cap keeps only 2 in the top 12 and pushes s02
+  // to the bottom. s02 is still fresher than every other card below slot 4, so on
+  // recency and importance alone (exploration's own scoring, affinity zeroed) it is
+  // slot 4's best candidate. Before H6, exploration placed it back at slot 4, inside
+  // REPEAT_CAP_WINDOW (12), which put all 3 of e1's cards back in the top 12 and undid
+  // the cap; this is R2's rank_parity_pool.py scenario, reproduced in JS.
+  const arts = [];
+  for (let i = 0; i < 15; i++) {
+    const id = `s${String(i).padStart(2, "0")}`;
+    arts.push(art(id, `src${i}`, i * 2, ["ai"], `Regional report number ${i} filed overnight`));
+  }
+  const events = [{ id: "e1", label: "Test event", cluster_ids: ["s00", "s01", "s02"] }];
+  const { list } = applyPasses(["mute", "dedup", "repeat-cap", "exploration"], poolOf(arts), profile(), NOW, { events });
+  const top12 = ids(list).slice(0, 12);
+  assert.ok(!top12.includes("s02"), "s02 stays out of the top 12 after exploration runs too");
+  assert.equal(top12.filter((id) => ["s00", "s01", "s02"].includes(id)).length, 2, "e1 never regains a third card in the top 12");
+  // Slot 4 (index 3) was filled by something else, and says so.
+  const slot4 = list[3];
+  assert.notEqual(slot4.id, "s02");
+  assert.ok(slot4.passes.some((e) => e.pass === "exploration" && e.text.startsWith("Placed by exploration in slot 4")));
+});
+
 test("lean quota alone: a card is held back while its lean would pass the cap, both moves named", () => {
   const leans = { s1: "left", s2: "left", s3: "right" };
   const p = profile((x) => { x.passes.lean_quota = { window: 3, max_share: 0.34 }; });

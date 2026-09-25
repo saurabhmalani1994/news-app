@@ -211,16 +211,37 @@ function sharesRareWords(wordsA, wordsB, df, maxDf) {
   return shared / Math.min(rareA.length, rareB.length) > RARE_WORD_SHARE;
 }
 
+/** cluster id -> event id, first event claiming it wins (S32). Shared by repeat-cap,
+ * which enforces the per-event cap, and exploration, which must never undo it. */
+function eventMap(ctx) {
+  const eventOf = new Map();
+  for (const event of ctx.events || []) {
+    for (const cid of event.cluster_ids || []) if (!eventOf.has(cid)) eventOf.set(cid, event.id);
+  }
+  return eventOf;
+}
+
+/** True when the top REPEAT_CAP_WINDOW cards of `list` hold more than
+ * REPEAT_CAP_MAX_PER_EVENT from any one S32 event. Used by exploration so a slot at or
+ * inside the window never pulls back a card the repeat cap just pushed out. */
+function repeatCapBroken(list, ctx) {
+  const eventOf = eventMap(ctx);
+  const count = new Map();
+  for (const s of list.slice(0, REPEAT_CAP_WINDOW)) {
+    const event = eventOf.get(s.id);
+    if (!event) continue;
+    count.set(event, (count.get(event) || 0) + 1);
+  }
+  return [...count.values()].some((c) => c > REPEAT_CAP_MAX_PER_EVENT);
+}
+
 function repeatCap(list, ctx) {
   // Nothing to push down to below a window that already holds the whole page.
   if (list.length <= REPEAT_CAP_WINDOW) return list;
   const window = REPEAT_CAP_WINDOW;
-  const eventOf = new Map();
+  const eventOf = eventMap(ctx);
   const eventLabel = new Map();
-  for (const event of ctx.events || []) {
-    eventLabel.set(event.id, event.label || event.id);
-    for (const cid of event.cluster_ids || []) if (!eventOf.has(cid)) eventOf.set(cid, event.id);
-  }
+  for (const event of ctx.events || []) eventLabel.set(event.id, event.label || event.id);
   const wordsOf = new Map(list.map((s) => [s.id, headlineWords(leadTitle(s, ctx))]));
   const df = new Map();
   for (const words of wordsOf.values()) for (const w of words) df.set(w, (df.get(w) || 0) + 1);
@@ -328,8 +349,12 @@ function exploration(list, ctx) {
     if (pos < 1 || pos > out.length) continue;
     const pool = out.slice(pos - 1).filter((s) => !placed.has(s.id)).sort(byNeutral);
     if (!pool.length) continue;
+    // H6: a slot at or inside REPEAT_CAP_WINDOW must not pull back a card the repeat
+    // cap (pass 3) just pushed out of it, or exploration would undo H4's cap.
+    const capSafe = pool.filter((s) => !repeatCapBroken(moved(out, out.indexOf(s), pos - 1), ctx));
+    const search = capSafe.length ? capSafe : pool;
     const base = quotaBreaks(out, ctx);
-    const pick = pool.find((s) => quotaBreaks(moved(out, out.indexOf(s), pos - 1), ctx) <= base) || pool[0];
+    const pick = search.find((s) => quotaBreaks(moved(out, out.indexOf(s), pos - 1), ctx) <= base) || search[0];
     const from = out.indexOf(pick) + 1;
     out = moved(out, from - 1, pos - 1);
     placed.add(pick.id);
