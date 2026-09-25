@@ -310,6 +310,15 @@ check(k1 && k2 && k3 && slideAt === 0 && !s.open, "ArrowRight, End and Home move
 
 // 4. The 11-or-more-version strip keeps its active chip in view.
 const wide = survey.counts.filter((c) => c.n >= 11).sort((a, b) => a.n - b.n)[0];
+// R2: a pool with no such cluster already failed above; stop with that failure, not a
+// TypeError here. tests/browser/fixtures/v1_pool.py makes one from any real pool.
+if (!wide) {
+  console.log("  no 11-version cluster: build tests/browser/fixtures/v1_pool.py's pool (see tests/browser/README.md)");
+  console.log(`
+${failures.length} failed`);
+  chrome.close(); site.close(); hostile.close();
+  process.exit(1);
+}
 await openRow(wide.sid);
 await evaluate(`document.getElementById("bv-tab-0").focus()`);
 const seen = [];
