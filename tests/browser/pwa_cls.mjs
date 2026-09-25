@@ -8,10 +8,11 @@
 //      (DevTools network emulation, the documented way to test a service worker's
 //      offline behavior) and reloads again: the page still loads, entirely from cache,
 //      with the offline line and CLS 0, and zero CSP violations throughout;
-//   B. installs the service worker for one build, then serves a second, slightly
-//      different build at the same URL (a redeploy) and relaunches (about:blank, then
-//      back, the way closing and reopening the app does): the shell cache is replaced,
-//      never left holding both.
+//   B. installs the service worker for one build, then redeploys twice in a row at the
+//      same URL, relaunching after each: the shell cache count never grows past 2 (the
+//      current build and the one right before it, kept for a page of that build still
+//      open, sw_template.js's own documented activate policy), and a build two
+//      redeploys back is the one that finally goes.
 // Exits 1 on any failure.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -142,19 +143,37 @@ async function sessionB() {
   // a registration, so v1's cache is still there for it to find and delete: this
   // exercises the exact cleanup code a real redeploy runs, just not gated behind the
   // platform's own client-counting, which is not app code.
-  const pool2 = JSON.parse(readFileSync(POOL, "utf-8"));
-  pool2.generated_at = "2026-09-24T05:30:00Z";
-  const pool2Path = join(ROOT, "tests", ".tmp-pwa-cls-pool2.json");
-  writeFileSync(pool2Path, JSON.stringify(pool2));
-  runBuild(pool2Path, dist);
-  rmSync(pool2Path);
+  // H4 item 5: the assertion used to read "exactly 1 cache left", but that never
+  // matches sw_template.js's own documented activate handler (its H2 comment: "Activate
+  // keeps the one previous build's cache next to this one, so a page from that build
+  // still open when this worker takes over keeps getting its own files; every older
+  // cache is deleted"). One redeploy correctly leaves 2 (v1 kept as the previous build,
+  // v2 current); a stale test, not a product bug. Reworked to check the real invariant:
+  // the count never grows past 2, and a build two generations back is the one that
+  // finally goes, checked across two redeploys in a row so the bound holds more than
+  // once.
+  async function redeploy(generatedAt, n) {
+    const pool = JSON.parse(readFileSync(POOL, "utf-8"));
+    pool.generated_at = generatedAt;
+    const poolPath = join(ROOT, "tests", `.tmp-pwa-cls-pool${n}.json`);
+    writeFileSync(poolPath, JSON.stringify(pool));
+    runBuild(poolPath, dist);
+    rmSync(poolPath);
+    await evaluate('navigator.serviceWorker.getRegistration().then((r) => r && r.unregister())');
+    await go("index.html");
+    await sleep(1500);
+    return evaluate('caches.keys().then((k) => k.filter((n) => n.startsWith("almanac-shell-")))');
+  }
 
-  await evaluate('navigator.serviceWorker.getRegistration().then((r) => r && r.unregister())');
-  await go("index.html");
-  await sleep(1500);
-  const shellCaches = await evaluate('caches.keys().then((k) => k.filter((n) => n.startsWith("almanac-shell-")))');
-  check("a_redeploys_activate_handler_deletes_the_stale_shell_cache", shellCaches.length === 1 && shellCaches[0] !== shellCacheV1[0],
-    { before: shellCacheV1, after: shellCaches });
+  const afterFirstRedeploy = await redeploy("2026-09-24T05:30:00Z", 2);
+  check("a_redeploy_keeps_the_current_build_and_the_one_before_it", afterFirstRedeploy.length === 2
+    && afterFirstRedeploy.includes(shellCacheV1[0]) && !afterFirstRedeploy.some((k) => k === shellCacheV1[0] && afterFirstRedeploy.length > 2),
+    { before: shellCacheV1, after: afterFirstRedeploy });
+
+  const afterSecondRedeploy = await redeploy("2026-09-24T06:15:00Z", 3);
+  check("a_second_redeploy_finally_drops_the_build_two_generations_back", afterSecondRedeploy.length === 2
+    && !afterSecondRedeploy.includes(shellCacheV1[0]) && afterSecondRedeploy.some((k) => afterFirstRedeploy.includes(k)),
+    { afterFirst: afterFirstRedeploy, afterSecond: afterSecondRedeploy, oldestGone: !afterSecondRedeploy.includes(shellCacheV1[0]) });
 
   chrome.close();
   site.close();
