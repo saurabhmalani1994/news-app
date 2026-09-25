@@ -191,3 +191,16 @@ test("standing remove and Undo through the store: one version each, exact restor
   assert.ok(sudan.ok, "a default story can be removed too");
   assert.deepEqual(store.current().standing_stories.map((s) => s.id), ["israel_gaza", "rail_strike"]);
 });
+
+test("W2's search-results source (no bucket, no lean) lands in the picker's Other group, unmarked", async () => {
+  const { groupSources } = await import("../../app/static/js/profile/you-edits.js");
+  const { leanMark } = await import("../../app/static/js/lean.js");
+  const rows = [
+    { id: "reuters", name: "Reuters", bucket: "general", lean: "center" },
+    { id: "google_news_search", name: "Google News", bucket: "", lean: "", health: "ok" },
+  ];
+  const groups = groupSources(rows);
+  assert.deepEqual(groups.map((g) => [g.id, g.label]), [["world", "World"], ["other", "Other"]]);
+  assert.deepEqual(groups.at(-1).sources.map((s) => s.id), ["google_news_search"]);
+  assert.equal(leanMark("", undefined), null, "no lean, no country: no marker");
+});

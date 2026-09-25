@@ -78,3 +78,29 @@ def test_no_profile_phrase_reaches_the_built_page(tmp_path):
     page = (tmp_path / "dist/index.html").read_text(encoding="utf-8")
     assert "w:d8e4ee5a1b" in page, "the hashed tag travels with the article"
     assert '"phrase"' not in page
+
+
+def test_the_fetcher_tags_the_shared_vectors_as_the_phone_does():
+    """tests/fixtures/watch_tags.json is shared with tests/js/phrase.test.js: W2's
+    fetcher, the phone (both hashes) and the Pages Function all give these tags."""
+    from fetcher.watch import tag_for
+    doc = json.loads((ROOT / "tests/fixtures/watch_tags.json").read_text(encoding="utf-8"))
+    assert len(doc["vectors"]) >= 5
+    for vector in doc["vectors"]:
+        assert tag_for(vector["q"]) == vector["tag"], vector["q"]
+    assert {"q": '"heat pump"', "tag": "w:d8e4ee5a1b"} in doc["vectors"]
+
+
+def test_search_results_source_sits_in_other_with_no_lean_marker():
+    """W2's pool source for search results from outlets not in sources.json. It has no
+    sources.json entry, so the catalog gives it no bucket (U5's picker files it under
+    "Other", tests/js/w1-edits.test.js) and no lean or country, so no marker anywhere."""
+    from app.lean import hit_html, marker_html
+    from app.source_catalog import catalog
+    from fetcher.watch import SOURCE
+    pool = {"sources": [SOURCE], "source_health": {SOURCE["id"]: {"state": "ok"}}}
+    [row] = catalog(pool)["sources"]
+    assert row["id"] == "google_news_search" and row["name"] == "Google News"
+    assert row["bucket"] == "" and row["lean"] == "" and "country" not in row
+    assert marker_html(row["lean"], row.get("country")) == ""
+    assert hit_html(row["id"], row["lean"], row.get("country")) == ""

@@ -144,3 +144,15 @@ test("why this names the phrase, alone and beside a topic", () => {
   assert.equal(explainStory(both, p2, NOW_MS).rows.find((r) => r.term === "affinity").label,
     "Your Economy interest and phrase “heat pump”");
 });
+
+test("tag: the vectors shared with W2's fetcher agree on the phone and in the Pages Function", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { watchTag: functionTag } = await import("../../functions/api/interests.js");
+  const { vectors } = JSON.parse(readFileSync(new URL("../fixtures/watch_tags.json", import.meta.url), "utf-8"));
+  assert.ok(vectors.length >= 5);
+  for (const { q, tag } of vectors) {
+    assert.equal(watchTagSync(q), tag, `ranker: ${q}`);
+    assert.equal(await watchTag(q), tag, `phone, Web Crypto: ${q}`);
+    assert.equal(await functionTag(q), tag, `Pages Function: ${q}`);
+  }
+});

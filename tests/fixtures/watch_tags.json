@@ -1,0 +1,29 @@
+{
+ "about": "W1 and W2 share these: the watch tag is \"w:\" plus the first 10 hex of SHA-256 over the UTF-8 bytes of q trimmed, lowercased and with whitespace runs collapsed to one space. tests/js/phrase.test.js checks the phone's two hashes and the Pages Function's against them; tests/test_w1_interests.py checks fetcher/watch.py's tag_for.",
+ "vectors": [
+  {
+   "q": "\"heat pump\"",
+   "tag": "w:d8e4ee5a1b"
+  },
+  {
+   "q": "  \"HEAT   pump\" ",
+   "tag": "w:d8e4ee5a1b"
+  },
+  {
+   "q": "zebra quantum widgets",
+   "tag": "w:579667119b"
+  },
+  {
+   "q": "\"gaza\" OR \"israel\" OR \"west bank\"",
+   "tag": "w:6a105a4454"
+  },
+  {
+   "q": "\"café crème\"",
+   "tag": "w:3f809b97f3"
+  },
+  {
+   "q": "\"el fasher\" OR \"rsf\" OR \"sudan\"",
+   "tag": "w:3905035d4b"
+  }
+ ]
+}
