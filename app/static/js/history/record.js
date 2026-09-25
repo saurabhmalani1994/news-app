@@ -22,7 +22,18 @@ export function resetHistorySession() {
  * explicitly so an exported record is self-describing without its IndexedDB keyPath,
  * for S34's history screen and S35's export/import), title, source, url, image,
  * topics and the event time. Mirrors actions/saves.js's buildSaveSnapshot field for
- * field, so a story recorded to history and one saved agree on what a "card" is. */
+ * field, so a story recorded to history and one saved agree on what a "card" is.
+ *
+ * S34: also the article id and the source id, added here backward compatibly (an older
+ * record simply lacks them). The pool that answers "which article, which outlet" rotates
+ * out within days (R23's own year-long opened retention long outlives it), so both have
+ * to be kept at record time, the same reasoning actions/saves.js's own article_id field
+ * already relies on. `source` keeps meaning the outlet's display name, as it always has;
+ * `source_id` is new, the id storyAttributes calls `source`, kept under its own name so
+ * the history screen can look up that outlet's current lean and country marker (U3) from
+ * the page's own catalog without guessing which of the two `attributes.source` was. The
+ * history screen's own fallback for an older record with neither field is `id` for the
+ * article (correct for the common unclustered case) and no marker for the outlet. */
 export function buildHistorySnapshot(id, attributes, now) {
   const time = typeof now === "function" ? now() : now;
   return {
@@ -30,9 +41,11 @@ export function buildHistorySnapshot(id, attributes, now) {
     cluster_id: id,
     title: attributes.title || "",
     source: attributes.source_name || attributes.source || "",
+    source_id: attributes.source || "",
     url: attributes.url || "",
     image: attributes.image || null,
     topics: attributes.topics || [],
+    article_id: attributes.article_id || id,
     time,
   };
 }

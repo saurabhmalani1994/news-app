@@ -33,9 +33,11 @@ test("buildHistorySnapshot is a light card, id and cluster_id agree", () => {
     cluster_id: "c1",
     title: "Singapore raises the flood barrier budget",
     source: "The Straits Times",
+    source_id: "straitstimes",
     url: "https://example.com/a",
     image: "https://example.com/a.jpg",
     topics: ["singapore", "world"],
+    article_id: "c1", // ATTRS names no article_id: falls back to the story id, correct for a lone article
     time: "2026-09-24T00:00:00Z",
   });
 });
@@ -43,8 +45,20 @@ test("buildHistorySnapshot is a light card, id and cluster_id agree", () => {
 test("buildHistorySnapshot falls back to a bare source id and empty fields", () => {
   const record = buildHistorySnapshot("c2", {}, () => "t");
   assert.equal(record.source, "");
+  assert.equal(record.source_id, "");
+  assert.equal(record.article_id, "c2");
   assert.deepEqual(record.topics, []);
   assert.equal(record.image, null);
+});
+
+// S34: a clustered story's card names an article distinct from the story (cluster) id;
+// the snapshot keeps both, so the history screen can still reopen the right article
+// once the story itself has left the pool.
+test("buildHistorySnapshot keeps a clustered story's own article id and source id, distinct from the story id", () => {
+  const record = buildHistorySnapshot("c1", { ...ATTRS, article_id: "a827ba1a90cf4138" }, () => "t");
+  assert.equal(record.id, "c1");
+  assert.equal(record.article_id, "a827ba1a90cf4138");
+  assert.equal(record.source_id, "straitstimes");
 });
 
 test("recordOpened writes once per story per session", async () => {
