@@ -278,6 +278,16 @@ function hero(photo) {
   img.setAttribute("decoding", "async");
   img.setAttribute("fetchpriority", "high");
   img.setAttribute("referrerpolicy", "no-referrer");
+  // H4 item 4: width/height attributes alone reserve the box only until the image
+  // finishes loading; once its true natural size is known, a browser's default
+  // `aspect-ratio: auto <attrs>` prefers that natural ratio over the stated one, and a
+  // photo whose feed-stated shape does not match its real file (observed: a hero
+  // recorded 360x270 landing as 1200x720) reflows to it, moving the body below by the
+  // difference (measured 54px, CLS 0.01437). An explicit --box, the same fix the card's
+  // own hero already uses (style.css .story--hero .story-img), pins the reserved shape
+  // to the stated numbers for good; object-fit crops the real photo to fit it, same as
+  // the card, so nothing below the hero ever moves once the page paints it.
+  img.style.setProperty("--box", `${width} / ${height}`);
   img.setAttribute("src", url);
   figure.append(img);
   if (credit) figure.append(el("figcaption", "reader-credit", credit));

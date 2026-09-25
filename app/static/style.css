@@ -2202,9 +2202,13 @@ body {
 }
 
 /* U1: a hero photo that fails to load (another outlet's CDN may refuse it) shows the
-   quiet placeholder tint, as a card photo does, never the broken-image icon. */
+   quiet placeholder tint, as a card photo does, never the broken-image icon. H4 item 4:
+   --box (js/reader.js hero(), the stated width/height) pins the reserved shape so the
+   image's own true size, once known, can never reflow it (the card hero's own fix,
+   style.css .story--hero .story-img); a mismatched photo is cropped to it instead. */
 .reader-hero-img {
   position: relative;
+  aspect-ratio: var(--box, auto);
 }
 
 .reader-hero-img::after {

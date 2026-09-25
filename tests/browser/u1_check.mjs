@@ -68,7 +68,12 @@ await sleep(700);
 await shot("final-dark.png");
 
 // C. The bottom of every scroller clears the nav.
-const panels = await evaluate(`[...document.querySelectorAll(".tab:not([hidden])")].map((t) => t.dataset.section)`);
+// H4: scoped to the section tab strip (.tabs-scroll); the Saved screen's segmented
+// control (#saved-segment) shares the plain ".tab" class for its own look and was
+// matching here too, its two buttons read as a section id of null and crashing the
+// next step. A stale test selector, not a product bug: Saved's segment tabs are meant
+// to share the styling, just not this list of front-page section panels.
+const panels = await evaluate(`[...document.querySelectorAll(".tabs-scroll .tab:not([hidden])")].map((t) => t.dataset.section)`);
 for (const id of panels) {
   await evaluate(`document.getElementById("tab-${id}").click()`);
   await sleep(500);
