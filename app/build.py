@@ -350,6 +350,21 @@ def version_deks(pool):
     return out
 
 
+LOCALITY_TIERS = ("local", "intermediate", "overseas")
+
+
+def version_locality(pool):
+    """B4: {article_id: tier} for the same carousel members as version_deks, from each
+    article's `locality` (local, intermediate or overseas, fetcher/locality.py), which
+    versions.js localityLabel reads so each slide names its tier. An article the cron
+    left unlabeled is absent; sorted by id for a byte-stable page."""
+    by_id = {a["id"]: a for a in pool.get("articles", [])}
+    ids = {aid for c in pool.get("clusters", []) if c.get("independent_sources", 0) > 1
+           for aid in c.get("article_ids", [])}
+    return {aid: by_id[aid]["locality"] for aid in sorted(ids)
+            if aid in by_id and by_id[aid].get("locality") in LOCALITY_TIERS}
+
+
 def coverage_articles(pool):
     """{article_id: {url, has_body}} for every article belonging to a cluster of 2 or
     more independent sources, kept apart from rank_input's compact fields (S14) so the
@@ -766,7 +781,8 @@ def _rank_input_json(pool, stories, by_id, source_names, links, chars=None):
             "images": _image_records(stories, by_id, source_names), **pass_input(pool), "links": links,
             "reader": reader_photos(stories, by_id), "bodies": reader_bodies(stories, by_id, chars or {}),
             "ownership": source_ownership(pool), "countries": source_countries(pool),
-            "coverage": coverage_articles(pool), "vdeks": version_deks(pool)}
+            "coverage": coverage_articles(pool), "vdeks": version_deks(pool),
+            "locality": version_locality(pool)}
     return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
 
 
