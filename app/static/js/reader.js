@@ -443,14 +443,21 @@ function render(id, facts) {
   out.setAttribute("aria-label", facts.source ? `Read at ${facts.source}` : "Read at the source");
 }
 
-function open(id, link, push) {
+/**
+ * S34: opens article `id` in the reader from `facts` given directly, instead of the
+ * page's own #rank-input and DOM (storyFacts): the History segment's own stories, kept
+ * on the device far longer than the live pool, know their own title, outlet and url
+ * straight from their own history record and need nothing from the current pool to show
+ * them right. Everything past that point, the push, the underneath-inert, the open
+ * transition and the body fill, is exactly what an ordinary in-page tap does, so a
+ * history reopen behaves like any other: the back button, the reader's own thumbs, and
+ * fill()'s cache-then-network all just work. `opener` is refocused on close, same as an
+ * ordinary tap's own link; null when there is nothing sensible to refocus.
+ */
+export function openWithFacts(id, facts, opener = null, push = true) {
   clearTimeout(hideTimer);
-  const facts = storyFacts(id, link);
   render(id, facts);
-  const data = pageInput();
-  const sid = facts.sid || storyIdForArticle(data, id);
-  markOpened(sid, historyAttrs(data, sid, facts.title, facts.href));
-  current = { id, link, pushed: push };
+  current = { id, link: opener, pushed: push };
   if (push) history.pushState({ almanacReader: id }, "", `#read-${id}`);
   for (const node of underneath) node.inert = true;
   reader.hidden = false;
@@ -460,6 +467,14 @@ function open(id, link, push) {
   else requestAnimationFrame(() => requestAnimationFrame(() => reader.classList.add("is-open")));
   back.focus({ preventScroll: true });
   fill(id, facts);
+}
+
+function open(id, link, push) {
+  const facts = storyFacts(id, link);
+  const data = pageInput();
+  const sid = facts.sid || storyIdForArticle(data, id);
+  markOpened(sid, historyAttrs(data, sid, facts.title, facts.href));
+  openWithFacts(id, facts, link, push);
 }
 
 function close() {
