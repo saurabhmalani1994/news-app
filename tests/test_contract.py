@@ -221,6 +221,49 @@ def test_primary_source_missing_url_fails_both():
     assert validate(pool)
 
 
+# B9: counts.primary_source, the archive lookup's own run ledger.
+
+def _primary_source_counts(**over):
+    counts = {"status": "ok", "posts": 12, "linked": 1}
+    counts.update(over)
+    return counts
+
+
+def test_primary_source_counts_field_is_optional():
+    assert "primary_source" not in GOLDEN["counts"]
+    assert JS.is_valid(GOLDEN) and validate(GOLDEN) == []
+
+
+def test_primary_source_counts_accepted_by_both():
+    pool = copy.deepcopy(GOLDEN)
+    pool["counts"]["primary_source"] = _primary_source_counts()
+    assert JS.is_valid(pool)
+    assert validate(pool) == []
+
+
+@pytest.mark.parametrize("status", ["ok", "http_error", "timeout", "parse_error", "disabled"])
+def test_primary_source_counts_statuses_accepted_by_both(status):
+    pool = copy.deepcopy(GOLDEN)
+    pool["counts"]["primary_source"] = _primary_source_counts(status=status)
+    assert JS.is_valid(pool)
+    assert validate(pool) == []
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda c: c.update(status="down"),
+    lambda c: c.update(posts=-1),
+    lambda c: c.update(linked=-1),
+    lambda c: c.update(extra="not a field"),
+    lambda c: c.pop("posts"),
+], ids=["bad-status", "negative-posts", "negative-linked", "extra-field", "missing-posts"])
+def test_primary_source_counts_shape_enforced_by_both(mutate):
+    pool = copy.deepcopy(GOLDEN)
+    pool["counts"]["primary_source"] = _primary_source_counts()
+    mutate(pool["counts"]["primary_source"])
+    assert not JS.is_valid(pool)
+    assert validate(pool)
+
+
 @pytest.mark.parametrize("bad_code", ["us", "USA", "U", "sg", "hk ", "C1"])
 def test_country_code_bad_shape_fails_both(bad_code):
     pool = copy.deepcopy(GOLDEN)

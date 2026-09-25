@@ -353,7 +353,19 @@
         "images": {"$ref": "#/$defs/image_counts"},
         "bodies": {"$ref": "#/$defs/body_counts"},
         "routes": {"$ref": "#/$defs/count_map"},
-        "watch": {"$ref": "#/$defs/watch_counts"}
+        "watch": {"$ref": "#/$defs/watch_counts"},
+        "primary_source": {"$ref": "#/$defs/primary_source_counts"}
+      }
+    },
+    "primary_source_counts": {
+      "description": "B9: this run's trumpstruth.org archive lookup (DESIGN-bundles section 3), read-only and never entering the pool as articles. status is the archive fetch/parse outcome: ok, http_error, timeout, parse_error, or disabled (no fetch attempted). posts is how many archive posts were read on an ok run (0 otherwise). linked is how many published clusters got a primary_source this run. A non-ok status always pairs with linked=0; the run still publishes (B9: an unreachable or broken archive never fails it).",
+      "type": "object",
+      "required": ["status", "posts", "linked"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {"type": "string", "enum": ["ok", "http_error", "timeout", "parse_error", "disabled"]},
+        "posts": {"type": "integer", "minimum": 0},
+        "linked": {"type": "integer", "minimum": 0}
       }
     },
     "watch_counts": {
