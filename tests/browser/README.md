@@ -76,7 +76,7 @@ R2 added two more, both taking a real pool. `rank_parity_pool.py` puts three of 
 top 12 into one event, so H4's per-event repeat cap always moves a card (the pass the
 device re-rank used to skip, see R2 below). `v1_pool.py` grows the largest cluster to 12
 versions from the pool's own single stories; `v1_check.mjs` runs it itself when the
-dist it is given has no 11-version cluster, so a fresh pool's dist is enough.
+dist it is given has no 12-version cluster (B8: forced every time), so a fresh pool's dist is enough.
 
 ```
 python tests/browser/fixtures/rank_parity_pool.py dist/pool.json > /tmp/rp_pool.json

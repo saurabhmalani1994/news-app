@@ -80,10 +80,11 @@ async function gatedSite(dir) {
   return { origin: `http://127.0.0.1:${server.address().port}`, log, close: () => server.close() };
 }
 
-// R2: an 11-or-more-version cluster is a matter of the day's news, so a pool without
-// one gets tests/browser/fixtures/v1_pool.py's: the same pool with its largest cluster
+// R2: an 11-or-more-version cluster is a matter of the day's news, so every pool goes
+// through tests/browser/fixtures/v1_pool.py: the same pool with its largest cluster
 // grown to 12 versions from the pool's own single stories, built here beside the
-// given dist (its bodies/ copied over). A pool that has one is tested as given.
+// given dist (its bodies/ copied over). B8: forced every time; only a pool that
+// already has a 12-version cluster is tested as given.
 function wideDist() {
   const out = execFileSync(PYTHON, [join(ROOT, "tests/browser/fixtures/v1_pool.py"), join(GIVEN, "pool.json")], { cwd: ROOT, maxBuffer: 1 << 28, stdio: ["ignore", "pipe", "pipe"] });
   const grown = JSON.parse(out.toString("utf8"));
@@ -95,7 +96,7 @@ function wideDist() {
   writeFileSync(join(dir, "pool.json"), JSON.stringify(grown));
   execFileSync(PYTHON, ["-m", "app.build", "--pool", join(dir, "pool.json"), "--out", join(dir, "dist")], { cwd: ROOT, stdio: "ignore" });
   if (existsSync(join(GIVEN, "bodies"))) cpSync(join(GIVEN, "bodies"), join(dir, "dist", "bodies"), { recursive: true });
-  console.log(`  no 11-version cluster in ${GIVEN}: testing v1_pool.py's pool built from it (${join(dir, "dist")})`);
+  console.log(`  no 12-version cluster in ${GIVEN}: testing v1_pool.py's pool built from it (${join(dir, "dist")})`);
   return join(dir, "dist");
 }
 const DIST = wideDist();
@@ -196,9 +197,14 @@ const state = () => evaluate(`({ open: !document.getElementById("bv").hidden, co
   focus: document.activeElement?.id || document.activeElement?.className || "" })`);
 
 /** Scrolls Today so the row of cluster `sid` sits 200dp under the strip; its rects. */
+// The row's "N sources" trigger is scrolled to the middle of the feed, so a tap never
+// lands on the tab bar: the hero's trigger sits under its photo, near the bottom of the
+// first screen (B8: the 12-version story is often the hero).
 async function toRow(sid) {
   await evaluate(`(() => { const p = document.getElementById("section-today"); const li = p.querySelector('li.story[data-sid="${sid}"]');
-    const fold = li.closest("details"); if (fold) fold.open = true; p.scrollTop = li.offsetTop - 200; })()`);
+    const fold = li.closest("details"); if (fold) fold.open = true;
+    const c = li.querySelector(".meta-count").getBoundingClientRect(); const box = p.getBoundingClientRect();
+    p.scrollTop = Math.max(0, p.scrollTop + c.top - box.top - p.clientHeight / 2); })()`);
   await sleep(350);
   return evaluate(`(() => { const li = document.querySelector('#section-today li.story[data-sid="${sid}"]');
     const r = (n) => { const b = n.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2, left: b.left, top: b.top, w: b.width, h: b.height }; };
