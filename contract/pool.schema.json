@@ -263,7 +263,8 @@
         "bad_url": {"type": "integer", "minimum": 0},
         "duplicate_url": {"type": "integer", "minimum": 0},
         "over_cap": {"type": "integer", "minimum": 0},
-        "absurd_date": {"type": "integer", "minimum": 0}
+        "absurd_date": {"type": "integer", "minimum": 0},
+        "title_rule": {"description": "B4: an item whose title matches its source's own drop_titles pattern in sources.json (Democracy Now's daily headlines roundup).", "type": "integer", "minimum": 0}
       }
     },
     "feed_states": {

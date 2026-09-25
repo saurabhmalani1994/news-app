@@ -52,6 +52,13 @@ tag saves from the per-source cap, are exempt from that cap but share one byte b
 (fetcher.watch.BUDGET_BYTES), reported in counts.watch. A watch failure of any kind
 publishes the pool without watch items; it never fails the run.
 
+B4: every article also carries the ISO countries its own title and dek name
+(fetcher.geo.tag_countries), and after the cap each published cluster gets its
+story_countries and each version its locality tier (fetcher/locality.py). A source may
+name title patterns in sources.json `drop_titles` (Democracy Now's daily "Headlines for
+<date>" roundup spans many stories, so it never joins one); a matching item is dropped
+as title_rule. Every source, whatever its roster, publishes under the same caps.
+
 Usage: python -m fetcher.fanout --out dist/pool.json --sources sources.json
 """
 import argparse
@@ -75,7 +82,8 @@ from fetcher.cluster import cluster_items, method_for
 from fetcher.events import build_events, parse_previous_events
 from fetcher.images import extract_image, filter_placeholder_logos, tally_found
 from fetcher.taxonomy import validate_sources_taxonomy
-from fetcher.geo import tag_geo
+from fetcher.geo import tag_countries, tag_geo
+from fetcher import locality
 from fetcher.topics import hard_news_topics, load_topics, tag_article
 from fetcher.health import compute_source_health, fetch_previous_pool, parse_previous_health
 from fetcher.state import DEFAULT_STATE_PATH, embed_budget_from, load_state, write_state
@@ -108,6 +116,12 @@ PER_SOURCE_CAP = 5
 CLUSTER_EXTRA_CAP = 3
 MAX_WORKERS = 32
 DUMP_DEK_CHARS = 600  # B1: enough dek for a labeler and any clusterer; never a body
+# B4: a published dek is cut to this many characters, on a word boundary, after tagging,
+# clustering and bodies have read the whole one. Feeds that put the article itself in
+# <description> (Axios, The New Republic, Dawn...) sent 2,000-char deks the page never
+# shows: its longest, the hero's, is 4 lines, and the device ranks on 200 characters
+# (app/frontpage.py RANK_DEK_CHARS). The cut keeps 108 sources under the pool budget.
+PUBLISHED_DEK_CHARS = 600
 
 # F3: a source may name an explicit fetch route in sources.json when its direct
 # feed_url is blocked from GitHub Actions' network but reachable another way. "via"
@@ -161,6 +175,14 @@ def _pool_source(source):
     country = source.get("country")
     if isinstance(country, str) and re.fullmatch(r"[A-Z]{2}", country):
         record["country"] = country
+    # B4: provenance, the paywall fact and an exile newsroom's country, in B3's shape.
+    if source.get("roster") in ("core", "perspective"):
+        record["roster"] = source["roster"]
+    if isinstance(source.get("paywall"), bool):
+        record["paywall"] = source["paywall"]
+    exile = source.get("exile_of")
+    if isinstance(exile, str) and re.fullmatch(r"[A-Z]{2}", exile):
+        record["exile_of"] = exile
     return record
 
 
@@ -233,7 +255,7 @@ def fetch_all(sources, fetch_fn=None, timeout=DEFAULT_TIMEOUT, retries=DEFAULT_R
 
 
 def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=None, topics_doc=None,
-                      image_rejected=None, is_google_news=False, kind="rss"):
+                      image_rejected=None, is_google_news=False, kind="rss", title_rules=()):
     """Build one article dict from an item/entry element, or return None (the drop
     reason is already counted). Mirrors fetcher.fetch.build_pool's per-item rules
     exactly.
@@ -264,6 +286,9 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
         leniency["title_markup"] += 1
     if not title:
         drops["no_title"] += 1
+        return None
+    if any(rule.search(title) for rule in title_rules):
+        drops["title_rule"] += 1  # B4: a source's own drop_titles pattern
         return None
     url = _item_link_raw(item, kind).strip()
     if is_google_news:
@@ -306,6 +331,9 @@ def _extract_article(item, source_id, seen_urls, leniency, drops, source_bucket=
         # G1: geography from the article's own text; singapore and asia topics follow it.
         article["geo"] = tag_geo(source_bucket, title, dek)
         article["topics"] = tag_article(source_bucket, title, dek, topics_doc, geo=article["geo"])
+        countries = tag_countries(title, dek)  # B4: section 4's story geography
+        if countries:
+            article["countries"] = countries
     if image_rejected is not None:
         image, method = extract_image(item, image_rejected)
         if image is not None:
@@ -395,6 +423,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
         feed_states["ok"] += 1
         fetched_total += len(items)
         kept = per_source.setdefault(sid, [])
+        title_rules = [re.compile(p) for p in source.get("drop_titles", ())]
         for item in items:
             # The duplicate url check waits for the publish step below, so a url capped
             # out of one feed can still publish from a later feed, as before S07.
@@ -402,7 +431,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                                         source_bucket=source.get("bucket"), topics_doc=topics_doc,
                                         image_rejected=image_rejected,
                                         is_google_news=_route_for(source) == "google_news",
-                                        kind=kind)
+                                        kind=kind, title_rules=title_rules)
             if article is not None:
                 kept.append(article)
                 # S22: only ever look at the feed's own item, and only for a source
@@ -515,11 +544,17 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             article["has_body"] = True
     if bodies_out is not None:
         bodies_out["bodies"] = bodies
+    for article in articles:
+        dek = article.get("dek", "")
+        if len(dek) > PUBLISHED_DEK_CHARS:
+            cut = dek[:PUBLISHED_DEK_CHARS + 1]
+            article["dek"] = cut.rsplit(" ", 1)[0].rstrip() if " " in cut else dek[:PUBLISHED_DEK_CHARS]
 
     source_lean = {s["id"]: s["lean"] for s in sources if s.get("lean")}
     source_syndication = {s["id"]: s.get("syndication_group") or s["id"] for s in sources}
     clusters = _published_clusters(all_clusters, {a["id"] for a in articles}, by_id,
                                     source_lean, source_syndication, set(vectors or ()))
+    locality.annotate(articles, clusters, pool_sources)  # B4: story_countries and tiers
 
     # B9: the archive is read as a lookup only; its posts never enter the pool, only
     # this link. published_by_id restricts matching to the articles this run actually
@@ -902,6 +937,16 @@ def main(argv=None):
         f"bodies_written={c['bodies']['written']} bodies_skipped_teaser={c['bodies']['skipped_teaser']} "
         f"bodies_skipped_cap={c['bodies']['skipped_cap']} bodies_bytes={c['bodies']['bytes']} "
         f"has_body_articles={with_body}/{c['published']}"
+    )
+    tiers = Counter(a["locality"] for a in pool["articles"] if a.get("locality"))
+    rosters = Counter(s.get("roster", "none") for s in sources)
+    print(
+        f"rosters={json.dumps(dict(sorted(rosters.items())))} "
+        f"locality={json.dumps({t: tiers.get(t, 0) for t in locality.TIERS})} "
+        f"unlabeled={c['published'] - sum(tiers.values())} "
+        f"with_countries={sum(1 for a in pool['articles'] if a.get('countries'))}/{c['published']} "
+        f"story_countries_clusters={sum(1 for cl in pool['clusters'] if cl.get('story_countries'))}"
+        f"/{len(pool['clusters'])} pool_bytes={len(body)}"
     )
     ev = pool["events"]
     live = [e for e in ev if e["live"]]

@@ -23,9 +23,10 @@ counted too, walked in source-then-publish order (the same order sources.json an
 published articles list already carry).
 """
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from fetcher.fetch import _plain, _text, _text_local
+from fetcher.fetch import _find_local, _local, _plain, _text, _text_local
 
 # RSS content module namespace (used by Politico, Fox, Ars Technica and others for
 # the full-prose field alongside a teaser <description>).
@@ -51,6 +52,33 @@ def _content_encoded(item):
     return "".join(child.itertext()) if child is not None else ""
 
 
+def _strip_ns(el):
+    """A copy of an element tree with every tag's namespace dropped, so it serializes as
+    plain HTML (<p>, not <html:p> or an xmlns attribute)."""
+    copy = ET.Element(_local(el.tag), {k: v for k, v in el.attrib.items() if "}" not in k})
+    copy.text, copy.tail = el.text, el.tail
+    for child in el:
+        copy.append(_strip_ns(child))
+    return copy
+
+
+def _atom_content(item):
+    """B4: an Atom <content> as body HTML. type="xhtml" (Jacobin) carries real markup in
+    a child <div>, so its children are serialized as HTML and the paragraphs survive;
+    itertext would run them together. Other types are text or escaped HTML already."""
+    content = _find_local(item, "content")
+    if content is None:
+        return ""
+    if (content.get("type") or "").strip().lower() != "xhtml":
+        return "".join(content.itertext())
+    div = next(iter(content), None)
+    root = div if div is not None and _local(div.tag) == "div" else content
+    parts = [root.text or ""]
+    for child in root:
+        parts.append(ET.tostring(_strip_ns(child), encoding="unicode", method="html"))
+    return "".join(parts).strip()
+
+
 def extract_body_html(item, kind="rss"):
     """Return raw body HTML straight from one item/entry, or None when nothing on it
     clears FULL_TEXT_MIN_CHARS of stripped text.
@@ -64,7 +92,7 @@ def extract_body_html(item, kind="rss"):
     full prose in, <summary> the fallback for one that does not.
     """
     if kind == "atom":
-        content = _text_local(item, "content")
+        content = _atom_content(item)
         if content and len(_plain(content)) >= FULL_TEXT_MIN_CHARS:
             return content
         summary = _text_local(item, "summary")
