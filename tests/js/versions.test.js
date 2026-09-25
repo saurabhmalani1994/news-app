@@ -8,8 +8,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
-  LOCALITY_WORDS, MIN_MARK_VERSIONS, STOPWORDS, buildVersions, localityLabel, markSegments, orderVersions,
-  uniqueWords, versionScore, versionsContext, withWordMarks, wordKey, wordMarksOn,
+  BV_TERMS, LOCALITY_WORDS, MIN_MARK_VERSIONS, STOPWORDS, buildVersions, bvOf, localityLabel, markSegments, orderVersions,
+  trustTerm, uniqueWords, versionScore, versionsContext, withWordMarks, wordKey, wordMarksOn,
 } from "../../app/static/js/versions.js";
 import { COMPARED_KEY, MAX_STORIES, noteCompared, readCompared } from "../../app/static/js/history/compared.js";
 import { SUMMARY_KEY, readSummary } from "../../app/static/js/history/summary.js";
@@ -51,6 +51,18 @@ const INPUT = {
   ownership: { cna_asia: "state-owned" },
   coverage: Object.fromEntries(ARTICLES.map((a) => [a.id, { url: `https://example.org/${a.id}`, has_body: a.id === "bbc" }])),
   vdeks: { lead: "The vote was 51 to 49.", bbc: "Lawmakers worked through the night." },
+  // B8: the cron's fact terms (original, complete, depth, headline, locality, first,
+  // health, paywall). Reuters' own copy scores over the two outlets that reran it.
+  bv: {
+    lead: [20, 7, 0, 4, 0, 10, 0, 0], // 41
+    wire1: [20, 7, 0, 4, 0, 8, 0, 0], // 39
+    wire2: [0, 7, 0, 4, 0, 8, 0, 0], // 19
+    wire3: [0, 7, 0, 4, 0, 9, 0, 0], // 20
+    fox1: [20, 7, 0, 2, 0, 9, 0, 0], // 38
+    fox2: [20, 7, 0, 0, 0, 6, 0, 0], // 33
+    bbc: [20, 15, 3, 6, 0, 7, 0, 0], // 51
+    kyodo: [20, 7, 0, 2, 0, 5, 0, -5], // 29
+  },
 };
 const CTX = versionsContext(INPUT);
 const OPTS = { leadId: "lead", nowMs: NOW_MS };
@@ -58,10 +70,10 @@ const OPTS = { leadId: "lead", nowMs: NOW_MS };
 test("one slide per version: a syndicated group folds to one slide, an outlet's pieces to one", () => {
   const slides = buildVersions(CLUSTER, CTX, OPTS);
   assert.deepEqual(slides.map((s) => s.sourceId).sort(),
-    ["bbc_world", "cna_asia", "fox_politics", "kyodo_news", "npr"].sort());
+    ["bbc_world", "reuters_a", "fox_politics", "kyodo_news", "npr"].sort());
   const wire = slides.find((s) => s.also.length);
-  assert.equal(wire.id, "wire3"); // the freshest copy of the three faces the group
-  assert.deepEqual(wire.also.map((a) => a.sourceName), ["PBS NewsHour", "Reuters"]);
+  assert.equal(wire.id, "wire1"); // the best-scored copy of the three, the wire's own, faces the group
+  assert.deepEqual(wire.also.map((a) => a.sourceName), ["CNA Asia", "PBS NewsHour"]);
   const fox = slides.find((s) => s.sourceId === "fox_politics");
   assert.equal(fox.id, "fox1");
   assert.deepEqual(fox.more.map((m) => m.id), ["fox2"]);
@@ -70,18 +82,19 @@ test("one slide per version: a syndicated group folds to one slide, an outlet's 
   assert.deepEqual([...shown].sort(), ARTICLES.map((a) => a.id).sort());
 });
 
-test("the lead comes first, then trust times recency; the facts come from the page", () => {
+test("the lead comes first, then the best-version score (B8); the facts come from the page", () => {
   const slides = buildVersions(CLUSTER, CTX, OPTS);
   assert.equal(slides[0].id, "lead");
-  assert.deepEqual(slides.map((s) => s.id), ["lead", "wire3", "fox1", "bbc", "kyodo"]);
+  assert.deepEqual(slides.map((s) => s.id), ["lead", "bbc", "wire1", "fox1", "kyodo"]);
+  assert.deepEqual(slides[1].bv, INPUT.bv.bbc);
   assert.equal(slides[0].dek, "The vote was 51 to 49.");
   assert.equal(slides[0].url, "https://example.org/lead");
   const bbc = slides.find((s) => s.id === "bbc");
   assert.equal(bbc.hasBody, true);
   assert.equal(bbc.headline, "US Senate passes $1.2tn spending bill");
-  // Trust in an outlet moves its version up, never ahead of the lead.
+  // The trust term is B5's: until it lands, a profile's trust moves nothing.
   const trusted = buildVersions(CLUSTER, CTX, { ...OPTS, trust: { kyodo_news: 2, npr: 0.1 } });
-  assert.deepEqual(trusted.map((s) => s.id).slice(0, 2), ["lead", "kyodo"]);
+  assert.deepEqual(trusted.map((s) => s.id), slides.map((s) => s.id));
 });
 
 test("a muted source is never shown and never counted, even inside a syndicated group", () => {
@@ -90,12 +103,13 @@ test("a muted source is never shown and never counted, even inside a syndicated 
   assert.equal(muted.length, all.length - 2);
   const names = JSON.stringify(muted);
   for (const id of ["kyodo", "wire2", "fox1", "fox2"]) assert.ok(!names.includes(`"${id}"`), id);
-  assert.deepEqual(muted.find((s) => s.id === "wire3").also.map((a) => a.sourceName), ["Reuters"]);
+  assert.deepEqual(muted.find((s) => s.id === "wire1").also.map((a) => a.sourceName), ["CNA Asia"]);
 });
 
 test("an outlet that leads a syndicated group and ran its own piece shows once", () => {
   const cluster = { ...CLUSTER, article_ids: [...CLUSTER.article_ids, "cna_own"] };
-  const ctx = versionsContext({ ...INPUT, pool: { articles: [...ARTICLES, { id: "cna_own", source_id: "cna_asia", title: "Singapore watches the US budget", published_at: iso(1) }], clusters: [cluster] } });
+  const ctx = versionsContext({ ...INPUT, bv: { ...INPUT.bv, wire3: [20, 7, 0, 4, 15, 9, 0, 0] },
+    pool: { articles: [...ARTICLES, { id: "cna_own", source_id: "cna_asia", title: "Singapore watches the US budget", published_at: iso(1) }], clusters: [cluster] } });
   const slides = buildVersions(cluster, ctx, OPTS);
   assert.equal(slides.filter((s) => s.sourceId === "cna_asia").length, 1);
   assert.deepEqual(slides.find((s) => s.sourceId === "cna_asia").more.map((m) => m.id), ["cna_own"]);
@@ -109,13 +123,28 @@ test("order never depends on input order, and changing only a lean moves nothing
   assert.deepEqual(buildVersions(CLUSTER, swapped, OPTS).map((s) => s.id), base);
 });
 
-test("orderVersions is the one ordering: lead, score, recency, source id", () => {
-  const v = (id, sourceId, hoursAgo) => ({ id, sourceId, publishedAt: iso(hoursAgo) });
-  const list = [v("b", "s2", 2), v("a", "s1", 2), v("c", "s3", 1), v("l", "s4", 9)];
-  assert.deepEqual(orderVersions(list, { leadId: "l", nowMs: NOW_MS }).map((x) => x.id), ["l", "c", "a", "b"]);
-  const s = versionScore(v("x", "s1", 12), { trust: { s1: 1.5 }, nowMs: NOW_MS });
-  assert.equal(s.recency, 0.5);
-  assert.equal(s.score, 0.75);
+test("orderVersions is the one ordering: lead, bv sum, earlier report, source id", () => {
+  const v = (id, sourceId, hoursAgo, bv = null) => ({ id, sourceId, publishedAt: iso(hoursAgo), bv });
+  const terms = (sum) => [20, 7, 0, 0, 0, sum - 27, 0, 0];
+  const list = [v("b", "s2", 2, terms(30)), v("a", "s1", 2, terms(30)), v("e", "s0", 3, terms(30)),
+    v("c", "s3", 1, terms(45)), v("n", "s5", 0), v("l", "s4", 9, terms(10))];
+  // c scores most; a, b and e tie at 30, so the earlier report (e) goes first, then
+  // source id; n, unscored, sums to 0; the lead is first whatever it scores.
+  assert.deepEqual(orderVersions(list, { leadId: "l" }).map((x) => x.id), ["l", "c", "e", "a", "b", "n"]);
+  assert.deepEqual(orderVersions([...list].reverse(), { leadId: "l" }).map((x) => x.id), ["l", "c", "e", "a", "b", "n"]);
+  const s = versionScore(v("x", "s1", 12, [20, 15, 4, -4, 8, 10, -5, 0]), { trust: { s1: 1.5 } });
+  assert.deepEqual(s, { base: 48, trust: 0, score: 48 });
+  assert.equal(trustTerm(v("x", "s1", 1), 48, { s1: 1.5 }), 0); // B5 fills this seam
+  assert.equal(versionScore(v("y", "s1", 1)).score, 0);
+});
+
+test("bvOf reads the page's eight integers and nothing else", () => {
+  assert.equal(BV_TERMS.length, 8);
+  assert.deepEqual(bvOf("bbc", CTX), INPUT.bv.bbc);
+  assert.equal(bvOf("nope", CTX), null);
+  const ctx = versionsContext({ ...INPUT, bv: { a: [1, 2, 3], b: [1, 2, 3, 4, 5, 6, 7, 8.5], c: "x" } });
+  for (const id of ["a", "b", "c"]) assert.equal(bvOf(id, ctx), null, id);
+  assert.equal(bvOf("lead", versionsContext({ ...INPUT, bv: undefined })), null);
 });
 
 test("localityLabel is B4's seam: nothing until the page carries a tier", () => {

@@ -13,19 +13,23 @@
 // (profile mutes.sources) never appears anywhere and is never counted.
 //
 // Order: the lead version first (the row's own article, the one the row opens), then
-// the others by the ranker's own trust and recency terms (ranker.js). orderVersions is
-// the one place that order is decided, so B8's best-version score replaces it there.
+// the others by the best-version score (B8, DESIGN-bundles section 4a): the sum of the
+// cron's fact terms, published per article as `bv` and embedded by the build, plus the
+// device's trust term (trustTerm, B5's seam, 0 until then). Ties go to the higher sum
+// without trust, then the earlier report, then source id and article id. A version the
+// cron did not score (no `bv`) sums to 0. orderVersions is the one place that order is
+// decided. Lean is never an input, nor is any source's provenance (R40).
 //
 // Word marks (section 5, R40 answer 8): on bundles of 3 or more versions, the content
 // words of a version's headline that appear in no other version's headline, stopwords
 // dropped and plural s folded. Nothing is generated and nothing is scored as biased; no
 // AI text anywhere (R13). markSegments only splits the headline's own text, and the view
 // sets every piece with textContent (R26).
-import { DEFAULT_HALF_LIFE_HOURS } from "./ranker.js";
 import { smartQuotes } from "./reader/core.js";
 
 export const MIN_MARK_VERSIONS = 3;
-const HOUR_MS = 3_600_000;
+// fetcher/best_version.py TERMS: the order of an article's `bv` array.
+export const BV_TERMS = Object.freeze(["original", "complete", "depth", "headline", "locality", "first", "health", "paywall"]);
 
 const byStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const epochMs = (iso) => {
@@ -38,7 +42,8 @@ const epochMs = (iso) => {
  * countries and ownership (L1, U3, S14), each member's url and has_body (S14's
  * `coverage`) and its fitted dek (`vdeks`, V1). `locality` is B4's seam: when the pool
  * carries each article's tier (local, intermediate, overseas), the build embeds it here
- * and every slide shows it; until then it is empty and slides show none. */
+ * and every slide shows it; until then it is empty and slides show none. `bv` is B8's:
+ * {article_id: the eight best-version fact terms} for the same carousel members. */
 export function versionsContext(input) {
   return {
     articleById: new Map((input?.pool?.articles || []).map((a) => [a.id, a])),
@@ -50,6 +55,7 @@ export function versionsContext(input) {
     links: input?.coverage || {},
     deks: input?.vdeks || {},
     locality: input?.locality || {},
+    bv: input?.bv || {},
   };
 }
 
@@ -82,30 +88,47 @@ function facts(id, ctx) {
     url: typeof link.url === "string" ? link.url : "",
     hasBody: link.has_body === true,
     locality: localityLabel(id, ctx),
+    bv: bvOf(id, ctx),
   };
 }
 
-/** The ranker's own terms for one version (ranker.js scoreStory): recency on the
- * default half-life, times the profile's trust in its outlet (1.0 when unset). */
-export function versionScore(version, { trust = {}, nowMs = 0 } = {}) {
-  const t = trust && Object.hasOwn(trust, version.sourceId) && Number.isFinite(trust[version.sourceId])
-    ? trust[version.sourceId] : 1;
-  const ageHours = Math.max(0, (nowMs - epochMs(version.publishedAt)) / HOUR_MS);
-  const recency = 2 ** (-ageHours / DEFAULT_HALF_LIFE_HOURS);
-  return { trust: t, recency, score: t * recency };
+/** The article's eight fact terms from the page, or null when the cron scored none. */
+export function bvOf(articleId, ctx) {
+  const bv = ctx?.bv?.[articleId];
+  return Array.isArray(bv) && bv.length === BV_TERMS.length && bv.every(Number.isInteger) ? bv : null;
 }
 
 /**
- * The one ordering of versions (B8 replaces this function, nothing else): the lead
- * first, then the higher trust-times-recency score, then the fresher version, then
- * source id and article id, so the order never depends on input order.
+ * B5's seam: section 4a's ninth term, the owner's trust in the version's outlet, added
+ * on the device to the cron's base sum. Until B5 lands it adds nothing, whatever the
+ * profile says; B5 makes it (trust - 1) x base, floored at 0, and nothing else here
+ * changes.
  */
-export function orderVersions(versions, { leadId = null, trust = {}, nowMs = 0 } = {}) {
-  const scored = versions.map((v) => ({ v, s: versionScore(v, { trust, nowMs }) }));
+export function trustTerm(_version, _base, _trust = {}) {
+  return 0;
+}
+
+/** One version's best-version score: `base`, the sum of its fact terms (0 when the
+ * cron scored none), `trust`, the device's term, and `score`, their sum. */
+export function versionScore(version, { trust = {} } = {}) {
+  const base = (version?.bv || []).reduce((sum, term) => sum + term, 0);
+  const t = trustTerm(version, base, trust);
+  return { base, trust: t, score: base + t };
+}
+
+/**
+ * The one ordering of versions: the lead first, then the higher best-version score,
+ * then the higher sum without trust, then the earlier report, then source id and
+ * article id, so the order never depends on input order. `nowMs` is accepted for the
+ * callers' sake and read by nothing: no term depends on the clock.
+ */
+export function orderVersions(versions, { leadId = null, trust = {} } = {}) {
+  const scored = versions.map((v) => ({ v, s: versionScore(v, { trust }) }));
   scored.sort((a, b) => {
     if (a.v.id === leadId) return -1;
     if (b.v.id === leadId) return 1;
-    return b.s.score - a.s.score || b.s.recency - a.s.recency || byStr(a.v.sourceId, b.v.sourceId) || byStr(a.v.id, b.v.id);
+    return b.s.score - a.s.score || b.s.base - a.s.base || epochMs(a.v.publishedAt) - epochMs(b.v.publishedAt)
+      || byStr(a.v.sourceId, b.v.sourceId) || byStr(a.v.id, b.v.id);
   });
   return scored.map((x) => x.v);
 }

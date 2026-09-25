@@ -365,6 +365,21 @@ def version_locality(pool):
             if aid in by_id and by_id[aid].get("locality") in LOCALITY_TIERS}
 
 
+BV_LENGTH = 8  # contract/pool.schema.json article `bv`: fetcher/best_version.py TERMS
+
+
+def version_bv(pool):
+    """B8: {article_id: bv} for the same carousel members as version_locality, the eight
+    best-version fact terms the cron published (fetcher/best_version.py), which
+    versions.js orderVersions sums to order the slides. An article without `bv` is
+    absent; sorted by id for a byte-stable page."""
+    by_id = {a["id"]: a for a in pool.get("articles", [])}
+    ids = {aid for c in pool.get("clusters", []) if c.get("independent_sources", 0) > 1
+           for aid in c.get("article_ids", [])}
+    return {aid: by_id[aid]["bv"] for aid in sorted(ids)
+            if aid in by_id and isinstance(by_id[aid].get("bv"), list) and len(by_id[aid]["bv"]) == BV_LENGTH}
+
+
 def coverage_articles(pool):
     """{article_id: {url, has_body}} for every article belonging to a cluster of 2 or
     more independent sources, kept apart from rank_input's compact fields (S14) so the
@@ -782,7 +797,7 @@ def _rank_input_json(pool, stories, by_id, source_names, links, chars=None):
             "reader": reader_photos(stories, by_id), "bodies": reader_bodies(stories, by_id, chars or {}),
             "ownership": source_ownership(pool), "countries": source_countries(pool),
             "coverage": coverage_articles(pool), "vdeks": version_deks(pool),
-            "locality": version_locality(pool)}
+            "locality": version_locality(pool), "bv": version_bv(pool)}
     return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
 
 
