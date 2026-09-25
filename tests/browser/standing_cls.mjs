@@ -75,23 +75,52 @@ async function visit(stored, scheme) {
 
 const base = buildDefaultProfile("2026-09-24T00:00:00Z");
 const off = { ...structuredClone(base), standing_stories: [], profile_version: 2 };
-const store = { history: [{ version: 1, timestamp: base.updated_at, profile: base }, { version: 2, timestamp: "2026-09-24T01:00:00Z", profile: off }] };
+const storeOf = (profile) => ({ history: [{ version: 1, timestamp: base.updated_at, profile: base }, { version: 2, timestamp: "2026-09-24T01:00:00Z", profile }] });
+const store = storeOf(off);
+
+// R2: whether the default standing stories place a card or raise a notice depends on
+// the day's news (a fresh pool often does neither), so a fourth visit makes both
+// happen on any pool: a stored profile whose one standing story is a word from a card
+// below the floor that no card in the first 15 carries (the device must place it), and
+// one whose keyword nothing carries (the device must raise its silence notice).
+const html = readFileSync(join(dist, "index.html"), "utf-8");
+const built = JSON.parse(html.match(/<template id="rank-input">([\s\S]*?)<\/template>/)[1].replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+const standing = (id, label, keywords, buckets = []) => ({ id, label, enabled: true, keywords, tags: [], buckets, floor_slots: 1, floor_within: 15, silence_hours: 24 });
+const quiet = standing("r2_quiet", "Quiet probe", ["zzqprobe"], ["sudan"]);
+function probeProfile() {
+  const today = rankPages(built.pool, base, built.now, pageOptions(built)).today;
+  const has = (s, w) => s.titles.some((t) => new RegExp(`(?<![\p{L}\p{N}])${w}(?![\p{L}\p{N}])`, "iu").test(t));
+  for (const story of today.slice(20)) {
+    for (const word of new Set((story.titles[0] || "").toLowerCase().match(/\p{L}{6,}/gu) || [])) {
+      if (today.slice(0, 15).some((s) => has(s, word))) continue;
+      const profile = { ...structuredClone(base), standing_stories: [standing("r2_floor", "Floor probe", [word]), quiet], profile_version: 2 };
+      const page = rankPages(built.pool, profile, built.now, pageOptions(built));
+      if (page.today.some((s) => s.passes.some((e) => e.pass === "standing-story" && e.text.startsWith("Placed")))) return profile;
+    }
+  }
+  return null;
+}
+const probe = probeProfile();
+if (!probe) { console.error("no headline word below the floor that places a card; is the pool empty?"); process.exit(1); }
 if (shotsArg) mkdirSync(shotsArg, { recursive: true });
 const shot = (name) => (shotsArg ? join(shotsArg, `${prefix}-${name}.png`) : null);
 
 const results = {};
 let ok = true;
-for (const [name, stored, scheme] of [["default-dark", null, "dark"], ["default-light", null, "light"], ["off-dark", store, "dark"]]) {
+const profiles = new Map([[store, off], [storeOf(probe), probe]]);
+for (const [name, stored, scheme] of [["default-dark", null, "dark"], ["default-light", null, "light"], ["off-dark", store, "dark"], ["probe-dark", [...profiles.keys()][1], "dark"]]) {
   const r = await visit(stored, scheme);
   const opts = pageOptions(r.input);
-  const page = rankPages(r.input.pool, stored ? off : base, r.input.now, opts);
+  const page = rankPages(r.input.pool, stored ? profiles.get(stored) : base, r.input.now, opts);
   const want = page.notices.map((n) => [n.id, n.kind, n.kicker, n.head, n.text]);
   const placed = page.today.map((s, i) => [s, i]).filter(([s]) => s.passes.some((e) => e.pass === "standing-story" && e.text.startsWith("Placed")));
-  const pass = r.cls === 0 && !r.hiddenNow && JSON.stringify(r.notices) === JSON.stringify(want) && r.order.join() === page.today.map((s) => s.id).join();
+  // The probe must really place a card and raise its notice, or it proved nothing.
+  const probed = name !== "probe-dark" || (placed.length > 0 && r.notices.some((n) => n[0] === "r2_quiet"));
+  const pass = probed && r.cls === 0 && !r.hiddenNow && JSON.stringify(r.notices) === JSON.stringify(want) && r.order.join() === page.today.map((s) => s.id).join();
   ok &&= pass;
   results[name] = { pass, cls: r.cls, notices: r.notices.map((n) => `${n[0]}: ${n[3]}`),
     placements: placed.map(([s, i]) => `${i + 1} ${s.passes.find((e) => e.pass === "standing-story").text}`) };
-  if (name !== "off-dark") await capture(shot(name.replace("default-", "")));
+  if (name.startsWith("default-")) await capture(shot(name.replace("default-", "")));
   if (name === "default-dark" && placed.length) {
     await evaluate(`(() => { const li = document.querySelector('#section-today li.story[data-sid="${placed[0][0].id}"]');
       const panel = document.getElementById("section-today");
