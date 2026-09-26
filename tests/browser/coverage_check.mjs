@@ -112,9 +112,14 @@ const opened = JSON.parse(await evaluate(`(() => {
   });
 })()`));
 await shot("final-dark.png");
+// T2: "M independent" is the page's own count of copies (H6 item 3: app/build.py
+// coverage_summary_text and js/coverage.js both use visible_source_count, the row's
+// "N sources"), not the pool's independent_sources (syndication groups of outlets),
+// which this check compared against until T2 and which reads 9 where the page rightly
+// says 10 on a cluster with two feeds of one owner.
 check("sheet opens over the biggest cluster with its own summary and history pushed",
   opened.hidden === false && opened.isOpen && opened.label === "Coverage" && opened.historyPushed
-    && opened.summary.includes(`${biggest.independent} independent`) && opened.summary.includes(`${biggest.leans}`),
+    && opened.summary.includes(`${biggest.copies} independent`) && opened.summary.includes(`${biggest.leans}`),
   { opened, biggest });
 check("groups appear in the fixed taxonomy order (left, center-left, center, center-right, right, state, non-us)",
   (() => {

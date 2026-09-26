@@ -25,7 +25,8 @@ from app.health import render as render_health
 from app.dek import fit_dek
 from app.frontpage import (CHARS_PER_LINE, DEK_LINES, ROW_DEK_LINES, clean_dek, dek_budget, dek_clamp, front_page,
                            pass_input, rank_input, run_ranker, source_countries, source_ownership,
-                           version_bv, visible_source_count)
+                           version_bv, visible_source_count,
+                           carousel_article_ids, multi_version)
 from app.images import THUMB_PX, credit_text, hero_box, hero_media, hero_worthy, image_url, media_for, thumb_ok
 from app.lean import hit_html as lean_hit_html, marker_html as lean_marker_html
 from app.serviceworker import write_service_worker
@@ -339,8 +340,7 @@ def version_deks(pool):
     page itself, nothing fetched (docs/DESIGN-bundles.md section 5). Typeset as the
     build sets deks; sorted by id for a byte-stable page."""
     by_id = {a["id"]: a for a in pool.get("articles", [])}
-    ids = {aid for c in pool.get("clusters", []) if c.get("independent_sources", 0) > 1
-           for aid in c.get("article_ids", [])}
+    ids = carousel_article_ids(pool)
     out = {}
     for aid in sorted(ids):
         article = by_id.get(aid)
@@ -359,8 +359,7 @@ def version_locality(pool):
     versions.js localityLabel reads so each slide names its tier. An article the cron
     left unlabeled is absent; sorted by id for a byte-stable page."""
     by_id = {a["id"]: a for a in pool.get("articles", [])}
-    ids = {aid for c in pool.get("clusters", []) if c.get("independent_sources", 0) > 1
-           for aid in c.get("article_ids", [])}
+    ids = carousel_article_ids(pool)
     return {aid: by_id[aid]["locality"] for aid in sorted(ids)
             if aid in by_id and by_id[aid].get("locality") in LOCALITY_TIERS}
 
@@ -372,8 +371,7 @@ def coverage_articles(pool):
     (R12), just not carried into the ranker's compact view. Sorted by id for a
     byte-stable page."""
     by_id = {a["id"]: a for a in pool.get("articles", [])}
-    ids = {aid for c in pool.get("clusters", []) if c.get("independent_sources", 0) > 1
-           for aid in c.get("article_ids", [])}
+    ids = carousel_article_ids(pool)
     out = {}
     for aid in sorted(ids):
         article = by_id.get(aid)
@@ -839,7 +837,7 @@ def render(pool, ranking=None, chars=None):
     coverages = {
         sid: STORY_COVERAGE.format(sid=escape(sid, quote=True),
                                     label=escape(coverage_summary_text(cluster, by_id), quote=True))
-        for sid, cluster in clusters_by_id.items() if cluster.get("independent_sources", 0) > 1
+        for sid, cluster in clusters_by_id.items() if multi_version(cluster, by_id)
     }
 
     def row(story, tier):
@@ -851,7 +849,7 @@ def render(pool, ranking=None, chars=None):
         cluster = clusters_by_id.get(story.id)
         visible = (visible_source_count(_members(story, by_id), cluster.get("near_duplicates", []), ())
                    if cluster is not None else 1)
-        coverage = coverages.get(story.id, "") if story.independent_sources > 1 else ""
+        coverage = coverages.get(story.id, "") if visible > 1 else ""
         return _render_story(story, tier, source_names, now, by_id, others.get(story.id, ""),
                               coverage, chars, leans, countries, visible_sources=visible)
 

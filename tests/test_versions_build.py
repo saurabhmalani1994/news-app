@@ -130,3 +130,22 @@ def test_rank_input_omits_primary_source_when_the_cluster_has_none():
     data = _rank_input(render(pool()))
     clusters = {c["id"]: c for c in data["pool"]["clusters"]}
     assert "primary_source" not in clusters["c1"]
+
+
+def test_a_cluster_whose_row_shows_n_sources_gets_the_trigger_and_carousel_data():
+    """T2 (coverage_check on main): two feeds of one owner are one syndication group in
+    the pool's `independent_sources` (1) but two sources on the row, which said
+    "2 sources" with no trigger over it. The trigger and the carousel's data follow the
+    row's own count."""
+    p = pool()
+    p["sources"].append({"id": "npr_politics", "name": "NPR Politics", "feed_url": "https://example.org/np.xml"})
+    p["articles"] += [_article("t1", "npr", 5, "Budget vote set", dek="Lawmakers meet Friday."),
+                      _article("t2", "npr_politics", 4, "House sets a budget vote", dek="The vote is on Friday.")]
+    p["clusters"].append({"id": "t", "method": "cosine_entity", "article_ids": ["t1", "t2"],
+                          "near_duplicates": [], "independent_sources": 1, "lean_buckets": ["center-left"]})
+    page = render(p)
+    row = _row(page, "t")
+    assert '<span class="meta-count">2 sources</span>' in row
+    assert '<button class="story-coverage" type="button" data-sid="t"' in row
+    data = _rank_input(page)
+    assert {"t1", "t2"} <= set(data["coverage"]) and {"t1", "t2"} <= set(data["vdeks"])

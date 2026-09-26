@@ -148,6 +148,27 @@ def _valid_bv(value):
             and all(isinstance(x, int) and not isinstance(x, bool) for x in value))
 
 
+def multi_version(cluster, by_id):
+    """T2: whether a cluster shows as two or more versions on the page: the row's own
+    "N sources" (visible_source_count, the build's mute-free default profile), so the
+    coverage trigger, the carousel data and the count all follow one rule. Not the
+    cluster's `independent_sources` field (fanout's syndication groups), which folds two
+    feeds of one owner (TechCrunch AI and TechCrunch Climate) to 1 while the row, which
+    counts sources, said "2 sources" with no trigger over it."""
+    members = [by_id[aid] for aid in cluster.get("article_ids", []) if aid in by_id]
+    return visible_source_count(members, cluster.get("near_duplicates", []), ()) > 1
+
+
+def carousel_article_ids(pool):
+    """Every article of a cluster the page may show as versions: multi_version's, plus
+    (as before T2) every cluster of 2 or more syndication groups, whose members carry
+    `bv` and so may front the row on a device (tiers.js placeFace reads their url)."""
+    by_id = {a["id"]: a for a in pool.get("articles", [])}
+    return {aid for c in pool.get("clusters", [])
+            if c.get("independent_sources", 0) > 1 or multi_version(c, by_id)
+            for aid in c.get("article_ids", [])}
+
+
 def version_bv(pool):
     """B8: {article_id: bv} for every article of a cluster of 2 or more independent
     sources, the eight best-version fact terms the cron published
