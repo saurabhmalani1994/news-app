@@ -38,6 +38,15 @@ exactly when it gives `asia` (topics.json `geo_topics`). The singapore and asia 
 no longer add them, so a Singapore outlet's piece on the White House is not a Singapore
 story for ranking affinity, R16 or the tabs. The asia bucket still adds `world` (F1).
 
+**no bucket, no default (W4).** A watch item (fetcher/watch.py) from an outlet outside
+sources.json carries no source bucket at all (`bucket=None`), not the general bucket.
+W3 found that such an item still fell back to `world` through the "no tags at all"
+default below, so a purely local watch match (say, a city council story from a small
+outlet) showed up in the World tab and its affinity term. The bucket default now only
+fires for a real, configured bucket; `bucket=None` gets no default and is tagged from
+its own text and G1 geo tags alone, same as any other article, and can end up with no
+topics at all. Its own watch tag is what surfaces it regardless.
+
 **climate_food bucket fix (F7).** The climate_food bucket (Green Queen, Food Dive,
 Canary Media, CTVC, Biofuels Digest and the rest of sources.json's food tech/climate
 tech outlets) had no bucket_topics entry, so its own articles carried neither the
@@ -126,8 +135,9 @@ def tag_article(bucket, title, dek, topics_doc, geo=None):
         tags.add("politics")
     if "conflict" in tags:
         tags.add("world")  # conflict keywords are war coverage, always international
-    if not tags:
-        tags.add("world")
+    if not tags and bucket is not None:
+        tags.add("world")  # a bucket default; an article with no bucket at all (a
+        # watch item from an outlet outside sources.json, W4) gets no such default
     return sorted(tags)
 
 

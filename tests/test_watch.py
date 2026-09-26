@@ -256,7 +256,10 @@ def test_unknown_outlet_goes_to_the_google_news_source_title_cleaned_no_dek():
     art = next(a for a in pool["articles"] if a["url"].startswith("https://news.google.com/"))
     assert art["source_id"] == "google_news_search"
     assert art["title"] == "Distant valley opens a new observatory"  # " - Distant Gazette" stripped
-    assert "dek" not in art and art["topics"] and art["watch"] == [T1]
+    # W4: no bucket at all for an unknown outlet, so a headline that matches no
+    # keyword or geo signal gets no bucket-default topic either; its watch tag is
+    # what surfaces it.
+    assert "dek" not in art and art["topics"] == [] and art["watch"] == [T1]
     assert not any(k.startswith("_") for k in art)
     ids = [s["id"] for s in pool["sources"]]
     assert ids == ["harbor", "google_news_search"]
@@ -264,6 +267,39 @@ def test_unknown_outlet_goes_to_the_google_news_source_title_cleaned_no_dek():
                                   "feed_url": "https://news.google.com/rss/search"}
     assert sum(pool["counts"]["feed_states"].values()) == 2
     assert pool["source_health"]["google_news_search"]["state"] == "ok"
+
+
+def test_unknown_outlet_watch_item_is_tagged_from_its_own_text_not_world():
+    # W3 found this: a watch item from an outlet outside sources.json used to fall
+    # back to the general-bucket "no tags at all" default of world, so a purely
+    # local story showed up in the World tab. It should be tagged from its own
+    # geography and keywords like any other article, never defaulted to world.
+    feed = _gn([_item("Ridgeview council approves new library budget", "s1")])
+    pool = _pool([(T1, feed)])
+    art = next(a for a in pool["articles"] if a["url"].startswith("https://news.google.com/"))
+    assert "world" not in art["topics"]
+    assert validate(pool) == []
+
+
+def test_unknown_outlet_watch_item_still_tags_from_its_own_geography():
+    # A watch item naming a foreign country is tagged world from its own text, same
+    # as any other article; it just is not defaulted there for having no bucket.
+    feed = _gn([_item("France announces new curbs on grain exports", "s1")])
+    pool = _pool([(T1, feed)])
+    art = next(a for a in pool["articles"] if a["url"].startswith("https://news.google.com/"))
+    assert "world" in art["topics"]
+    assert validate(pool) == []
+
+
+def test_configured_outlet_watch_item_keeps_its_normal_bucket_default():
+    # A watch item from an outlet that IS in sources.json keeps its normal bucket
+    # (here "general"), so the ordinary bucket-default fallback still applies to it.
+    feed = _gn([_item("Harbor pilots hold routine safety drill", "s3", outlet="Harbor Herald",
+                      outlet_url="https://www.harborherald.example")])
+    pool = _pool([(T1, feed)])
+    art = next(a for a in pool["articles"] if a.get("watch") and a["source_id"] == "harbor")
+    assert art["topics"] == ["world"]
+    assert validate(pool) == []
 
 
 def test_a_configured_outlet_keeps_its_own_source():

@@ -129,9 +129,8 @@
         "dek": {"type": "string", "maxLength": 2000},
         "published_at": {"$ref": "#/$defs/utc_timestamp"},
         "topics": {
-          "description": "S08: every article the fanout pipeline publishes carries at least one tag; optional here only so the S01 single-feed fetcher's pool (which predates topics.json) stays valid.",
+          "description": "S08: an article normally carries at least one tag. Optional here, and may be empty, for two cases: the S01 single-feed fetcher's pool (which predates topics.json), and a W4 watch item from an outlet outside sources.json whose own text and geo tags matched nothing (its watch tag alone surfaces it).",
           "type": "array",
-          "minItems": 1,
           "items": {"$ref": "#/$defs/topic"}
         },
         "geo": {
