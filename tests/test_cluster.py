@@ -1,5 +1,6 @@
 """S07: near-duplicate detection and clustering. Known-answer fixtures, no network."""
 import copy
+import os
 import random
 import time
 from datetime import datetime, timezone
@@ -242,6 +243,40 @@ def test_url_capped_in_one_feed_still_publishes_from_a_later_feed():
 # quadratic blowup) is slow on every run and still fails this by a wide margin.
 CLUSTER_BUDGET_SECONDS = 15.0
 CLUSTER_TIMING_RUNS = 3
+# T2: the budget binds on wall-clock time on the Actions runner, where nothing else
+# runs. Off the runner (a dev machine running headless Chrome proofs alongside), wall
+# time measures the machine's load, not this code: B7's run took 10s idle and over 15s
+# beside the proofs. There it times the process's own CPU time instead (cluster_items
+# is single-threaded, so that is all its work and none of the wait), best of up to
+# three, against the budget scaled by LOCAL_BUDGET_SCALE: a loaded machine's shared
+# cores and caches still inflate CPU time (B7 measured 9.8 to 12.2s of it beside one
+# proof). A quadratic blowup is many times the budget on either clock, so it still
+# fails locally, and CI still holds the code to 15s.
+ON_RUNNER = os.environ.get("GITHUB_ACTIONS") == "true"
+LOCAL_BUDGET_SCALE = 2.0
+
+
+def timing_budget():
+    """The budget best_time's seconds must stay under here: 15s wall on the runner."""
+    return CLUSTER_BUDGET_SECONDS if ON_RUNNER else CLUSTER_BUDGET_SECONDS * LOCAL_BUDGET_SCALE
+
+
+def best_time(fn, runs=CLUSTER_TIMING_RUNS):
+    """(seconds, result, clock name) of the fastest of up to `runs` calls of fn,
+    stopping at the first under timing_budget(): wall clock on the runner, CPU time
+    elsewhere."""
+    clock, name = (time.perf_counter, "wall") if ON_RUNNER else (time.process_time, "cpu")
+    budget = timing_budget()
+    best = result = None
+    for _ in range(runs):
+        t0 = clock()
+        value = fn()
+        elapsed = clock() - t0
+        if best is None or elapsed < best:
+            best, result = elapsed, value
+        if best < budget:
+            break
+    return best, result, name
 
 
 def _synthetic(n, seed=24):
@@ -267,15 +302,9 @@ def _synthetic(n, seed=24):
 
 def test_clustering_4000_items_finishes_under_budget():
     items = _synthetic(4000)
-    best, clusters = None, None
-    for _ in range(CLUSTER_TIMING_RUNS):
-        t0 = time.perf_counter()
-        run_clusters = cluster_items(items)
-        elapsed = time.perf_counter() - t0
-        if best is None or elapsed < best:
-            best, clusters = elapsed, run_clusters
-    print(f"\ncluster_items(4000 synthetic): best of {CLUSTER_TIMING_RUNS} = {best:.2f}s, {len(clusters)} clusters")
-    assert best < CLUSTER_BUDGET_SECONDS
+    best, clusters, clock = best_time(lambda: cluster_items(items))
+    print(f"\ncluster_items(4000 synthetic): best of up to {CLUSTER_TIMING_RUNS} = {best:.2f}s {clock}, {len(clusters)} clusters")
+    assert best < timing_budget()
     ids = [i for c in clusters for i in c["article_ids"]]
     assert len(ids) == len(set(ids))
     assert any(c["near_duplicates"] for c in clusters)

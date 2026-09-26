@@ -157,22 +157,15 @@ def test_missed_pairs_hold_their_floor():
     assert lexical >= MISSED["floor_joined_lexical"], f"lexical: {lexical} of 21 joined"
 
 
-# Timing: the design's benchmark, 10,000 synthetic items under 15 s on the runner.
+# Timing: the design's benchmark, 10,000 synthetic items under 15 s on the runner
+# (T2: test_cluster.best_time, wall clock there and CPU time on a loaded dev machine).
 
 def test_clustering_10000_items_finishes_under_budget(capsys):
-    from test_cluster import CLUSTER_BUDGET_SECONDS, CLUSTER_TIMING_RUNS, _synthetic
+    from test_cluster import _synthetic, best_time, timing_budget
     items = _synthetic(10_000)
-    best, clusters = None, None
-    for _ in range(CLUSTER_TIMING_RUNS):  # stop at the first run under budget
-        t0 = time.perf_counter()
-        run_clusters = cluster_items(items)
-        elapsed = time.perf_counter() - t0
-        if best is None or elapsed < best:
-            best, clusters = elapsed, run_clusters
-        if best < CLUSTER_BUDGET_SECONDS:
-            break
+    best, clusters, clock = best_time(lambda: cluster_items(items))
     with capsys.disabled():
-        print(f"\nB2 benchmark: cluster_items(10000 synthetic) {best:.2f}s, {len(clusters)} clusters")
-    assert best < CLUSTER_BUDGET_SECONDS
+        print(f"\nB2 benchmark: cluster_items(10000 synthetic) {best:.2f}s {clock}, {len(clusters)} clusters")
+    assert best < timing_budget()
     ids = [i for c in clusters for i in c["article_ids"]]
     assert len(ids) == len(set(ids))

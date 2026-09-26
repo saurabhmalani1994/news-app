@@ -397,8 +397,7 @@ def test_bakeoff_workflow_is_manual_only_and_names_secrets_only():
 
 def test_clustering_10000_items_with_vectors_finishes_under_budget(capsys):
     import random
-    import time as _time
-    from test_cluster import CLUSTER_BUDGET_SECONDS, _synthetic
+    from test_cluster import _synthetic, best_time, timing_budget
     items = _synthetic(10_000)
     rng = random.Random(7)
     centers, vectors = {}, {}
@@ -406,13 +405,12 @@ def test_clustering_10000_items_with_vectors_finishes_under_budget(capsys):
         c = centers.setdefault(it["title"].split()[0], [rng.gauss(0, 1) for _ in range(embed.DIMS)])
         vectors[it["id"]] = array("b", [max(-127, min(127, round(20 * (x + rng.gauss(0, 0.8)))))
                                         for x in c])
-    t0 = _time.perf_counter()
-    clusters = cluster_items(items, vectors=vectors)
-    elapsed = _time.perf_counter() - t0
+    # T2: best_time, as B2's benchmark (wall clock on the runner, CPU time elsewhere).
+    elapsed, clusters, clock = best_time(lambda: cluster_items(items, vectors=vectors))
     with capsys.disabled():
-        print(f"\nB7 benchmark: cluster_items(10000 synthetic, vectors) {elapsed:.2f}s, "
+        print(f"\nB7 benchmark: cluster_items(10000 synthetic, vectors) {elapsed:.2f}s {clock}, "
               f"{len(clusters)} clusters")
-    assert elapsed < CLUSTER_BUDGET_SECONDS
+    assert elapsed < timing_budget()
     ids = [i for c in clusters for i in c["article_ids"]]
     assert len(ids) == len(set(ids))
 
