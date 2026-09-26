@@ -360,7 +360,9 @@ function exploration(list, ctx) {
     const from = out.indexOf(pick) + 1;
     out = moved(out, from - 1, pos - 1);
     placed.add(pick.id);
-    const topics = pick.topics_matched.filter((t) => t !== MUST_KNOW);
+    // W3: a phrase interest is named by its phrase in quotes, never its "p_" id.
+    const topics = pick.topics_matched.filter((t) => t !== MUST_KNOW)
+      .map((t) => (typeof ctx.profile?.topics?.[t]?.phrase === "string" ? `“${ctx.profile.topics[t].phrase}”` : t));
     const reach = topics.length ? `topics ${listWords(topics)}` : "no followed topic";
     const kept = pick === pool[0] ? "" : " that keeps the lean quota";
     note(pick, "exploration", `Placed by exploration in slot ${pos}${from === pos ? "" : ` from ${from}`}: best on recency and importance alone${kept}, affinity and boosts zeroed (${reach})`, { from, to: pos });

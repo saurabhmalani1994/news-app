@@ -19,8 +19,14 @@
 //   buckets   the story's own sources (sources.json buckets). They do not qualify an
 //             article by themselves, because an outlet like the Jerusalem Post runs far
 //             more than the conflict; they are the sources the silence alarm checks.
+// W3: a story the hourly search found for a standing story's own query (W2's watch tag
+// for storyQuery(keywords), the query interests-sync.js sends) counts as a keyword
+// match too, under the same tag rule, so a search result whose headline happens not to
+// hold a keyword still reaches the story's page, floor and alarm.
 // Pure and deterministic: the same pool, profile, health and time give the same
 // placements and the same notices at build under Node and on the device.
+
+import { storyQuery, watchTagSync } from "./phrase.js";
 
 // Defaults from the owner brief: Israel and Gaza, and Sudan. The floor is one card in
 // the first 15, which is the whole top module (hero, two lead blocks and twelve river
@@ -94,6 +100,7 @@ function compile(def) {
     id: def.id,
     label: def.label || def.id,
     re,
+    watch: re ? watchTagSync(storyQuery(def.keywords || [])) : null,
     tags: [...(def.tags || [])],
     buckets: [...(def.buckets || [])],
     floor_slots: Number.isInteger(def.floor_slots) ? def.floor_slots : 0,
@@ -102,12 +109,13 @@ function compile(def) {
   };
 }
 
-/** Whether a story ({titles, topics}, ranker.js storiesFromPool) belongs to a compiled
- * standing story. */
+/** Whether a story ({titles, topics, watch}, ranker.js storiesFromPool) belongs to a
+ * compiled standing story. */
 export function qualifies(story, def) {
   const tagged = def.tags.length > 0 && (story.topics || []).some((t) => def.tags.includes(t));
   if (!def.re) return tagged;
   if (def.tags.length && !tagged) return false;
+  if (def.watch && (story.watch || []).includes(def.watch)) return true;
   return (story.titles || []).some((t) => def.re.test(t));
 }
 
