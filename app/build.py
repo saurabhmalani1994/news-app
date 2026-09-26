@@ -512,8 +512,14 @@ REST = """<details class="more-rest">
 # thing in <body>), and each of the 500-odd rows points at it; style.css sizes the icon
 # at 20 by 20 as the width and height attributes did. The same pixels, 120 bytes a row
 # lighter.
+# H8: the sprite must take no room. `hidden` does not hide an <svg> (the UA's [hidden]
+# rule is for HTML elements only), so T2's sprite was a laid-out 360x150 box, the first
+# item of the flex column <body class="app">, an empty band above the tabs on every
+# screen. width and height 0 (attributes, so no stylesheet is needed) and style.css's
+# .icon-sprite take it out of the flow; <use> still reads the symbol inside it.
 OVERFLOW_SYMBOL = (
-    '<svg class="icon-sprite" hidden><symbol id="i-more" viewBox="0 0 24 24">'
+    '<svg class="icon-sprite" width="0" height="0" aria-hidden="true" focusable="false">'
+    '<symbol id="i-more" viewBox="0 0 24 24">'
     '<path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"></path>'
     "</symbol></svg>"
 )

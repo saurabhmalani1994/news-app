@@ -113,8 +113,11 @@ export async function serve(dir, headers = {}, extra = {}, pathHeaders = {}) {
  * `userDataDir` pins the profile dir instead of a fresh mkdtemp one, so a second launch
  * against the same dir sees the first's on-disk Cache Storage and SW registrations, a
  * real Chrome process exit and restart, the least ambiguous "close the app, reopen it"
- * a test can drive (S18's pwa_cls.mjs, checking a waiting worker's own activation). */
-export async function launch(name, { userDataDir } = {}) {
+ * a test can drive (S18's pwa_cls.mjs, checking a waiting worker's own activation).
+ * `app: <url>` launches the target as an app window on that URL, and pages under it
+ * match `(display-mode: standalone)`. The window loads the URL before this function can
+ * give it the Access cookie, so a proof lifts its gate for the launch (site.gated). */
+export async function launch(name, { userDataDir, app = false } = {}) {
   if (!CHROME) throw new Error("no Chrome found: set CHROME");
   const port = 9300 + Math.floor(Math.random() * 600);
   // S18: back/forward cache keeps a page navigated away from alive as a service worker
@@ -126,7 +129,10 @@ export async function launch(name, { userDataDir } = {}) {
   // T1: --disable-dev-shm-usage avoids the classic CI crash-on-launch when the runner's
   // /dev/shm is small; --no-sandbox because the CI runner's kernel may refuse the sandbox.
   if (process.env.CI) args.push("--no-sandbox", "--disable-dev-shm-usage");
-  const chrome = spawn(CHROME, [...args, "about:blank"], { stdio: "ignore" });
+  // H8: `app` (a URL) opens the page target as an app window on that URL (--app), whose
+  // display mode is standalone, as the installed PWA on the owner's phone is, for pages
+  // inside it; a plain tab is "browser".
+  const chrome = spawn(CHROME, [...args, app ? `--app=${app}` : "about:blank"], { stdio: "ignore" });
   let killed = false;
   const killChrome = () => { if (killed) return; killed = true; try { chrome.kill(); } catch {} };
   // T1: everything from here on is inside a try/catch so any failure -- the launch
