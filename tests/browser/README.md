@@ -138,7 +138,7 @@ Every proof, run behind the simulated Access gate against a fresh real pool (97 
 | `health_cls` | `dist` | 6/6 |
 | `history_check` | `dist` | 10/10 |
 | `images_cls` | `dist` | 6/6 |
-| `pwa_cls` | own builds | 5/5 (one run of three missed "a second redeploy drops the build two generations back": a timing flake, green on the two reruns and on main) |
+| `pwa_cls` | own builds | 5/5, repeated 8/8 (H7 fixed the flake below) |
 | `reader_check` | `dist` (with `bodies/`) | 10/10 |
 | `rerank_cls` | `/tmp/dist_rp`, `dist` | 4/4 each |
 | `tabs_cls` | `/tmp/dist_lo` | 6/6 |
@@ -148,7 +148,22 @@ Every proof, run behind the simulated Access gate against a fresh real pool (97 
 | `u5_check` | own builds | 12/12 |
 | `w1_check` | own builds | 21/21 |
 | `you_check` | `dist` | 21/21 |
-| `s34_check` | `/tmp/dist_s34` | fails: the reader never opens for `h34a` within 8s. Fails the same way on main at 9ec7524, so not T2's; left as found. |
+| `s34_check` | `/tmp/dist_s34` | 12/12 across repeated runs (H7 found the proof stale, see below) |
+
+H7: `s34_check`'s "the reader never opens for h34a within 8s" was the proof, not History's
+reopen. It clicked the first story right after a fixed 900ms post-navigate sleep; on a cold
+first Chrome launch under load, that click could land before reader.js (a module script,
+so it attaches its listener once parsing finishes, not on a clock) was listening, and the
+click on Today's own card silently did nothing, well before History ever entered the run.
+13 local runs on main reproduced this once (a Today-open, not a History reopen); 12 further
+runs, and every one after swapping the fixed sleep for a bounded `document.readyState ===
+"complete"` wait, were green. History's own reopen path (`resolveReopen`,
+`history/reopen.js`, `saved-screen.js`) was not touched: it already prefers the device's
+own cache (populated the moment a story is first opened) with the live pool as a fallback,
+and nothing B5, R2 or T2 changed alters that. `pwa_cls`'s "once in three" flake was the
+same shape: a fixed 1500ms sleep raced the new service worker's own activate-time cache
+cleanup (`sw_template.js`) instead of waiting for it, so `redeploy()` now polls for the
+shell-cache count to actually settle at 2, bounded, rather than guessing a delay.
 
 T2 changed two things every proof sees. `coverage_check` (failing on main since B5) was
 two findings. The product was wrong: the row trigger and the carousel's data followed

@@ -152,6 +152,22 @@ async function sessionB() {
   // the count never grows past 2, and a build two generations back is the one that
   // finally goes, checked across two redeploys in a row so the bound holds more than
   // once.
+  // H7: activate's own cache cleanup (sw_template.js) runs asynchronously once the new
+  // worker takes over; a fixed sleep after navigating raced it once in three runs (T2's
+  // README note), passing on a rerun once the cleanup had caught up. Polling for the
+  // count to actually settle at 2, bounded the same as the old sleep would have covered
+  // on a normal run, makes the wait exact instead of a guess: still fails (returns
+  // whatever caches.keys() last saw) if cleanup never finishes, so a real regression
+  // still shows as extra caches past the deadline, never masked as a pass.
+  async function waitForCacheCount(count, ms = 6000) {
+    let keys = await evaluate('caches.keys().then((k) => k.filter((n) => n.startsWith("almanac-shell-")))');
+    for (const end = Date.now() + ms; keys.length !== count && Date.now() < end; ) {
+      await sleep(100);
+      keys = await evaluate('caches.keys().then((k) => k.filter((n) => n.startsWith("almanac-shell-")))');
+    }
+    return keys;
+  }
+
   async function redeploy(generatedAt, n) {
     const pool = JSON.parse(readFileSync(POOL, "utf-8"));
     pool.generated_at = generatedAt;
@@ -161,8 +177,9 @@ async function sessionB() {
     rmSync(poolPath);
     await evaluate('navigator.serviceWorker.getRegistration().then((r) => r && r.unregister())');
     await go("index.html");
-    await sleep(1500);
-    return evaluate('caches.keys().then((k) => k.filter((n) => n.startsWith("almanac-shell-")))');
+    await sleep(500);
+    await evaluate("navigator.serviceWorker.ready.then(() => 1)");
+    return waitForCacheCount(2);
   }
 
   const afterFirstRedeploy = await redeploy("2026-09-24T05:30:00Z", 2);

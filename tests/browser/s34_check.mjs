@@ -123,7 +123,14 @@ async function run(scheme) {
   }
 
   await send("Page.navigate", { url: `${site.origin}/` });
-  await sleep(900);
+  // H7: a fixed sleep here raced reader.js's own click listener (a module script, so it
+  // attaches once parsing finishes, not on any fixed clock) on a cold first Chrome
+  // launch under load, and the very first click below landed before anything was
+  // listening: nothing ever opened, and the reader.hidden waitFor 8 lines down timed
+  // out looking like a broken reopen when the page itself was just still loading. Same
+  // bound as that waitFor uses, so a genuinely broken open still fails exactly as fast.
+  await waitFor(`document.readyState === "complete"`);
+  await sleep(200);
 
   // 1. Open the two has_body stories (h34a, h34b) from Today, an "opened" signal each;
   // close the reader after each so we return to Today for the next tap. nowIso() has
