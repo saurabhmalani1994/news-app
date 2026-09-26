@@ -70,6 +70,35 @@ import { leanHit, leanMarker, leanSheetContent, setBasis } from "./lean.js";
 import { PHRASE_MAX, QUERIES_MAX } from "./phrase.js";
 import { scheduleSync, startSync } from "./interests-sync.js";
 import { standingForm, standingMessage } from "./standing-form.js";
+import { pageInput } from "./page-input.js";
+import { countWords, followFor, followRow } from "./following.js";
+
+// W3: a phrase interest's page and a standing story's page list the stories that match
+// it now, newest first, as the front page's own rows (following.js). The front page is
+// read once per load, in the background from the start (a same-origin fetch, so it
+// carries the Access cookie): its #rank-input for the matching and its Today rows for
+// drawing, so a story is listed here exactly when the front page gives it that
+// interest. A view that lists stories waits for that read (FRONT_WAIT_MS at most)
+// before it is drawn, so its sections never move once shown.
+const FRONT_WAIT_MS = 4000;
+let front; // undefined while the read runs, then {input, rows}, or null when it failed
+const frontReady = fetch("/")
+  .then((response) => {
+    if (!response.ok || response.redirected) throw new Error(`front page ${response.status}`);
+    return response.text();
+  })
+  .then((html) => {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const input = pageInput(doc);
+    if (!input?.pool) throw new Error("front page without #rank-input");
+    const rows = new Map([...doc.querySelectorAll("#section-today li.story[data-sid]")].map((li) => [li.dataset.sid, li]));
+    front = { input, rows };
+  })
+  .catch((err) => {
+    console.warn("You page: the front page's stories could not be read", err);
+    front = null;
+  });
+const frontOrTimeout = () => Promise.race([frontReady, new Promise((resolve) => setTimeout(resolve, FRONT_WAIT_MS))]);
 
 /** W1: a phrase interest's name as the page shows it, in quotes. */
 const phraseName = (phrase) => `“${phrase}”`;
@@ -124,6 +153,31 @@ function section(label, children, extra = {}) {
     return sectionNotice(label);
   }
   return el("section", { class: "settings-section", ...extra }, [el("h2", { class: "settings-label", text: label }), ...nodes]);
+}
+
+/** W3: the "Stories now" section of a phrase interest's or standing story's page. */
+function storiesSection(profile, kind, id) {
+  return section("Stories now", () => {
+    if (front === undefined) return [el("p", { class: "settings-hint", text: "Stories are still loading. Open this page again in a moment." })];
+    if (front === null) return [el("p", { class: "settings-hint", text: "The front page's stories could not be read just now. Open this page again to retry." })];
+    const follow = followFor(front.input, profile, kind, id);
+    if (!follow) {
+      return [el("p", { class: "settings-hint", text: kind === "phrase" ? "Switched off, so nothing is matched. Choose a level to follow it again." : "Switched off, so nothing is matched. Follow it again to list its stories." })];
+    }
+    const shown = follow.stories.filter((s) => front.rows.has(s.id));
+    const hint = el("p", { class: "settings-hint", text: shown.length
+      ? `${countWords(shown.length)}, newest first.`
+      : "None on the front page right now. The hourly search keeps looking." });
+    if (!shown.length) return [hint];
+    const list = el("ol", { class: "river river--text-only follow-stories" });
+    for (const story of shown) {
+      const row = followRow(document.importNode(front.rows.get(story.id), true), front.input);
+      // No story menu on this page: its sheet and actions live on the front page.
+      row.querySelectorAll(".story-overflow, .story-coverage").forEach((n) => n.remove());
+      list.appendChild(row);
+    }
+    return [hint, list];
+  }, { "data-stories": `${kind}:${id}` });
 }
 
 /** H2: the page's own chrome, found by id, or made when an older or newer page lacks
@@ -530,6 +584,7 @@ function main(schema, catalog) {
     if (phrase) {
       return [
         levelSection,
+        storiesSection(profile, "phrase", id),
         section("Phrase", [
           el("p", { class: "settings-hint", id: "phrase-how", text: `Lifts a story whose headline or summary holds ${name}: the whole words, in this order, in any case, singular or plural.` }),
           el("p", { class: "settings-hint", text: topic.enabled === false
@@ -611,6 +666,7 @@ function main(schema, catalog) {
     return [
       section("Following", [switchRow("enabled", "Follow this story", "Off stops the floor and the silence alarm for it.",
         story.enabled, (on) => commit((p) => withStandingField(p, id, "enabled", on), on ? `${story.label} on` : `${story.label} off`))]),
+      storiesSection(profile, "story", id),
       section("Keywords", [
         el("p", { class: "settings-hint", text: "A headline with any of these words or phrases counts as this story. Separate them with commas." }),
         el("div", { class: "setting-row setting-row--stack" }, [keywords]),
@@ -922,9 +978,21 @@ function main(schema, catalog) {
     forward = false;
   }
 
+  // W3: a view that lists stories is drawn once the front page is read (or the wait
+  // runs out), never before, so its list never pushes the sections under it down.
+  const listsStories = (r) => (r.view === "interest" || r.view === "story") && front === undefined;
+  let waiting = false;
+
   function route() {
     const next = parseHash();
     if (next.key === current.key && root.childElementCount) return;
+    if (listsStories(next)) {
+      if (!waiting) {
+        waiting = true;
+        frontOrTimeout().then(() => { waiting = false; route(); });
+      }
+      return;
+    }
     hideToast();
     positions[current.key] = scrollY;
     previousKey = current.key;
@@ -966,8 +1034,12 @@ function main(schema, catalog) {
   addEventListener("popstate", route);
 
   current = parseHash();
-  render();
-  place();
+  if (listsStories(current)) {
+    frontOrTimeout().then(() => { render(); place(); });
+  } else {
+    render();
+    place();
+  }
 }
 
 Promise.all([loadJson("profile.schema.json"), loadJson("source-catalog.json").catch(() => null)])

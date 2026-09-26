@@ -29,6 +29,7 @@ import { SECTIONS } from "./sections.js";
 import { retier, placeOtherSide } from "./tiers.js";
 import { currentLiveEvent } from "./live.js";
 import { pageInput } from "./page-input.js";
+import { FOLLOW_PREVIEW, countWords, followMatches, followRow } from "./following.js";
 
 const root = document.documentElement;
 const pager = document.getElementById("pager");
@@ -325,12 +326,57 @@ pager.addEventListener("scroll", () => {
   });
 }, { passive: true });
 
+// W3: the Following screen, one section per followed phrase and standing story, each
+// its current stories newest first (following.js), as compact clones of Today's own
+// rows, so a tap, the reader and the story menu (Why this) work as they do on Today.
+// Drawn each time the screen opens, once Today is in its final order, so it follows the
+// profile as it is now; the screen is a hidden layer until then, so nothing on screen
+// moves when it fills.
+function followSection(follow, rows) {
+  const shown = follow.stories.filter((s) => rows.has(s.id));
+  const section = el("section", "follow");
+  section.dataset.follow = `${follow.kind}:${follow.id}`;
+  const head = el("a", "follow-head");
+  head.setAttribute("href", follow.href);
+  head.append(el("span", "follow-kicker", follow.kind === "phrase" ? "Phrase" : "Standing story"),
+    el("span", "follow-name", follow.label), el("span", "follow-count", countWords(shown.length)));
+  section.append(head);
+  if (shown.length) {
+    const list = el("ol", "river river--text-only follow-stories");
+    list.append(...shown.slice(0, FOLLOW_PREVIEW).map((s) => followRow(rows.get(s.id), input)));
+    section.append(list);
+  }
+  if (shown.length > FOLLOW_PREVIEW) {
+    const more = el("a", "follow-more", `See all ${shown.length}`);
+    more.setAttribute("href", follow.href);
+    section.append(more);
+  }
+  return section;
+}
+
+function buildFollowing() {
+  const box = document.getElementById("following-list");
+  if (!box || !input) return;
+  let follows = [];
+  try {
+    follows = followMatches(input, currentProfile());
+  } catch (err) {
+    console.warn("Following could not be drawn", err);
+  }
+  const rows = new Map([...document.querySelectorAll("#section-today li.story[data-sid]")].map((li) => [li.dataset.sid, li]));
+  box.replaceChildren(...follows.map((f) => followSection(f, rows)));
+  const empty = document.getElementById("following-empty");
+  if (empty) empty.hidden = follows.length > 0;
+  box.dataset.ready = "true";
+}
+
 // Bottom nav: #following and #saved raise their layer over Home; anything else is Home.
 // Tapping Home while on Home takes the current section back to its top, as NYT does.
 const screens = [...document.querySelectorAll(".screen")];
 function route() {
   const want = location.hash.slice(1);
   const name = screens.some((s) => s.dataset.screen === want) ? want : "home";
+  if (name === "following") whenRanked(buildFollowing);
   for (const screen of screens) {
     const on = screen.dataset.screen === name;
     screen.classList.toggle("is-current", on);

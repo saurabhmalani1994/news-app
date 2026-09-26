@@ -382,6 +382,19 @@ def test_section_tabs_and_bottom_nav_are_text_only_labels():
     assert panels == ["today", "live", "us-politics", "world", "singapore", "asia", "ai", "biotech"]
 
 
+def test_following_screen_is_chrome_the_device_fills():
+    """W3: the Following screen ships its list container and an empty state hidden by
+    default (the default profile follows two standing stories); js/tabs.js fills the
+    list from js/following.js. No story, phrase or watch tag is written into it."""
+    page = render(fixture_pool())
+    start = page.index('id="screen-following"')
+    view = page[start:page.index("</section>", start)]
+    assert '<div class="view view--following">' in view
+    assert '<div class="following-list" id="following-list"></div>' in view
+    assert '<div class="empty" id="following-empty" hidden>' in view
+    assert "data-sid" not in view and "w:" not in view
+
+
 def test_profile_page_carries_the_same_bottom_nav_with_you_current():
     from app.build import STATIC, bottom_nav
     profile = (STATIC / "profile.html").read_text(encoding="utf-8")

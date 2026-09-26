@@ -383,21 +383,22 @@ def coverage_articles(pool):
     return out
 
 
-# Following (S30) and Saved (S26) are later slices; until then each is a calm view with
-# its title and one quiet line about what will live there, set like NYT's You tab.
-VIEW = """<section class="screen screen--view" id="screen-{id}" data-screen="{id}" aria-labelledby="{id}-title">
-<div class="view">
-<h1 class="view-title" id="{id}-title">{title}</h1>
-<div class="empty">
-<p class="empty-head">{head}</p>
-<p class="empty-text">{text}</p>
+# W3: the Following screen. The device fills #following-list (js/tabs.js, from
+# js/following.js): one section per phrase interest and standing story the profile
+# follows, each its current stories newest first, as Today's own rows. The build lays
+# out static chrome only, so nothing drawn here can disagree with the device. The empty
+# state shows only when the profile follows nothing (the default follows two standing
+# stories).
+FOLLOWING_VIEW = """<section class="screen screen--view" id="screen-following" data-screen="following" aria-labelledby="following-title">
+<div class="view view--following">
+<h1 class="view-title" id="following-title">Following</h1>
+<div class="following-list" id="following-list"></div>
+<div class="empty" id="following-empty" hidden>
+<p class="empty-head">Nothing followed yet</p>
+<p class="empty-text">Follow a phrase or a standing story from You, and its stories are listed here as they arrive.</p>
 </div>
 </div>
 </section>"""
-VIEWS = (
-    ("following", "Following", "Nothing followed yet",
-     "Standing stories and the names you follow will each get a page here, with a timeline and how every outlet covered it."),
-)
 
 # S26: the Saved screen. The device fills #saved-list from S24's savesStore
 # (js/saved-screen.js), the same card the river uses (STORY below, reused verbatim), so
@@ -456,7 +457,7 @@ def _chrome(sections):
                                hidden=hidden))
         if index:
             panels.append(PANEL.format(id=escape(section["id"], quote=True), hidden=hidden))
-    views = "\n".join(VIEW.format(id=v, title=t, head=h, text=x) for v, t, h, x in VIEWS) + "\n" + SAVED_VIEW
+    views = FOLLOWING_VIEW + "\n" + SAVED_VIEW
     return "\n".join(tabs), "\n".join(panels), views
 
 
