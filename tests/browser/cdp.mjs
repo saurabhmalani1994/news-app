@@ -22,7 +22,12 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": 
 
 // T1: every wait below is bounded so a wedged Chrome fails fast with a clear message
 // instead of hanging node --test (and the CI job) until the outer timeout kills it.
-const LAUNCH_TIMEOUT_MS = Number(process.env.CDP_LAUNCH_TIMEOUT_MS) || 15000; // chrome.exe -> a debuggable page target
+// T3: this is the budget for one launch attempt; launch() makes up to two, so a
+// definite failure (both attempts miss) still reports in about 2x this, not
+// unboundedly. 7s per attempt was measured comfortable for a clean ubuntu-latest
+// Chrome start (typically under 2s) and still leaves the pair with headroom inside
+// a 20s failure budget.
+const LAUNCH_TIMEOUT_MS = Number(process.env.CDP_LAUNCH_TIMEOUT_MS) || 7000; // chrome.exe -> a debuggable page target
 const CONNECT_TIMEOUT_MS = Number(process.env.CDP_CONNECT_TIMEOUT_MS) || 15000; // WebSocket handshake to that target
 // T1: generous. The hand-run proofs share this module and run many CDP commands across
 // several real Chrome launches on a developer's own loaded machine, not a clean CI
@@ -119,6 +124,22 @@ export async function serve(dir, headers = {}, extra = {}, pathHeaders = {}) {
  * give it the Access cookie, so a proof lifts its gate for the launch (site.gated). */
 export async function launch(name, { userDataDir, app = false } = {}) {
   if (!CHROME) throw new Error("no Chrome found: set CHROME");
+  // T3: one bounded retry, only for "no debuggable page target": the ubuntu runner's
+  // preinstalled Chrome occasionally misses the launch window entirely (first-run
+  // profile setup, a slow zygote fork under load), with no error, just silence on the
+  // debugging port until LAUNCH_TIMEOUT_MS. A fresh attempt (new port, new profile dir
+  // unless the caller pinned one) clears that up. A target that was found but then
+  // failed to connect, or any other error, means Chrome did start and something else
+  // is wrong, so that is not retried.
+  try {
+    return await attemptLaunch(name, { userDataDir, app });
+  } catch (err) {
+    if (!/no debuggable page target/.test(err.message)) throw err;
+    return await attemptLaunch(name, { userDataDir, app });
+  }
+}
+
+async function attemptLaunch(name, { userDataDir, app }) {
   const port = 9300 + Math.floor(Math.random() * 600);
   // S18: back/forward cache keeps a page navigated away from alive as a service worker
   // client, which stalls a waiting worker's activation in a same-tab navigate/reload
@@ -133,8 +154,14 @@ export async function launch(name, { userDataDir, app = false } = {}) {
   // display mode is standalone, as the installed PWA on the owner's phone is, for pages
   // inside it; a plain tab is "browser".
   const chrome = spawn(CHROME, [...args, app ? `--app=${app}` : "about:blank"], { stdio: "ignore" });
+  // T3: a wedged Chrome (mid zygote fork, or ignoring the default term signal while it
+  // never finished starting up) must not be able to keep node --test alive after a
+  // launch failure: SIGKILL instead of the default SIGTERM, and unref() so this child,
+  // however slow it is to actually exit, is never itself a reason the event loop stays
+  // open. Cleanup of anything it leaves behind is the CI job's orphan-process sweep.
+  try { chrome.unref(); } catch {}
   let killed = false;
-  const killChrome = () => { if (killed) return; killed = true; try { chrome.kill(); } catch {} };
+  const killChrome = () => { if (killed) return; killed = true; try { chrome.kill("SIGKILL"); } catch {} };
   // T1: everything from here on is inside a try/catch so any failure -- the launch
   // wait, the WebSocket handshake, or an unexpected throw -- kills the process this
   // function spawned before rethrowing. Without this, a rejection here would leak the

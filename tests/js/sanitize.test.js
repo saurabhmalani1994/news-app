@@ -79,34 +79,43 @@ const HANDLER_NAMES = `(() => {
 
 test("hostile fixtures through the real parser: neutralized, benign markup kept, nothing runs",
   { skip: !CHROME && !process.env.CI ? "no Chrome on this machine" : false, timeout: 60000 }, async () => {
+    // T3: site and chrome each get their own try/finally around the call that creates
+    // them, not one shared block below both. launch() awaited a Chrome that never
+    // becomes ready throws before its own close() exists; if that throw happened
+    // inside a block that also owned site's cleanup, site.close() never ran and the
+    // http server it holds open kept node --test (and the CI job) alive for the full
+    // 5-minute job timeout after the test itself had already failed and reported.
     const site = await serve(STATIC, {}, { "/blank.html": "<!doctype html><title>s37</title><body></body>" });
-    const chrome = await launch("s37-sanitize");
     try {
-      await chrome.send("Page.enable");
-      await chrome.send("Page.navigate", { url: `${site.origin}/blank.html` });
-      await sleep(500);
-      await chrome.evaluate("window.__pwned = []");
-      const handlers = await chrome.evaluate(HANDLER_NAMES);
-      assert.ok(handlers.length >= 80, `found only ${handlers.length} on* handler names`);
-      const fixtures = [...HOSTILE, ...handlerFixtures(handlers), BENIGN];
-      const results = await chrome.evaluate(`${PAGE_CHECK}(${JSON.stringify(fixtures)}, ${JSON.stringify(ELEMENTS)}, ${JSON.stringify(ATTRIBUTES)})`);
-      // Give every error, load, focus and animation event its chance to fire.
-      await chrome.evaluate("document.querySelectorAll('[data-fixture] *').forEach((el) => { el.focus?.(); el.dispatchEvent(new Event('mouseover')); })");
-      await sleep(1500);
-      const pwned = await chrome.evaluate("window.__pwned");
-      assert.deepEqual(pwned, [], "a payload ran");
-      const failures = [];
-      for (const [i, r] of results.entries()) {
-        const f = fixtures[i];
-        if (!r.isFragment) failures.push(`${f.name}: sanitizeBody must return a DocumentFragment`);
-        if (r.bad.length) failures.push(`${f.name}: ${r.bad.join(", ")} in ${r.html}`);
-        if (/javascript:|vbscript:|data:|srcdoc|style=|\son[a-z]+=|<script|<svg|<math|<iframe|<form/i.test(r.html)) failures.push(`${f.name}: hostile text in ${r.html}`);
-        if (f.out !== undefined && r.html !== f.out) failures.push(`${f.name}: got ${JSON.stringify(r.html)}, want ${JSON.stringify(f.out)}`);
+      const chrome = await launch("s37-sanitize");
+      try {
+        await chrome.send("Page.enable");
+        await chrome.send("Page.navigate", { url: `${site.origin}/blank.html` });
+        await sleep(500);
+        await chrome.evaluate("window.__pwned = []");
+        const handlers = await chrome.evaluate(HANDLER_NAMES);
+        assert.ok(handlers.length >= 80, `found only ${handlers.length} on* handler names`);
+        const fixtures = [...HOSTILE, ...handlerFixtures(handlers), BENIGN];
+        const results = await chrome.evaluate(`${PAGE_CHECK}(${JSON.stringify(fixtures)}, ${JSON.stringify(ELEMENTS)}, ${JSON.stringify(ATTRIBUTES)})`);
+        // Give every error, load, focus and animation event its chance to fire.
+        await chrome.evaluate("document.querySelectorAll('[data-fixture] *').forEach((el) => { el.focus?.(); el.dispatchEvent(new Event('mouseover')); })");
+        await sleep(1500);
+        const pwned = await chrome.evaluate("window.__pwned");
+        assert.deepEqual(pwned, [], "a payload ran");
+        const failures = [];
+        for (const [i, r] of results.entries()) {
+          const f = fixtures[i];
+          if (!r.isFragment) failures.push(`${f.name}: sanitizeBody must return a DocumentFragment`);
+          if (r.bad.length) failures.push(`${f.name}: ${r.bad.join(", ")} in ${r.html}`);
+          if (/javascript:|vbscript:|data:|srcdoc|style=|\son[a-z]+=|<script|<svg|<math|<iframe|<form/i.test(r.html)) failures.push(`${f.name}: hostile text in ${r.html}`);
+          if (f.out !== undefined && r.html !== f.out) failures.push(`${f.name}: got ${JSON.stringify(r.html)}, want ${JSON.stringify(f.out)}`);
+        }
+        assert.deepEqual(failures, []);
+        console.log(`# sanitizer: ${HOSTILE.length} hostile fixtures + ${handlers.length} on* handler fixtures + 1 benign, 0 payloads ran`);
+      } finally {
+        chrome.close();
       }
-      assert.deepEqual(failures, []);
-      console.log(`# sanitizer: ${HOSTILE.length} hostile fixtures + ${handlers.length} on* handler fixtures + 1 benign, 0 payloads ran`);
     } finally {
-      chrome.close();
       site.close();
     }
   });
