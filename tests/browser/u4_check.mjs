@@ -26,7 +26,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
+import { PAGE_INPUT, launch, parseHeaders, serve, sleep } from "./cdp.mjs";
 import { PYTHON } from "./python.mjs";
 import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
 
@@ -156,7 +156,7 @@ const stored1 = await store();
 await open("/");
 const home1 = JSON.parse(await evaluate(`(async () => {
   const { rank } = await import("/js/ranker.js");
-  const input = JSON.parse(document.getElementById("rank-input").content.textContent);
+  const input = ${PAGE_INPUT};
   const stored = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)}));
   const profile = stored.history.at(-1).profile;
   const ranked = rank(input.pool, profile, input.now);

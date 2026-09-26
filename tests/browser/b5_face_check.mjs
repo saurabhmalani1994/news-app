@@ -23,7 +23,7 @@ import { join, resolve } from "node:path";
 
 import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
-import { ACCESS_COOKIE, launch, parseHeaders, serve, sleep } from "./cdp.mjs";
+import { ACCESS_COOKIE, PAGE_INPUT, launch, parseHeaders, serve, sleep } from "./cdp.mjs";
 
 const [distArg, shotsArg] = process.argv.slice(2);
 const DIST = resolve(distArg || "dist");
@@ -102,7 +102,7 @@ const STATE = (profileJson) => `(async () => {
   const T = await import("./js/tiers.js" + q);
   const R = await import("./js/reader/core.js" + q);
   const profile = ${profileJson};
-  const input = JSON.parse(document.getElementById("rank-input").content.textContent);
+  const input = ${PAGE_INPUT};
   const ctx = V.versionsContext(input);
   const muted = profile.mutes.sources || [], trust = profile.trust || {};
   const pages = P.rankPages(input.pool, profile, input.now, P.pageOptions(input));
@@ -221,7 +221,7 @@ if (close) {
 }
 
 // 4. Fox muted.
-const FOX = Object.keys(JSON.parse(await evaluate(`JSON.stringify(JSON.parse(document.getElementById("rank-input").content.textContent).names)`))).filter((id) => id.startsWith("fox"));
+const FOX = Object.keys(JSON.parse(await evaluate(`JSON.stringify(${PAGE_INPUT}.names)`))).filter((id) => id.startsWith("fox"));
 const foxMuted = store((p) => { p.mutes.sources = FOX; });
 const foxFaced = scored.filter((r) => FOX.includes(r.slides[0]?.source) && r.slides.some((x) => !FOX.includes(x.source)));
 await visit(foxMuted, "dark", foxFaced[0]?.sid || "");

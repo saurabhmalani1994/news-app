@@ -34,7 +34,7 @@ import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { launch, parseHeaders, sleep } from "./cdp.mjs";
+import { PAGE_INPUT, launch, parseHeaders, sleep } from "./cdp.mjs";
 import { PYTHON } from "./python.mjs";
 import { handle, userKey } from "../../functions/api/interests.js";
 import { phraseQuery, watchTagSync } from "../../app/static/js/phrase.js";
@@ -313,7 +313,7 @@ const today = await json(`(async () => {
   const { rankPages, pageOptions } = await import("/js/passes.js");
   const { summaryToHistory } = await import("/js/history/summary.js");
   const { seenPenaltyTerm } = await import("/js/history/penalty.js");
-  const input = JSON.parse(document.getElementById("rank-input").content.textContent);
+  const input = ${PAGE_INPUT};
   const order = [...document.querySelectorAll("#section-today li.story[data-sid]")].map((li) => li.dataset.sid);
   // The page's own re-rank (rerank.js): this profile, and the read history's seen term.
   const terms = [seenPenaltyTerm(summaryToHistory(window.almanacHistorySummary || {}))];

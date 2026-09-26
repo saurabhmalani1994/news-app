@@ -8,6 +8,7 @@ import re
 
 from app.build import coverage_articles, coverage_summary_text, render
 from app.frontpage import source_ownership
+from app.page_input import decode_input
 
 NOW = "2026-09-24T12:00:00Z"
 
@@ -80,7 +81,7 @@ def test_story_coverage_button_renders_for_the_cluster_and_never_for_a_single_so
 def test_rank_input_carries_ownership_and_coverage_for_the_device():
     page = render(pool())
     raw = re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)
-    data = json.loads(html.unescape(raw))
+    data = decode_input(json.loads(html.unescape(raw)))
     assert data["ownership"]["al_jazeera"] == "state-funded"
     assert data["coverage"]["c1a"] == {"url": "https://example.org/c1a", "has_body": True}
     assert "solo" not in data["coverage"]

@@ -18,6 +18,7 @@ import { noteSeen, pruneSummary } from "./summary.js";
 import { pruneHistory } from "./prune.js";
 import { storyAttributes } from "../actions/context.js";
 import { nowIso } from "../profile/time.js";
+import { pageInput } from "../page-input.js";
 
 const DWELL_MS = 1000;
 const THRESHOLD = 0.5;
@@ -26,7 +27,7 @@ let cachedInput = null;
 function getInput() {
   if (!cachedInput) {
     try {
-      cachedInput = JSON.parse(document.getElementById("rank-input").content.textContent);
+      cachedInput = pageInput();
     } catch {
       cachedInput = { pool: { articles: [], clusters: [] } };
     }

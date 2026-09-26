@@ -11,12 +11,13 @@ import { buildCoverage, coverageContext, LEAN_LABELS } from "./coverage.js";
 import { relativeAge } from "./offline-format.js";
 import { leanMarker } from "./lean.js";
 import { STORAGE_KEY } from "./profile/store.js";
+import { pageInput } from "./page-input.js";
 
 let cachedInput = null;
 function getInput() {
   if (!cachedInput) {
     try {
-      cachedInput = JSON.parse(document.getElementById("rank-input").content.textContent);
+      cachedInput = pageInput();
     } catch {
       cachedInput = { pool: { articles: [], clusters: [] } };
     }

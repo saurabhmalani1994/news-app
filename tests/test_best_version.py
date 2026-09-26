@@ -14,6 +14,7 @@ from fetcher import best_version as bvm
 from fetcher.best_version import TERMS, annotate, headline_parts, load_rules, score_fixture
 from fetcher.fanout import build_pool_fanout, load_sources
 from fetcher.fetch import dumps
+from app.page_input import decode_input
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = load_sources(ROOT / "sources.json")
@@ -235,8 +236,8 @@ def test_the_build_embeds_each_carousel_members_bv_for_versions_js():
     want = {a["id"]: a["bv"] for a in sorted(pool["articles"], key=lambda a: a["id"]) if "bv" in a}
     assert version_bv(pool) == want and want
     page = render(pool)
-    data = json.loads(re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)
-                      .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&"))
+    data = decode_input(json.loads(re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)
+                      .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")))
     assert data["bv"] == want
     assert "bv" not in json.dumps(data["pool"]["articles"]), "the ranker's own input keeps its shape"
 

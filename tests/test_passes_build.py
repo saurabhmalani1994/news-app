@@ -11,6 +11,7 @@ from app import frontpage
 from app.build import OTHER_SIDE_MIN_SOURCES, render
 from app.frontpage import build_stories, pass_input, rank_input, ranked_stories, run_ranker
 from app.lean import hit_html, marker_html
+from app.page_input import decode_input
 
 NOW = "2026-09-24T12:00:00Z"
 HOSTILE = '<img src=x onerror=alert(1)> "Right" take'
@@ -101,7 +102,7 @@ def test_other_side_link_renders_beside_its_card_as_text_only():
     assert "&lt;img src=x onerror=alert(1)&gt;" in other and "<img src=x" not in page
     # The device gets the same link data, as text, for clusters of 3 or more outlets.
     raw = re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)
-    data = json.loads(html.unescape(raw))
+    data = decode_input(json.loads(html.unescape(raw)))
     assert sorted(data["links"]) == ["c1a", "c1b", "c1c"]
     assert data["links"]["c1b"][0] == "https://example.org/c1b"
     assert data["leans"]["fox_politics"] == "right"

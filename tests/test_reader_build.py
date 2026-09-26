@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app.build import READER, body_id, render
 from app.csp import headers_file, scan
+from app.page_input import decode_input
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = json.loads((ROOT / "tests/fixtures/golden_pool.json").read_text(encoding="utf-8"))
@@ -24,7 +25,7 @@ def _pool(**changes):
 
 def _rank_input(page):
     text = re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)
-    return json.loads(unescape(text))
+    return decode_input(json.loads(unescape(text)))
 
 
 def _body_links(page):

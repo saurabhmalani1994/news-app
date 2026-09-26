@@ -10,13 +10,14 @@ from app.frontpage import dek_budget
 from tests.test_frontpage import fixture_pool
 from tests.test_render import _parse
 from tests.test_tokens import STYLE_CSS
+from app.page_input import decode_input
 
 ROOT_JS = "app/static/js"
 
 
 def _embedded(page):
     raw = re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)
-    return json.loads(raw.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&"))
+    return decode_input(json.loads(raw.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")))
 
 
 def _pool_with_bodies():

@@ -16,7 +16,7 @@ import { rankPages, pageOptions } from "../../app/static/js/passes.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
 import { BASE, BENIGN, HOSTILE, handlerFixtures } from "../js/hostile-bodies.js";
-import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
+import { PAGE_INPUT, launch, parseHeaders, serve, sleep } from "./cdp.mjs";
 
 const [distArg, shotsArg] = process.argv.slice(2);
 const dist = resolve(distArg || "dist");
@@ -92,7 +92,7 @@ const rr = JSON.parse(await evaluate(`JSON.stringify({ hidden: document.document
   // rerank.js now loads as ".../js/rerank.js?v=<build>", not the bare path.
   rerankLoaded: performance.getEntriesByType("resource").some((e) => e.name.includes("/js/rerank.js")),
   order: [...document.querySelectorAll("#section-today li.story[data-sid]")].map((li) => li.dataset.sid),
-  input: JSON.parse(document.getElementById("rank-input").content.textContent) })`));
+  input: ${PAGE_INPUT} })`));
 const opts = pageOptions(rr.input);
 const expected = rankPages(rr.input.pool, custom, rr.input.now, opts).today.map((s) => s.id);
 const builtOrder = rankPages(rr.input.pool, base, rr.input.now, opts).today.map((s) => s.id);

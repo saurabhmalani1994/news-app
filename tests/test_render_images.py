@@ -18,6 +18,7 @@ from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 
+from app.page_input import decode_input
 from app.build import render
 from app.frontpage import front_page
 from app.images import (HERO_MIN_WIDTH, credit_text, hero_box, hero_media, hero_pick, hero_worthy, image_url,
@@ -255,7 +256,7 @@ def test_page_embeds_image_records_for_a_device_rerank():
     pool = _with_images(_big_pool())
     pool["articles"][0]["image"] = {"url": "http://img.example/x.jpg", "width": 1200}
     page = render(pool)
-    data = json.loads(unescape(re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)))
+    data = decode_input(json.loads(unescape(re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1))))
     images = data["images"]
     assert pool["articles"][0]["id"] not in images
     assert len(images) == len(pool["articles"]) - 1

@@ -9,7 +9,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
+import { PAGE_INPUT, launch, parseHeaders, serve, sleep } from "./cdp.mjs";
 
 const [distArg, shotsArg] = process.argv.slice(2);
 const dist = resolve(distArg || "dist");
@@ -68,7 +68,7 @@ const check = (name, pass, detail) => { results[name] = { pass, ...detail }; ok 
 // 2 there and one version on the page; picking by it chose such a cluster on H5's
 // pool, which rightly has no trigger. Every row is held to the page's rule first.
 const biggest = JSON.parse(await evaluate(`(() => {
-  const input = JSON.parse(document.getElementById("rank-input").content.textContent);
+  const input = ${PAGE_INPUT};
   const source = new Map(input.pool.articles.map((a) => [a.id, a.source_id]));
   const copies = (c) => {
     const group = new Map();
@@ -131,7 +131,7 @@ check("groups appear in the fixed taxonomy order (left, center-left, center, cen
 
 // 2. Every article in this cluster is accounted for: rows plus also-carried-by names.
 const accounted = JSON.parse(await evaluate(`(() => {
-  const input = JSON.parse(document.getElementById("rank-input").content.textContent);
+  const input = ${PAGE_INPUT};
   const cluster = input.pool.clusters.find((c) => c.id === "${biggest.sid}");
   const rowHeadlines = [...document.querySelectorAll(".coverage-headline")].map((n) => n.textContent);
   const clusterHeadlines = new Set(cluster.article_ids.map((id) => input.pool.articles.find((a) => a.id === id)?.title));
@@ -151,7 +151,7 @@ if (biggest.dupSid) {
   await backTwice();
   await openSheetFor(biggest.dupSid);
   const dupCheck = JSON.parse(await evaluate(`(() => {
-    const input = JSON.parse(document.getElementById("rank-input").content.textContent);
+    const input = ${PAGE_INPUT};
     const cluster = input.pool.clusters.find((c) => c.id === "${biggest.dupSid}");
     const also = [...document.querySelectorAll(".coverage-also")].map((p) => p.textContent);
     const rowCount = document.querySelectorAll(".coverage-row").length;

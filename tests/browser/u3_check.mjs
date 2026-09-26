@@ -24,7 +24,7 @@ import { join, resolve } from "node:path";
 
 import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
-import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
+import { PAGE_INPUT, launch, parseHeaders, serve, sleep } from "./cdp.mjs";
 
 const [distArg, shotsArg, beforeArg] = process.argv.slice(2);
 const dist = resolve(distArg || "dist");
@@ -82,7 +82,7 @@ async function visit(stored, scheme = "dark", origin = site.origin) {
 /** Every row in every panel, folded ones opened, as measured: its name shown and whole,
  * its marker, its two lines. Leaves the page as it found it. */
 const ROWS = `(() => {
-  const data = JSON.parse(document.getElementById("rank-input").content.textContent);
+  const data = ${PAGE_INPUT};
   const leads = new Map(data.pool.clusters.map((c) => [c.id, c.lead]));
   const byId = new Map(data.pool.articles.map((a) => [a.id, a]));
   const panels = [...document.querySelectorAll(".panel")];

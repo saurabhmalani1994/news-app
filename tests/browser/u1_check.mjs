@@ -10,7 +10,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
+import { PAGE_INPUT, launch, parseHeaders, serve, sleep } from "./cdp.mjs";
 
 const [distArg, shotsArg] = process.argv.slice(2);
 const dist = resolve(distArg || "dist");
@@ -109,7 +109,7 @@ await sleep(400);
 
 // B. A row whose full text comes from another outlet.
 const pick = await evaluate(`(() => {
-  const data = JSON.parse(document.getElementById("rank-input").content.textContent);
+  const data = ${PAGE_INPUT};
   const leads = new Map((data.pool.clusters || []).map((c) => [c.id, c.lead]));
   const counts = { before: 0, after: 0, topBefore: 0, topAfter: 0 };
   let target = null;

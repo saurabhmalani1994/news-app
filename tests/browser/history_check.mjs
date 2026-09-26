@@ -14,7 +14,7 @@ import { join, resolve } from "node:path";
 import { rankPages, pageOptions } from "../../app/static/js/passes.js";
 import { seenPenaltyTerm } from "../../app/static/js/history/penalty.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
-import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
+import { decodeInput, launch, parseHeaders, serve, sleep } from "./cdp.mjs";
 
 const [distArg, shotsArg] = process.argv.slice(2);
 const dist = resolve(distArg || "dist");
@@ -114,7 +114,7 @@ await sleep(2200);
 await evaluate(`document.fonts.ready`);
 const reloadedHidden = await evaluate(`document.documentElement.classList.contains("rerank")`);
 const cls = await evaluate(`window.__cls`);
-const input = JSON.parse(await evaluate(`document.getElementById("rank-input").content.textContent`));
+const input = decodeInput(JSON.parse(await evaluate(`document.getElementById("rank-input").content.textContent`)));
 
 // This run never stored a custom profile, so the page ranked (and rank-gate.js's
 // fallback ranks) with the shipped default, at the build's own `now`.

@@ -20,6 +20,7 @@ import { retier, placeFace, placeReadChoice, placeOtherSide, visibleSourceCount,
 import { buildDefaultProfile } from "./profile/default-profile.js";
 import { summaryToHistory } from "./history/summary.js";
 import { seenPenaltyTerm } from "./history/penalty.js";
+import { pageInput } from "./page-input.js";
 
 const root = document.documentElement;
 
@@ -44,7 +45,7 @@ function drawNotices(box, notices) {
 
 function run() {
   try {
-    const input = JSON.parse(document.getElementById("rank-input").content.textContent);
+    const input = pageInput();
     const profile = window.almanacProfile || buildDefaultProfile(input.now);
     const history = summaryToHistory(window.almanacHistorySummary || {});
     const pages = rankPages(input.pool, profile, input.now, pageOptions(input, { terms: [seenPenaltyTerm(history)] }));

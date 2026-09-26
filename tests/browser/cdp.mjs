@@ -8,6 +8,14 @@ import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 
+import { decodeInput } from "../../app/static/js/page-input.js";
+
+// T2: the page's #rank-input is written compact (app/page_input.py). A proof reads it
+// decoded, as every reader on the page does: decodeInput in Node, and PAGE_INPUT as an
+// expression inside a page-side evaluate (the decoder's own source, then the parse).
+export { decodeInput };
+export const PAGE_INPUT = `(${decodeInput})(JSON.parse(document.getElementById("rank-input").content.textContent))`;
+
 export const CHROME = process.env.CHROME || ["C:/Program Files/Google/Chrome/Application/chrome.exe", "/usr/bin/google-chrome"].find(existsSync);
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const TYPES = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".woff2": "font/woff2" };

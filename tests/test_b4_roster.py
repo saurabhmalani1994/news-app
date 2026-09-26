@@ -17,6 +17,7 @@ from fetcher.fanout import PER_SOURCE_CAP, PUBLISHED_DEK_CHARS, build_pool_fanou
 from fetcher.fetch import _plain, iter_feed_items, parse_xml
 from fetcher.geo import load_geo, tag_countries
 from fetcher.locality import annotate, story_countries, tier_for
+from app.page_input import decode_input
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = load_sources(ROOT / "sources.json")
@@ -327,7 +328,7 @@ def test_the_build_embeds_each_carousel_members_tier_for_versions_js():
             for aid in sorted(cluster["article_ids"])}
     assert version_locality(pool) == want
     page = render(pool)
-    data = json.loads(re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)
-                      .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&"))
+    data = decode_input(json.loads(re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)
+                      .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")))
     assert data["locality"] == want
     assert set(want.values()) == {"intermediate", "overseas"}

@@ -8,6 +8,7 @@ import re
 
 from app.build import render
 from app.frontpage import failing_sources, pass_input, run_ranker
+from app.page_input import decode_input
 
 NOW = "2026-09-24T12:00:00Z"
 
@@ -96,7 +97,7 @@ def test_silence_notice_sources_failing_names_them_escaped():
     assert "AllAfrica &lt;Sudan&gt; and Radio Dabanga (HTTP errors, 17 fetches in a row)." in box
     assert "<Sudan>" not in box
     # The device gets the same health to draw the same notice after a re-rank.
-    data = json.loads(html.unescape(re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)))
+    data = decode_input(json.loads(html.unescape(re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1))))
     assert data["health"] == {"allafrica_sudan": {"state": "http_error", "runs": 17},
                               "radio_dabanga": {"state": "http_error", "runs": 17}}
 

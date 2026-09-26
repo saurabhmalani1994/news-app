@@ -211,7 +211,8 @@ def test_meta_shows_visible_sources_not_the_raw_pool_count():
 # fed a feed string; the Seen filter is a plain button, no new tag for that.
 APP_TAGS = {"html", "head", "meta", "title", "link", "body", "header", "h1", "main", "ol", "li",
             "a", "span", "section", "h2", "footer", "p", "time", "svg", "circle", "path",
-            "script", "template", "nav", "div", "button", "article", "input"}
+            "script", "template", "nav", "div", "button", "article", "input",
+            "symbol", "use"}  # T2: the overflow glyph, drawn once and pointed at by each row
 APP_SCRIPTS = ['<script src="js/offline-gate.js">', '<script src="js/rank-gate.js">',
                '<script type="module" src="js/tabs.js">', '<script type="module" src="js/reader.js">',
                '<script type="module" src="js/story-actions.js">',
@@ -356,7 +357,8 @@ def test_device_rank_input_is_escaped_text_that_round_trips():
     page = render(pool)
     raw = re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)
     assert "<" not in raw and ">" not in raw
-    data = json.loads(html.unescape(raw))
+    from app.page_input import decode_input
+    data = decode_input(json.loads(html.unescape(raw)))
     assert data["pool"] == rank_input(pool) and data["now"] == pool["generated_at"]
     assert re.findall(r"<script\b[^>]*>", page) == APP_SCRIPTS
     rows = re.findall(r'<li class="story story--[\w-]+" data-sid="([^"]+)">', page)

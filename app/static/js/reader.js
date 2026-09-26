@@ -43,6 +43,7 @@ import { showToast } from "./toast.js";
 import { openedStore } from "./history/store.js";
 import { recordOpened } from "./history/record.js";
 import { noteSeen } from "./history/summary.js";
+import { pageInput as readPageInput } from "./page-input.js";
 
 /** The card snapshot for story `sid`, from the page's own embedded input: the same
  * source (storyAttributes, input.images) the card's own overflow sheet and Save use,
@@ -79,7 +80,7 @@ let hideTimer = 0;
 function pageInput() {
   if (!input) {
     try {
-      input = JSON.parse(document.getElementById("rank-input").content.textContent);
+      input = readPageInput();
     } catch {
       input = {};
     }

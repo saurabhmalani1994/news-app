@@ -12,7 +12,7 @@ import { readFileSync, existsSync, mkdtempSync, writeFileSync, mkdirSync } from 
 import { join, extname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
-import { ACCESS_COOKIE, parseHeaders, serve } from "./cdp.mjs";
+import { ACCESS_COOKIE, PAGE_INPUT, decodeInput, parseHeaders, serve } from "./cdp.mjs";
 import { rankPages, pageOptions } from "../../app/static/js/passes.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
@@ -70,7 +70,7 @@ async function visit(stored, scheme) {
     hiddenNow: document.documentElement.classList.contains("rerank"),
     order: [...document.querySelectorAll("#section-today li.story[data-sid]")].map((li) => li.dataset.sid),
     notices: [...document.querySelectorAll("#standing-notices .notice")].map((n) => [n.dataset.standing, n.dataset.kind, ...[...n.querySelectorAll("p")].map((p) => p.textContent)]),
-    input: JSON.parse(document.getElementById("rank-input").content.textContent) }))`));
+    input: ${PAGE_INPUT} }))`));
 }
 
 const base = buildDefaultProfile("2026-09-24T00:00:00Z");
@@ -84,7 +84,7 @@ const store = storeOf(off);
 // below the floor that no card in the first 15 carries (the device must place it), and
 // one whose keyword nothing carries (the device must raise its silence notice).
 const html = readFileSync(join(dist, "index.html"), "utf-8");
-const built = JSON.parse(html.match(/<template id="rank-input">([\s\S]*?)<\/template>/)[1].replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+const built = decodeInput(JSON.parse(html.match(/<template id="rank-input">([\s\S]*?)<\/template>/)[1].replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")));
 const standing = (id, label, keywords, buckets = []) => ({ id, label, enabled: true, keywords, tags: [], buckets, floor_slots: 1, floor_within: 15, silence_hours: 24 });
 const quiet = standing("r2_quiet", "Quiet probe", ["zzqprobe"], ["sudan"]);
 function probeProfile() {

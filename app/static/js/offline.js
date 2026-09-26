@@ -26,6 +26,43 @@
     return Math.floor(minutes / (24 * 60)) + "d ago";
   }
 
+  // T2: #rank-input is written compact (app/page_input.py); a byte-for-byte copy of
+  // decodeInput in js/page-input.js, which tests/js/page-input.test.js diffs against it.
+  function decodeInput(raw) {
+    if (!raw || !Array.isArray(raw["~s"])) return raw;
+    var table = raw["~s"];
+    function string(text) {
+      if (text.charCodeAt(0) !== 126) return text;
+      if (text.charCodeAt(1) === 126) return text.slice(1);
+      var caret = text.indexOf("^");
+      if (caret < 0) return table[parseInt(text.slice(1), 36)];
+      return table[parseInt(text.slice(1, caret), 36)].slice(0, parseInt(text.slice(caret + 1), 36)) + "\u2026";
+    }
+    function rows(keys, body) {
+      var names = keys.map(string);
+      return body.map(function (row) {
+        var obj = {};
+        for (var i = 0; i < names.length; i++) if (row[i] !== "~-") obj[names[i]] = value(row[i]);
+        return obj;
+      });
+    }
+    function value(v) {
+      if (typeof v === "string") return string(v);
+      if (Array.isArray(v)) return v.map(value);
+      if (!v || typeof v !== "object") return v;
+      var obj = {};
+      if (v["~o"]) {
+        var values = v["~k"] ? rows(v["~k"], v["~r"]) : v["~v"].map(value);
+        v["~o"].forEach(function (k, i) { obj[string(k)] = values[i]; });
+        return obj;
+      }
+      if (v["~k"]) return rows(v["~k"], v["~r"]);
+      Object.keys(v).forEach(function (k) { obj[k] = value(v[k]); });
+      return obj;
+    }
+    return value(raw.v);
+  }
+
   var generatedAt = line.dataset.generatedAt;
   var age = relativeAge(generatedAt, Date.now());
   line.textContent = age ? "Offline. Showing news from " + age : "Offline. Showing cached news.";
@@ -36,7 +73,7 @@
     if (!template) return;
     var input;
     try {
-      input = JSON.parse(template.content.textContent);
+      input = decodeInput(JSON.parse(template.content.textContent));
     } catch (e) {
       return;
     }

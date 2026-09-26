@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from app.page_input import decode_input
 from app.build import render
 from app.frontpage import build_stories, face_of, ranked_stories, run_ranker, version_bv
 from fetcher.best_version import score_fixture
@@ -100,7 +101,7 @@ def _pool():
 
 
 def _embedded(page):
-    return json.loads(unescape(re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)))
+    return decode_input(json.loads(unescape(re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1))))
 
 
 @pytest.mark.skipif(NODE is None, reason="needs Node")

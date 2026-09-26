@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { createServer } from "node:http";
 import { extname, join, resolve } from "node:path";
 
-import { launch, parseHeaders, sleep } from "./cdp.mjs";
+import { PAGE_INPUT, launch, parseHeaders, sleep } from "./cdp.mjs";
 
 const [distArg, shotsArg] = process.argv.slice(2);
 const DIST = resolve(distArg || "dist");
@@ -98,7 +98,7 @@ const pick = await evaluate(`(async () => {
   const src = document.querySelector('script[src*="js/versions-view.js"]').getAttribute("src");
   const v = src.split("?")[1] || "";
   const m = await import("./js/versions.js" + (v ? "?" + v : ""));
-  const data = JSON.parse(document.getElementById("rank-input").content.textContent);
+  const data = ${PAGE_INPUT};
   const ctx = m.versionsContext(data);
   const sids = [...new Set([...document.querySelectorAll("#section-today .story-coverage")].map((b) => b.dataset.sid))];
   const rows = sids.map((sid) => { const c = ctx.clusters.get(sid);

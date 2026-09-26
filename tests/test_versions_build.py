@@ -8,6 +8,7 @@ import re
 
 from app.build import render, version_deks
 from app.frontpage import dek_budget
+from app.page_input import decode_input
 
 NOW = "2026-09-24T12:00:00Z"
 LONG = ("Negotiators met again on Tuesday after a week of silence. They said the first round "
@@ -58,7 +59,7 @@ def _row(page, sid):
 
 def _rank_input(page):
     raw = re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)
-    return json.loads(html.unescape(raw))
+    return decode_input(json.loads(html.unescape(raw)))
 
 
 def test_version_deks_cover_multi_source_members_fitted_typeset_and_sorted():

@@ -12,12 +12,13 @@ import {
   overridesOf, withEventPinned, withEventUnpinned, withEventBlocked,
 } from "./live.js";
 import { currentProfile, syncLiveTab, fillLivePanel } from "./tabs.js";
+import { pageInput } from "./page-input.js";
 
 let cachedInput = null;
 function getInput() {
   if (!cachedInput) {
     try {
-      cachedInput = JSON.parse(document.getElementById("rank-input").content.textContent);
+      cachedInput = pageInput();
     } catch {
       cachedInput = { pool: { articles: [], clusters: [] }, events: [] };
     }

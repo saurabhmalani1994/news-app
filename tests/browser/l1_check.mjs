@@ -29,14 +29,14 @@ import { join, resolve } from "node:path";
 import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { readChoice } from "../../app/static/js/reader/core.js";
-import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
+import { PAGE_INPUT, decodeInput, launch, parseHeaders, serve, sleep } from "./cdp.mjs";
 
 const [distArg, shotsArg] = process.argv.slice(2);
 const dist = resolve(distArg || "dist");
 const headers = parseHeaders(readFileSync(join(dist, "_headers"), "utf-8"));
 const html = readFileSync(join(dist, "index.html"), "utf-8");
-const input = JSON.parse(html.match(/<template id="rank-input">([\s\S]*?)<\/template>/)[1]
-  .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+const input = decodeInput(JSON.parse(html.match(/<template id="rank-input">([\s\S]*?)<\/template>/)[1]
+  .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")));
 
 // R43 fixtures from the page's own data: a story whose lead has no body and whose
 // candidates span two outlets, so trust can flip the pick; and one member to 404.
@@ -131,7 +131,7 @@ async function visit(stored, scheme = "dark") {
 
 // The Today rows, as drawn: marker, meta geometry, hit target placement.
 const ROWS = `(() => {
-  const data = JSON.parse(document.getElementById("rank-input").content.textContent);
+  const data = ${PAGE_INPUT};
   const leads = new Map(data.pool.clusters.map((c) => [c.id, c.lead]));
   const byId = new Map(data.pool.articles.map((a) => [a.id, a]));
   return [...document.querySelectorAll("#section-today li.story[data-sid]")].map((li) => {

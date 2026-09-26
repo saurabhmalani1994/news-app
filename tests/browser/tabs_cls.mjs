@@ -12,7 +12,7 @@ import { readFileSync, existsSync, mkdtempSync, writeFileSync, mkdirSync } from 
 import { join, extname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
-import { ACCESS_COOKIE, parseHeaders, serve } from "./cdp.mjs";
+import { ACCESS_COOKIE, PAGE_INPUT, parseHeaders, serve } from "./cdp.mjs";
 
 import { rankPages, pageOptions } from "../../app/static/js/passes.js";
 import { SECTIONS } from "../../app/static/js/sections.js";
@@ -85,7 +85,7 @@ const check = (name, pass, detail) => { results[name] = { pass, ...detail }; ok 
 
 // 1. Lists: each panel equals the ranked pool filtered by the table, in ranked order.
 await load("dark");
-const input = await json(`JSON.parse(document.getElementById("rank-input").content.textContent)`);
+const input = await json(`${PAGE_INPUT}`);
 const pages = rankPages(input.pool, buildDefaultProfile(input.now), input.now, pageOptions(input));
 const lists = await json(`Object.fromEntries([...document.querySelectorAll(".panel")].map((p) => [p.dataset.section, [...p.querySelectorAll("li.story[data-sid]")].map((li) => li.dataset.sid)]))`);
 const others = await json(`Object.fromEntries([...document.querySelectorAll(".panel")].map((p) => [p.dataset.section, [...p.querySelectorAll("li.story[data-sid] .other-side")].map((a) => [a.closest("li").dataset.sid, a.dataset.aid])]))`);

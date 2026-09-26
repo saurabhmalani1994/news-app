@@ -31,7 +31,7 @@ import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { launch, parseHeaders, sleep } from "./cdp.mjs";
+import { PAGE_INPUT, launch, parseHeaders, sleep } from "./cdp.mjs";
 import { PYTHON } from "./python.mjs";
 import { STORAGE_KEY } from "../../app/static/js/profile/store.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
@@ -235,7 +235,7 @@ const survey = await evaluate(`(async () => {
   const src = document.querySelector('script[src*="js/versions-view.js"]').getAttribute("src");
   const v = src.split("?")[1] || "";
   const m = await import("./js/versions.js" + (v ? "?" + v : ""));
-  const data = JSON.parse(document.getElementById("rank-input").content.textContent);
+  const data = ${PAGE_INPUT};
   const ctx = m.versionsContext(data);
   const sids = [...new Set([...document.querySelectorAll("#section-today .story-coverage")].map((b) => b.dataset.sid))];
   const counts = sids.map((sid) => { const c = ctx.clusters.get(sid); return { sid, n: m.buildVersions(c, ctx, { leadId: c.lead, nowMs: Date.now() }).length,
@@ -278,7 +278,7 @@ let s = await state();
 check(s.open && s.hash === `#bundle-${big.sid}` && s.count === `1 of ${big.n}` && s.chips === big.n && s.active === 0 && s.focus === "bv-close",
   `the tap opens the carousel for its row: ${s.hash}, "${s.count}", ${s.chips} chips, focus on close`);
 const openShift = (await shiftSum()) - before;
-const lead = await evaluate(`(() => { const d = JSON.parse(document.getElementById("rank-input").content.textContent);
+const lead = await evaluate(`(() => { const d = ${PAGE_INPUT};
   const c = d.pool.clusters.find((x) => x.id === ${JSON.stringify(big.sid)}); const a = d.pool.articles.find((x) => x.id === c.lead);
   return { title: a.title, source: d.names[a.source_id] }; })()`);
 const first = await evaluate(`({ headline: document.querySelector("#bv-slide-0 .bv-headline").textContent, outlet: document.querySelector("#bv-slide-0 .bv-outlet-name").textContent })`);
@@ -442,7 +442,7 @@ await back();
 
 // 9. A muted source is neither shown nor counted.
 const bigSlides = await evaluate(`(async () => { const src = document.querySelector('script[src*="js/versions-view.js"]').getAttribute("src");
-  const m = await import("./js/versions.js?" + (src.split("?")[1] || "")); const d = JSON.parse(document.getElementById("rank-input").content.textContent);
+  const m = await import("./js/versions.js?" + (src.split("?")[1] || "")); const d = ${PAGE_INPUT};
   const ctx = m.versionsContext(d); const c = ctx.clusters.get(${JSON.stringify(big.sid)});
   return m.buildVersions(c, ctx, { leadId: c.lead, nowMs: Date.now() }).map((x) => x.sourceId); })()`);
 const mutedSource = bigSlides[1];
@@ -451,7 +451,7 @@ mutedProfile.mutes.sources = [mutedSource];
 await visit({ stored: { history: [{ version: 1, timestamp: "2026-09-24T00:00:00Z", profile: mutedProfile }] } });
 await openRow(big.sid);
 const muted = await evaluate(`({ chips: [...document.querySelectorAll(".bv-chip")].map((c) => c.textContent), count: document.getElementById("bv-count").textContent,
-  names: JSON.parse(document.getElementById("rank-input").content.textContent).names })`);
+  names: ${PAGE_INPUT}.names })`);
 const mutedName = muted.names[mutedSource];
 check(!muted.chips.includes(mutedName) && muted.count === `1 of ${big.n - 1}` && !(await evaluate(`document.getElementById("bv").textContent.includes(${JSON.stringify(mutedName)})`)),
   `with ${mutedName} muted it is not shown anywhere in the carousel and not counted ("${muted.count}")`);
@@ -465,7 +465,7 @@ check(s.open && s.count === `1 of ${big.n}`, `a #bundle- address opens the carou
 // 11. The hostile build: the headline is text, nothing runs.
 await visit({ origin: hostile.origin });
 const hostileSlide = await evaluate(`(async () => { const src = document.querySelector('script[src*="js/versions-view.js"]').getAttribute("src");
-  const m = await import("./js/versions.js?" + (src.split("?")[1] || "")); const d = JSON.parse(document.getElementById("rank-input").content.textContent);
+  const m = await import("./js/versions.js?" + (src.split("?")[1] || "")); const d = ${PAGE_INPUT};
   const ctx = m.versionsContext(d); const c = ctx.clusters.get(${JSON.stringify(target.id)});
   const slides = m.buildVersions(c, ctx, { leadId: c.lead, nowMs: Date.now() });
   return { i: slides.findIndex((x) => x.id === ${JSON.stringify(evilId)} || x.more.some((y) => y.id === ${JSON.stringify(evilId)})), row: !!document.querySelector('#section-today li.story[data-sid="${target.id}"]') }; })()`);

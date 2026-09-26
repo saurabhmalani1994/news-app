@@ -28,12 +28,13 @@ import { STORAGE_KEY } from "./profile/store.js";
 import { SECTIONS } from "./sections.js";
 import { retier, placeOtherSide } from "./tiers.js";
 import { currentLiveEvent } from "./live.js";
+import { pageInput } from "./page-input.js";
 
 const root = document.documentElement;
 const pager = document.getElementById("pager");
 const strip = document.querySelector(".tabs-scroll");
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
-const input = JSON.parse(document.getElementById("rank-input").content.textContent);
+const input = pageInput();
 let built = false;
 
 const visibleTabs = () => [...strip.querySelectorAll(".tab")].filter((t) => !t.hidden);

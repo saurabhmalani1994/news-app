@@ -46,6 +46,7 @@ import { standingStatus, withStandingAdded } from "./profile/you-edits.js";
 import { suggestStanding } from "./story-keywords.js";
 import { standingForm, standingMessage } from "./standing-form.js";
 import { scheduleSync, startSync } from "./interests-sync.js";
+import { pageInput } from "./page-input.js";
 
 function currentHistoryTerms() {
   return [seenPenaltyTerm(summaryToHistory(readSummary(window.localStorage)))];
@@ -73,7 +74,7 @@ let cachedInput = null;
 function getInput() {
   if (!cachedInput) {
     try {
-      cachedInput = JSON.parse(document.getElementById("rank-input").content.textContent);
+      cachedInput = pageInput();
     } catch {
       cachedInput = { pool: { articles: [], clusters: [] } };
     }

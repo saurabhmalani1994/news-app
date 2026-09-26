@@ -49,6 +49,7 @@ import { articleIdFor, reopenTarget } from "./history/reopen.js";
 import { clearHistory } from "./history/clear.js";
 import { recordOpened } from "./history/record.js";
 import { noteSeen, pruneSummary } from "./history/summary.js";
+import { pageInput } from "./page-input.js";
 
 const MIDDOT = "·";
 // The sheet's own close glyph (app/build.py SHEET), reused here as "remove": a plain X
@@ -173,7 +174,7 @@ let poolCache = null;
 function poolInput() {
   if (!poolCache) {
     try {
-      poolCache = JSON.parse(document.getElementById("rank-input").content.textContent);
+      poolCache = pageInput();
     } catch {
       poolCache = { bodies: {}, leans: {}, countries: {} };
     }

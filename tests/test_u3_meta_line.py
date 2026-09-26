@@ -22,6 +22,7 @@ from fetcher.fanout import _pool_source
 from tests.test_frontpage import SOURCES as FIXTURE_IDS, fixture_pool
 from tests.test_lean_marker import _source_of
 from tests.test_u1_summaries_reader import _pool_with_bodies, _row
+from app.page_input import decode_input
 
 ROOT = Path(__file__).resolve().parent.parent
 REPO_SOURCES = json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))["sources"]
@@ -95,8 +96,8 @@ def test_a_non_us_row_shows_its_country_code_and_a_tap_target_named_for_it():
         seen[lean if lean in LEAN_SCALE or lean == "state" else "country"] = True
     assert set(seen) >= {"center", "right", "state", "country"}, seen
     assert '<span class="lean-code">PK</span>' in page and '<span class="lean-code">SG</span>' in page
-    data = json.loads(re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)
-                      .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&"))
+    data = decode_input(json.loads(re.search(r'<template id="rank-input">(.*?)</template>', page, re.S).group(1)
+                      .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")))
     assert data["countries"] == {sid: BY_ID[sid]["country"] for sid in sorted(REAL)}
 
 

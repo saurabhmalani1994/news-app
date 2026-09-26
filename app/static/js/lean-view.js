@@ -7,6 +7,7 @@
 // page itself carries no copy of it. Every string is set as text (R26, js/lean.js).
 import { openSheet } from "./sheet.js";
 import { leanSheetContent, setBasis } from "./lean.js";
+import { pageInput as readPageInput } from "./page-input.js";
 
 let input = null;
 let bases = null;
@@ -14,7 +15,7 @@ let bases = null;
 function pageInput() {
   if (!input) {
     try {
-      input = JSON.parse(document.getElementById("rank-input").content.textContent);
+      input = readPageInput();
     } catch {
       input = {};
     }

@@ -27,6 +27,7 @@ from app.frontpage import (CHARS_PER_LINE, DEK_LINES, ROW_DEK_LINES, clean_dek, 
                            pass_input, rank_input, run_ranker, source_countries, source_ownership,
                            version_bv, visible_source_count,
                            carousel_article_ids, multi_version)
+from app.page_input import decode_input, encode_input
 from app.images import THUMB_PX, credit_text, hero_box, hero_media, hero_worthy, image_url, media_for, thumb_ok
 from app.lean import hit_html as lean_hit_html, marker_html as lean_marker_html
 from app.serviceworker import write_service_worker
@@ -76,6 +77,7 @@ PAGE = """<!doctype html>
 <script src="js/sw-register.js" defer></script>
 </head>
 <body class="app">
+{overflow_symbol}
 <div class="screens">
 <div class="screen screen--home is-current" id="screen-home" data-screen="home">
 <nav class="tabs" aria-label="Sections">
@@ -505,11 +507,18 @@ REST = """<details class="more-rest">
 # own link, never nested inside it (a button inside an <a> would fire both on a tap).
 # A quiet 48dp target, the three-dot glyph NYT's own article bar uses; CSS reserves a
 # matching gutter on the headline, dek and meta so the icon is never fought for room.
+# T2: the glyph is drawn once, as the page's one <symbol> (OVERFLOW_SYMBOL, the first
+# thing in <body>), and each of the 500-odd rows points at it; style.css sizes the icon
+# at 20 by 20 as the width and height attributes did. The same pixels, 120 bytes a row
+# lighter.
+OVERFLOW_SYMBOL = (
+    '<svg class="icon-sprite" hidden><symbol id="i-more" viewBox="0 0 24 24">'
+    '<path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"></path>'
+    "</symbol></svg>"
+)
 STORY_OVERFLOW = (
     '<button class="story-overflow" type="button" aria-label="Story actions" aria-haspopup="dialog">'
-    '<svg class="story-overflow-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">'
-    '<path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"></path>'
-    "</svg></button>"
+    '<svg class="story-overflow-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-more"></use></svg></button>'
 )
 # S14: the coverage view trigger; V1: it opens the versions carousel (js/versions-view.js),
 # whose footer opens the coverage view. It never changes what the meta line shows (still
@@ -816,7 +825,13 @@ def _rank_input_json(pool, stories, by_id, source_names, links, chars=None, now=
             "coverage": coverage_articles(pool), "vdeks": version_deks(pool),
             "locality": version_locality(pool),
             "fronts": face_records(stories, by_id, source_names, now, version_bv(pool))}
-    return escape(json.dumps(data, ensure_ascii=False, separators=(",", ":")), quote=False)
+    # T2: written compact (app/page_input.py); every reader decodes it first
+    # (js/page-input.js), and the build refuses a form that does not decode to `data`.
+    plain = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    compact = encode_input(data)
+    if json.dumps(decode_input(compact), ensure_ascii=False, separators=(",", ":")) != plain:
+        raise ValueError("#rank-input: the compact form does not decode to the input")
+    return escape(json.dumps(compact, ensure_ascii=False, separators=(",", ":")), quote=False)
 
 
 def render(pool, ranking=None, chars=None):
@@ -872,7 +887,7 @@ def render(pool, ranking=None, chars=None):
     updated = now.strftime("%d %b %H:%M UTC") if now else ""
     tabs, panels, views = _chrome(ranking["sections"])
     return PAGE.format(
-        tabs=tabs,
+        tabs=tabs, overflow_symbol=OVERFLOW_SYMBOL,
         panels=panels,
         views=views,
         nav=bottom_nav("home"),

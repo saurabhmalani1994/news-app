@@ -34,6 +34,7 @@ import { openedStore } from "./history/store.js";
 import { recordOpened } from "./history/record.js";
 import { noteSeen } from "./history/summary.js";
 import { noteCompared } from "./history/compared.js";
+import { pageInput as readPageInput } from "./page-input.js";
 
 const layer = document.getElementById("bv");
 const closeButton = document.getElementById("bv-close");
@@ -70,7 +71,7 @@ let settleTimer = 0;
 function pageInput() {
   if (!input) {
     try {
-      input = JSON.parse(document.getElementById("rank-input").content.textContent);
+      input = readPageInput();
     } catch {
       input = {};
     }

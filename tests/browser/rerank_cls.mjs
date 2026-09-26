@@ -10,7 +10,7 @@ import { readFileSync, existsSync, mkdtempSync, writeFileSync, mkdirSync } from 
 import { join, extname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
-import { ACCESS_COOKIE, parseHeaders, serve } from "./cdp.mjs";
+import { ACCESS_COOKIE, PAGE_INPUT, decodeInput, parseHeaders, serve } from "./cdp.mjs";
 
 import { rankPages, pageOptions } from "../../app/static/js/passes.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
@@ -67,7 +67,7 @@ async function visit(stored, scheme, shot) {
     hiddenNow: document.documentElement.classList.contains("rerank"),
     order: [...document.querySelectorAll("#section-today li.story[data-sid]")].map((li) => li.dataset.sid),
     others: [...document.querySelectorAll("#section-today .other-side")].map((a) => [a.closest("li").dataset.sid, a.dataset.aid]),
-    input: JSON.parse(document.getElementById("rank-input").content.textContent),
+    input: ${PAGE_INPUT},
     top: [...document.querySelectorAll("#headlines .headline")].slice(0, 5).map((h) => h.textContent), w: innerWidth, dpr: devicePixelRatio }))`));
   if (shot) {
     const png = (await send("Page.captureScreenshot", { format: "png" })).result.data;
@@ -85,7 +85,7 @@ custom.topics.world.affinity = 0.2;
 const stored = { history: [{ version: 1, timestamp: base.updated_at, profile: base }, { version: 2, timestamp: "2026-09-24T01:00:00Z", profile: { ...custom, profile_version: 2 } }] };
 // S13: mute the outlet of the built page's hero, and the Singapore topic.
 const html = readFileSync(join(dist, "index.html"), "utf-8");
-const probe = JSON.parse(html.match(/<template id="rank-input">([\s\S]*?)<\/template>/)[1].replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+const probe = decodeInput(JSON.parse(html.match(/<template id="rank-input">([\s\S]*?)<\/template>/)[1].replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")));
 const heroId = html.split('id="headlines"')[1].match(/data-sid="([^"]+)"/)[1];
 const heroCluster = probe.pool.clusters.find((c) => c.id === heroId);
 const heroSource = probe.pool.articles.find((a) => a.id === (heroCluster ? heroCluster.lead : heroId)).source_id;

@@ -15,7 +15,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { BENIGN, HOSTILE, handlerFixtures } from "../js/hostile-bodies.js";
-import { launch, parseHeaders, serve, sleep } from "./cdp.mjs";
+import { PAGE_INPUT, launch, parseHeaders, serve, sleep } from "./cdp.mjs";
 
 const [distArg, shotsArg] = process.argv.slice(2);
 const dist = resolve(distArg || "dist");
@@ -96,12 +96,12 @@ const openStory = (id) => (realOpens++, evaluate(`document.querySelector('#secti
 
 // 1. Dark, a section tab with a has_body story, scrolled so the story sits mid screen.
 await load("index.html", "dark");
-const photos = JSON.parse(await evaluate(`JSON.stringify(Object.keys(JSON.parse(document.getElementById("rank-input").content.textContent).reader || {}))`));
+const photos = JSON.parse(await evaluate(`JSON.stringify(Object.keys(${PAGE_INPUT}.reader || {}))`));
 const bodyIds = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('#section-today a.story-link[data-body]')].map((a) => a.dataset.body))`));
 // H5: each Today row's R43 candidates (every member with a body file). A row with more
 // than one falls back to the next member when its pick's file is missing (L1), so the
 // missing-file note is only ever the answer for a row with one, or once all are gone.
-const members = JSON.parse(await evaluate(`JSON.stringify((() => { const bodies = JSON.parse(document.getElementById("rank-input").content.textContent).bodies || {};
+const members = JSON.parse(await evaluate(`JSON.stringify((() => { const bodies = ${PAGE_INPUT}.bodies || {};
   return Object.fromEntries([...document.querySelectorAll('#section-today a.story-link[data-body]')].map((a) => [a.dataset.body, (bodies[a.closest("li.story")?.dataset.sid] || []).map((c) => c[0])])); })())`));
 const picked = JSON.parse(await evaluate(`(async () => {
   const photos = new Set(${JSON.stringify(photos)});
