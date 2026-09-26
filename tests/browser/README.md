@@ -70,7 +70,7 @@ node tests/browser/tabs_cls.mjs /tmp/dist_lo
 ```
 
 `standing_cls.mjs` still runs fine against golden_pool.json's plain `dist` (its own
-fixed conditional-clear bug, not a size problem — see H4 item 6 below).
+fixed conditional-clear bug, not a size problem; see H4 item 6 below).
 
 R2 added two more, both taking a real pool. `rank_parity_pool.py` puts three of Today's
 top 12 into one event, so H4's per-event repeat cap always moves a card (the pass the
@@ -113,6 +113,52 @@ refs (including the working tree) and take no dist argument.
 | `v1_check.mjs` (V1) | Behind an Access-like cookie gate with `_headers` applied: every multi-source row's "N sources" opens its versions carousel (lead first), CLS 0 across open, swipe and close, back restores the feed scroll and focus, arrow keys and ARIA roles, an 11-version strip keeps its active chip in view, reduced motion jumps, Read and back, the footer coverage sheet, the word-mark switch, mutes, `#bundle-` addresses, a hostile headline as text; sweep shots light, dark and grayscale. | `node tests/browser/v1_check.mjs dist <shots dir>` | 2026-09-25 (R2: grows a pool without an 11-version cluster through `fixtures/v1_pool.py` itself, so any fresh pool's dist runs) |
 | `b4_locality_check.mjs` (B4) | Behind an Access-like cookie gate with `_headers` applied: unauthenticated `pool.json`, a `bodies/` file and the page all get the 302; the page embeds `locality` for carousel members; on a Today carousel spanning two tiers every slide names its own tier (Local, Regional, Overseas) and an unlabeled one none; shots dark and light. | `node tests/browser/b4_locality_check.mjs dist <shots dir>` | 2026-09-25 |
 | `b5_face_check.mjs` (B5) | Behind an Access-like cookie gate with `_headers` applied: every scored Today row shows its best version (headline, outlet) and its carousel opens on it; "Read here" and Today's order agree with the page's own modules; a trust of 1.5 on a close pick's runner-up re-fronts the row before first paint (CLS 0) and the why-this sheet opens with "Leads because" naming trust, its terms summing to the score; with Fox muted no Fox-only story renders and Fox leaves every carousel and "N sources"; shots of the re-fronted row and the sheet, dark and light. | `node tests/browser/b5_face_check.mjs dist <shots dir>` (any fresh pool's dist) | 2026-09-25 |
+
+## Pass counts (T2, 2026-09-26)
+
+Every proof, run behind the simulated Access gate against a fresh real pool (97 sources,
+697 articles) and the fixtures above. A count is checks passed out of checks run.
+
+| Proof | Dist | Result |
+|---|---|---|
+| `sw_pretty_urls` | own builds | 13/13 |
+| `h2_you_check` | own builds | 27/27 |
+| `h3_photos_check` | `--pool dist/pool.json` | 8/8 |
+| `actions_check` | `/tmp/dist_actions` | 9/9 |
+| `why_check` | `/tmp/dist_why` | 10/10 |
+| `saved_check` | `/tmp/dist_saved sb1` | 6/6 |
+| `standing_cls` | `dist`, `/tmp/dist_rp`, `/tmp/dist_why` | 4/4 each |
+| `csp_check` | `/tmp/dist_csp` | 8/8 |
+| `l1_check` | `/tmp/dist_l1` | 39/39 |
+| `v1_check` | `dist` | 24/24 |
+| `b4_locality_check` | `dist` | 8/8 |
+| `b5_face_check` | `dist` | 35/35 |
+| `coverage_check` | `dist` | 9/9 |
+| `d3_polish` | `dist` | 8/8 |
+| `health_cls` | `dist` | 6/6 |
+| `history_check` | `dist` | 10/10 |
+| `images_cls` | `dist` | 6/6 |
+| `pwa_cls` | own builds | 5/5 (one run of three missed "a second redeploy drops the build two generations back": a timing flake, green on the two reruns and on main) |
+| `reader_check` | `dist` (with `bodies/`) | 10/10 |
+| `rerank_cls` | `/tmp/dist_rp`, `dist` | 4/4 each |
+| `tabs_cls` | `/tmp/dist_lo` | 6/6 |
+| `u1_check` | `dist` (with `bodies/`) | 20/20 |
+| `u3_check` | `dist` | 32/32 |
+| `u4_check` | own builds | 14/14 |
+| `u5_check` | own builds | 12/12 |
+| `w1_check` | own builds | 21/21 |
+| `you_check` | `dist` | 21/21 |
+| `s34_check` | `/tmp/dist_s34` | fails: the reader never opens for `h34a` within 8s. Fails the same way on main at 9ec7524, so not T2's; left as found. |
+
+T2 changed two things every proof sees. `coverage_check` (failing on main since B5) was
+two findings. The product was wrong: the row trigger and the carousel's data followed
+the pool's `independent_sources` (syndication groups), while the row's "N sources"
+counts sources, so two feeds of one owner (TechCrunch AI and TechCrunch Climate) showed
+"2 sources" with no trigger over it; the trigger now follows the row's own count. The
+proof was stale: it held the sheet's "M independent" to the pool's field, which H6
+replaced with the page's count. And `#rank-input` is now written compact
+(`app/page_input.py`): a proof reads it through `cdp.mjs`'s `decodeInput` (Node side)
+or `PAGE_INPUT` (inside a page-side evaluate), never with a bare `JSON.parse`.
 
 ## Other proofs in this directory
 
