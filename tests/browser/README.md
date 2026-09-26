@@ -113,6 +113,7 @@ refs (including the working tree) and take no dist argument.
 | `v1_check.mjs` (V1) | Behind an Access-like cookie gate with `_headers` applied: every multi-source row's "N sources" opens its versions carousel (lead first), CLS 0 across open, swipe and close, back restores the feed scroll and focus, arrow keys and ARIA roles, an 11-version strip keeps its active chip in view, reduced motion jumps, Read and back, the footer coverage sheet, the word-mark switch, mutes, `#bundle-` addresses, a hostile headline as text; sweep shots light, dark and grayscale. | `node tests/browser/v1_check.mjs dist <shots dir>` | 2026-09-25 (R2: grows a pool without an 11-version cluster through `fixtures/v1_pool.py` itself, so any fresh pool's dist runs) |
 | `b4_locality_check.mjs` (B4) | Behind an Access-like cookie gate with `_headers` applied: unauthenticated `pool.json`, a `bodies/` file and the page all get the 302; the page embeds `locality` for carousel members; on a Today carousel spanning two tiers every slide names its own tier (Local, Regional, Overseas) and an unlabeled one none; shots dark and light. | `node tests/browser/b4_locality_check.mjs dist <shots dir>` | 2026-09-25 |
 | `b5_face_check.mjs` (B5) | Behind an Access-like cookie gate with `_headers` applied: every scored Today row shows its best version (headline, outlet) and its carousel opens on it; "Read here" and Today's order agree with the page's own modules; a trust of 1.5 on a close pick's runner-up re-fronts the row before first paint (CLS 0) and the why-this sheet opens with "Leads because" naming trust, its terms summing to the score; with Fox muted no Fox-only story renders and Fox leaves every carousel and "N sources"; shots of the re-fronted row and the sheet, dark and light. | `node tests/browser/b5_face_check.mjs dist <shots dir>` (any fresh pool's dist) | 2026-09-25 |
+| `w3_check.mjs` (W3) | Behind the Access gate with `_headers` applied and a stored profile of two phrase interests at Normal plus a standing story: Today re-ranks to passes.js's own order (R2), Following lists each follow's matches newest first (five, then See all), Why this from a Following row names the phrase, each phrase's and the standing story's page on You lists every match; CLS 0, no CSP report, no login redirect. Invented phrases; `W3_DIST` and `W3_PHRASES` point it at a real dist for a local look. | `node tests/browser/w3_check.mjs [<shots dir>]` | 2026-09-26 (23/23) |
 
 ## Pass counts (T2, 2026-09-26)
 
@@ -147,6 +148,7 @@ Every proof, run behind the simulated Access gate against a fresh real pool (97 
 | `u4_check` | own builds | 14/14 |
 | `u5_check` | own builds | 12/12 |
 | `w1_check` | own builds | 21/21 |
+| `w3_check` | own build | 23/23 (W3, 2026-09-26) |
 | `you_check` | `dist` | 21/21 |
 | `s34_check` | `/tmp/dist_s34` | 12/12 across repeated runs (H7 found the proof stale, see below) |
 
