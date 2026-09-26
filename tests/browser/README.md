@@ -94,6 +94,22 @@ word nothing carries, so the device always places a card and raises a notice.
 face's advance widths and the narrowest dek measure and prints `app/dek_widths.py`.
 Rerun it when the dek font, its size or the gutters change.
 
+H8 added `live_pool.py`, for `h8_layout_check.mjs`: it takes a real pool and makes one
+event live, so the Home screen always has the Live tab the owner's phone had when T2's
+sprite put an empty 150px band above the tabs. `--from` replays the phone's upgrade from
+a previous deploy's dist (built from that commit) to this one in an app window.
+
+```
+python tests/browser/fixtures/live_pool.py dist/pool.json > /tmp/live_pool.json
+python -m app.build --pool /tmp/live_pool.json --out /tmp/dist_live
+node tests/browser/h8_layout_check.mjs /tmp/dist_live <shots dir> [--from <previous dist>]
+```
+
+The app window (`launch(name, { app: url })` in `cdp.mjs`, Chrome's `--app`) is the
+installed PWA's `display-mode: standalone`; DevTools media emulation does not reach
+display-mode. It opens a 404 inside the app's scope with the gate lifted for the launch
+only, since its first load comes before the browser holds the Access cookie.
+
 `sw_pretty_urls.mjs` and `h2_you_check.mjs` build their own dist(s) internally from git
 refs (including the working tree) and take no dist argument.
 
@@ -151,6 +167,7 @@ Every proof, run behind the simulated Access gate against a fresh real pool (97 
 | `w3_check` | own build | 23/23 (W3, 2026-09-26) |
 | `you_check` | `dist` | 21/21 |
 | `s34_check` | `/tmp/dist_s34` | 12/12 across repeated runs (H7 found the proof stale, see below) |
+| `h8_layout_check` | `/tmp/dist_live`, `--from` 9ec7524 and f329c3d | see H8 below |
 
 H7: `s34_check`'s "the reader never opens for h34a within 8s" was the proof, not History's
 reopen. It clicked the first story right after a fixed 900ms post-navigate sleep; on a cold
@@ -176,6 +193,13 @@ proof was stale: it held the sheet's "M independent" to the pool's field, which 
 replaced with the page's count. And `#rank-input` is now written compact
 (`app/page_input.py`): a proof reads it through `cdp.mjs`'s `decodeInput` (Node side)
 or `PAGE_INPUT` (inside a page-side evaluate), never with a bare `JSON.parse`.
+
+H8 (2026-09-26) reran every proof above on H8's build against a fresh real pool (108
+sources, 695 articles) and the same fixtures: all exit 0. `h8_layout_check` passes 4/4 sessions (tab and app
+window, each from the network and under the service worker) plus the upgrade from
+f329c3d, and fails all five on f329c3d itself (the band, 360x150, above the tabs).
+None of the other proofs caught the band: each measures positions relative to the
+page, so a shifted page still passed.
 
 ## Other proofs in this directory
 
