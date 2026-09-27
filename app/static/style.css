@@ -163,6 +163,51 @@ body {
   font-weight: 400;
 }
 
+/* S16 breadth narrowing banner: one quiet line, the offline line's own meta type and
+   rhythm, never a colored panel. js/breadth-banner.js fills its text and shows it only
+   when the device's own reading history says this week narrowed past the threshold. */
+.breadth-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0;
+  padding: 10px var(--space-gutter) 12px;
+  font-family: var(--type-meta-family);
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
+  font-weight: var(--type-meta-weight);
+  letter-spacing: var(--type-meta-tracking);
+  text-transform: var(--type-meta-transform);
+  color: var(--color-meta);
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.breadth-banner[hidden] {
+  display: none;
+}
+
+.breadth-banner-text {
+  flex: 1;
+  text-transform: none;
+}
+
+.breadth-banner-dismiss {
+  flex: none;
+  padding: 0;
+  border-style: none;
+  background: none;
+  font: inherit;
+  text-transform: none;
+  text-decoration: underline;
+  color: inherit;
+  cursor: pointer;
+}
+
+.breadth-banner-dismiss:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: 2px;
+}
+
 .river {
   list-style: none;
   margin: 0;

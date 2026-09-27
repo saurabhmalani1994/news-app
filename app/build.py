@@ -72,6 +72,7 @@ PAGE = """<!doctype html>
 <script type="module" src="js/versions-view.js"></script>
 <script type="module" src="js/lean-view.js"></script>
 <script type="module" src="js/history/observe.js"></script>
+<script type="module" src="js/breadth-banner.js"></script>
 <script type="module" src="js/live-actions.js"></script>
 <script type="module" src="js/saved-screen.js"></script>
 <script src="js/sw-register.js" defer></script>
@@ -93,6 +94,7 @@ PAGE = """<!doctype html>
 <p class="offline-line" id="offline-line" data-generated-at="{generated_at}" hidden></p>
 <script src="js/offline.js"></script>
 {notices}
+<p class="breadth-banner" id="breadth-banner" hidden><span class="breadth-banner-text" id="breadth-banner-text"></span> <button class="breadth-banner-dismiss" type="button" id="breadth-banner-dismiss">Dismiss</button></p>
 <ol class="river river--top" id="headlines">
 {top}
 </ol>

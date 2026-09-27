@@ -332,6 +332,41 @@ input[type="number"].setting-half-life:focus-visible {
   color: var(--color-meta);
 }
 
+/* S16: the breadth view's top-topics lists, text only (R26), the same row rhythm as
+   version-row above: a plain name and a right-aligned count, one hairline between
+   rows, no card. */
+.breadth-topic-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.breadth-topic-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: var(--touch-min);
+  padding: 10px var(--space-gutter);
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.breadth-topic-row:first-child {
+  border-top: none;
+}
+
+.breadth-topic-name {
+  font-family: var(--type-tab-label-family);
+  font-size: 15px;
+  color: var(--color-headline);
+}
+
+.breadth-topic-count {
+  font-family: var(--type-bottom-nav-label-family);
+  font-size: var(--type-bottom-nav-label-size);
+  color: var(--color-meta);
+}
+
 /* S17: the Health screen. Same settings rows as the rest of this file; only new shapes
    are the pool-age block (reuses .notice from style.css, S28's own quiet non-card
    block) and a row with a right-hand value column instead of a control. */

@@ -220,6 +220,7 @@ APP_SCRIPTS = ['<script src="js/offline-gate.js">', '<script src="js/rank-gate.j
                '<script type="module" src="js/versions-view.js">',
                '<script type="module" src="js/lean-view.js">',
                '<script type="module" src="js/history/observe.js">',
+               '<script type="module" src="js/breadth-banner.js">',
                '<script type="module" src="js/live-actions.js">',
                '<script type="module" src="js/saved-screen.js">',
                '<script src="js/sw-register.js" defer>', '<script src="js/offline.js">']

@@ -65,6 +65,7 @@ import {
   matchesQuery, searchSources, sourceDetail, HEALTH_WORDS, commitEdit,
   availableInterests, withTopicAdded, withTopicRemoved,
   isPhraseTopic, phraseStatus, withPhraseAdded, standingStatus, withStandingAdded, withStandingRemoved,
+  INTEREST_CATALOG,
 } from "./profile/you-edits.js";
 import { leanHit, leanMarker, leanSheetContent, setBasis } from "./lean.js";
 import { PHRASE_MAX, QUERIES_MAX } from "./phrase.js";
@@ -79,6 +80,21 @@ import { initStoragePersistence, readPersistRecord, persistLabel } from "./backu
 import { serializeBackup, backupFilename } from "./backup/serialize.js";
 import { validateBackup } from "./backup/validate.js";
 import { mergeById, importCounts, confirmMessage } from "./backup/merge.js";
+import { weekOverWeek, formatWeekOverWeek } from "./breadth/math.js";
+
+// S16: the breadth number's own history read, the same "read once in the background,
+// a view that needs it waits" shape as the front-page read above (frontReady). Kept
+// separate: this reads IndexedDB (history/store.js), not a fetch, and only the
+// #breadth view ever waits on it, so the rest of the page never notices it running.
+const BREADTH_WAIT_MS = 2000;
+let breadth; // undefined while the read runs, then a weekOverWeek() result, or null on failure
+const breadthReady = openedStore.list()
+  .then((records) => { breadth = weekOverWeek(records, Date.now()); })
+  .catch((err) => {
+    console.warn("You page: the breadth number could not be read", err);
+    breadth = null;
+  });
+const breadthOrTimeout = () => Promise.race([breadthReady, new Promise((resolve) => setTimeout(resolve, BREADTH_WAIT_MS))]);
 
 // W3: a phrase interest's page and a standing story's page list the stories that match
 // it now, newest first, as the front page's own rows (following.js). The front page is
@@ -110,6 +126,15 @@ const frontOrTimeout = () => Promise.race([frontReady, new Promise((resolve) => 
 /** W1: a phrase interest's name as the page shows it, in quotes. */
 const phraseName = (phrase) => `“${phrase}”`;
 const topicName = (id, t) => (isPhraseTopic(t) ? phraseName(t.phrase) : t.label || id);
+
+/** S16: a topic id's display label for the breadth view's top-topics list. History
+ * records carry the pool's own tag ids (history/record.js's `topics` field), which may
+ * or may not be one of this reader's own interests; the profile's own label wins when
+ * it is, the catalog's shipped label is the fallback for a tag nobody has added yet,
+ * and the bare id is what is left for a tag neither knows about. */
+function breadthTopicLabel(profile, id) {
+  return profile.topics?.[id]?.label || INTEREST_CATALOG.find((e) => e.id === id)?.label || id;
+}
 
 const dateFormat = new Intl.DateTimeFormat(undefined, {
   month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
@@ -290,7 +315,7 @@ function main(schema, catalog) {
     if (view === "interest" && id) return { view, id, key: hash };
     if (view === "story" && id) return { view, id, key: hash };
     if (view === "sources" && id) return { view: "sourceGroup", id, key: hash };
-    if (view === "sources" || view === "advanced") return { view, key: view };
+    if (view === "sources" || view === "advanced" || view === "breadth") return { view, key: view };
     return { view: "you", key: "you" };
   }
 
@@ -590,6 +615,10 @@ function main(schema, catalog) {
           stories.length ? null : el("p", { class: "settings-hint", text: "None followed. A standing story keeps a subject on Today and says when it goes quiet." }),
           el("div", { id: "standing-list" }, [...stories, addStandingRow()]),
         ];
+      }),
+      section("Reading breadth", () => {
+        const summary = breadth === undefined ? "Loading" : breadth === null ? "Not available" : formatWeekOverWeek(breadth);
+        return [linkRow("#breadth", "Breadth", "How many topics your reading has crossed this week", summary, { id: "breadth-row" })];
       }),
       section("News sources", () => {
         const counts = sourceCounts(profile, sources);
@@ -1026,6 +1055,37 @@ function main(schema, catalog) {
     ];
   }
 
+  // --- Breadth: the score, the week-over-week line, and this week's top topics
+  // against last week's, text only (R26: every one of these is the app's own topic
+  // label or the pool's own tag id, never a feed string, but the same rule applies). ---
+  function topicList(profile, entries) {
+    if (!entries.length) return el("p", { class: "settings-hint", text: "No topics recorded yet." });
+    const list = el("ol", { class: "breadth-topic-list" });
+    for (const { id, weight } of entries) {
+      list.appendChild(el("li", { class: "breadth-topic-row" }, [
+        el("span", { class: "breadth-topic-name", text: breadthTopicLabel(profile, id) }),
+        el("span", { class: "breadth-topic-count", text: weight.toFixed(1) }),
+      ]));
+    }
+    return list;
+  }
+
+  function viewBreadth(profile) {
+    if (breadth === undefined) return [el("p", { class: "settings-hint", text: "Reading your history. Open this page again in a moment." })];
+    if (breadth === null) return [el("p", { class: "settings-hint", text: "Your reading history could not be read just now. Open this page again to retry." })];
+    if (!breadth.sufficient) {
+      return [section("This week", [el("p", { class: "settings-hint", text: "Not enough reading yet to measure. Breadth needs at least ten opened stories in each of the last two weeks." })])];
+    }
+    return [
+      section("This week", [
+        el("p", { class: "settings-hint settings-hint--top", text: formatWeekOverWeek(breadth) }),
+        el("p", { class: "settings-hint", text: "0 means every story opened landed in one topic; 100 means they spread evenly across every topic this week touched." }),
+      ]),
+      section("Top topics this week", () => [topicList(profile, breadth.current.topTopics)]),
+      section("Top topics last week", () => [topicList(profile, breadth.previous.topTopics)]),
+    ];
+  }
+
   // --- Routing and rendering ---
   function titleFor(route, profile) {
     if (route.view === "interest") { const t = profile.topics?.[route.id]; return t && topicName(route.id, t); }
@@ -1033,6 +1093,7 @@ function main(schema, catalog) {
     if (route.view === "sourceGroup") { const g = groupSources(sources).find((x) => x.id === route.id); return g && g.label; }
     if (route.view === "sources") return "News sources";
     if (route.view === "advanced") return "Advanced";
+    if (route.view === "breadth") return "Breadth";
     return "You";
   }
 
@@ -1041,7 +1102,7 @@ function main(schema, catalog) {
   // list it was opened from.
   const backTarget = (view) => (view === "sourceGroup" ? "sources" : "you");
 
-  const VIEWS = { you: viewYou, interest: viewInterest, story: viewStory, sources: viewSources, sourceGroup: viewSourceGroup, advanced: viewAdvanced };
+  const VIEWS = { you: viewYou, interest: viewInterest, story: viewStory, sources: viewSources, sourceGroup: viewSourceGroup, advanced: viewAdvanced, breadth: viewBreadth };
 
   function render({ keepScroll = false } = {}) {
     const profile = store.current();
@@ -1090,15 +1151,19 @@ function main(schema, catalog) {
   // W3: a view that lists stories is drawn once the front page is read (or the wait
   // runs out), never before, so its list never pushes the sections under it down.
   const listsStories = (r) => (r.view === "interest" || r.view === "story") && front === undefined;
+  // S16: the #breadth view waits on its own history read the same way, so it never
+  // draws "Loading" for an instant and then jumps to a number.
+  const needsBreadth = (r) => r.view === "breadth" && breadth === undefined;
   let waiting = false;
 
   function route() {
     const next = parseHash();
     if (next.key === current.key && root.childElementCount) return;
-    if (listsStories(next)) {
+    if (listsStories(next) || needsBreadth(next)) {
       if (!waiting) {
         waiting = true;
-        frontOrTimeout().then(() => { waiting = false; route(); });
+        Promise.all([listsStories(next) ? frontOrTimeout() : null, needsBreadth(next) ? breadthOrTimeout() : null])
+          .then(() => { waiting = false; route(); });
       }
       return;
     }
@@ -1142,9 +1207,18 @@ function main(schema, catalog) {
   addEventListener("hashchange", route);
   addEventListener("popstate", route);
 
+  // S16: the breadth read runs from the top of this module (before `main` is even
+  // called), so it may already be settled by the time this page draws; when it is not,
+  // redraw once it is, but only the You list's own summary row or the #breadth view
+  // itself ever shows it, so nothing else on the page is touched.
+  breadthReady.then(() => {
+    if (current.view === "you" || current.view === "breadth") render({ keepScroll: true });
+  });
+
   current = parseHash();
-  if (listsStories(current)) {
-    frontOrTimeout().then(() => { render(); place(); });
+  if (listsStories(current) || needsBreadth(current)) {
+    Promise.all([listsStories(current) ? frontOrTimeout() : null, needsBreadth(current) ? breadthOrTimeout() : null])
+      .then(() => { render(); place(); });
   } else {
     render();
     place();

@@ -70,7 +70,7 @@ const you = JSON.parse(await evaluate(`JSON.stringify({
 })`));
 check("you_rows", you.rows.length === 6 && you.rows.every(([, word]) => /^(More|Normal|Less|Off|Top \d+)$/.test(word)), you);
 check("you_sources_count", you.sources === `${catalog.sources.length} of ${catalog.sources.length} sources on`, { sources: you.sources });
-check("you_sections", ["Your interests", "Standing stories", "News sources", "Display", "Health", "Advanced"].every((l) => you.labels.includes(l)), { labels: you.labels });
+check("you_sections", ["Your interests", "Standing stories", "Reading breadth", "News sources", "Display", "Health", "Advanced"].every((l) => you.labels.includes(l)), { labels: you.labels });
 await shot("you-dark.png");
 await open("/profile", "light");
 await shot("you-light.png");
