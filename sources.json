@@ -525,6 +525,34 @@
       "paywall": false
     },
     {
+      "id": "agfundernews_biomanufacturing",
+      "name": "AgFunderNews Biomanufacturing",
+      "feed_url": "https://agfundernews.com/category/biomanufacturing-and-biologicals/feed",
+      "bucket": "biotech",
+      "country": "US",
+      "lean": "center",
+      "lean_basis": "B10 2026-09-27: live-verified with fetcher.fetch (RSS 2.0, 50 items, newest 3 days old, dek up to 587 chars). AgFunderNews's own biomanufacturing and biologicals category (precision and biomass fermentation, microbial ag inputs), the industrial biotech coverage the owner asked for; same outlet and rating as agfundernews (center, non-political trade press). robots.txt allows all.",
+      "syndication_group": "agfundernews",
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B10 2026-09-27: measured live, 10 of 10 items carry full text over the 2,000-char cutoff, like the main agfundernews feed."
+    },
+    {
+      "id": "agfundernews_alt_protein",
+      "name": "AgFunderNews Alternative Protein",
+      "feed_url": "https://agfundernews.com/category/alternative-protein/feed",
+      "bucket": "climate_food",
+      "country": "US",
+      "lean": "center",
+      "lean_basis": "B10 2026-09-27: live-verified with fetcher.fetch (RSS 2.0, 50 items, newest 4 days old, dek up to 562 chars). AgFunderNews's alternative protein category (fermentation-derived proteins alongside plant-based and cultivated), same outlet and rating as agfundernews. robots.txt allows all.",
+      "syndication_group": "agfundernews",
+      "full_text_ok": true,
+      "roster": "core",
+      "paywall": false,
+      "full_text_basis": "B10 2026-09-27: measured live, 10 of 10 items carry full text over the 2,000-char cutoff."
+    },
+    {
       "id": "bioprocess_intl",
       "name": "BioProcess International",
       "feed_url": "https://www.bioprocessintl.com/rss.xml",
@@ -1151,6 +1179,32 @@
       "lean": "center",
       "lean_basis": "F5 2026-09-24: live-verified with fetcher.fetch (10 items, newest same-day, description up to 150 chars). US food-industry trade press, no partisan lean documented.",
       "syndication_group": "food_dive",
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
+    },
+    {
+      "id": "foodnavigator",
+      "name": "FoodNavigator",
+      "feed_url": "https://www.foodnavigator.com/arc/outboundfeeds/rss/",
+      "bucket": "climate_food",
+      "country": "GB",
+      "lean": "center",
+      "lean_basis": "B10 2026-09-27: live-verified with fetcher.fetch (RSS 2.0, 20 items, newest 2 days old, dek up to 287 chars; the feed the site's own pages link). Food and ingredients trade press (William Reed) covering precision fermentation and food biotech; no partisan lean documented. robots.txt does not disallow the feed. foodnavigator-usa.com serves the same feed today, so it is not added twice.",
+      "syndication_group": "william_reed",
+      "full_text_ok": false,
+      "roster": "core",
+      "paywall": false
+    },
+    {
+      "id": "dairyreporter",
+      "name": "DairyReporter",
+      "feed_url": "https://www.dairyreporter.com/arc/outboundfeeds/rss/",
+      "bucket": "climate_food",
+      "country": "GB",
+      "lean": "center",
+      "lean_basis": "B10 2026-09-27: live-verified with fetcher.fetch (RSS 2.0, 20 items, newest 2 days old, dek up to 615 chars; the feed the site's own pages link). Dairy industry trade press (William Reed, FoodNavigator's sister title) covering dairy proteins, cultures and animal-free dairy; no partisan lean documented. robots.txt does not disallow the feed.",
+      "syndication_group": "william_reed",
       "full_text_ok": false,
       "roster": "core",
       "paywall": false

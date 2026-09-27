@@ -22,7 +22,10 @@ export const SECTIONS = Object.freeze([
   { id: "singapore", label: "Singapore", geo: ["sg"] },
   { id: "asia", label: "Asia", geo: ["asia"] },
   { id: "ai", label: "AI", tags: ["ai"], buckets: ["ai"] },
-  { id: "biotech", label: "Biotech", tags: ["biotech"], buckets: ["biotech"] },
+  // B10: Biotech is the biotech tag alone, never the biotech source bucket. That bucket
+  // is mostly pharma (Fierce Biotech, GEN...), and the tag is now set only when the
+  // article's own text is industrial biotech (fetcher/topics.py, topics.json biotech_rules).
+  { id: "biotech", label: "Biotech", tags: ["biotech"] },
 ].map((s) => Object.freeze(s)));
 
 /** {source_id: bucket} from sources.json's sources array. */

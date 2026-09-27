@@ -66,7 +66,7 @@ def test_the_iso_list_is_the_full_assigned_set():
 
 
 def test_every_source_has_a_valid_home_country():
-    assert len(REPO_SOURCES) == 108  # B4 added the eleven section 3 feeds
+    assert len(REPO_SOURCES) == 112  # B4 added the eleven section 3 feeds, B10 four more
     for s in REPO_SOURCES:
         assert s.get("country") in ISO_3166_ALPHA2, (s["id"], s.get("country"))
 

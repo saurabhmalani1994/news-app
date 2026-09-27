@@ -17,7 +17,7 @@
     "israel_gaza": ["conflict", "world"],
     "sudan": ["conflict", "world"],
     "ai": ["ai"],
-    "biotech": ["biotech", "science"],
+    "biotech": ["science"],
     "asia": ["world"],
     "climate_food": ["foodtech", "climate_tech"]
   },
@@ -43,11 +43,6 @@
     "conflict": [
       "war", "attack", "airstrike", "military", "ceasefire", "troops",
       "invasion", "bombing", "killed", "clashes", "militant", "offensive"
-    ],
-    "biotech": [
-      "synthetic biology", "biomanufacturing", "precision fermentation",
-      "bioeconomy", "biofuel", "industrial biotech", "genetic engineering",
-      "gene editing", "crispr", "bioprocessing", "biorefinery"
     ],
     "foodtech": [
       "alternative protein", "plant-based", "cultivated meat", "cultured meat",
@@ -77,6 +72,57 @@
       "syria", "afghanistan", "australia", "canada", "taiwan", "vietnam",
       "indonesia", "myanmar", "venezuela", "nigeria", "egypt", "saudi arabia",
       "turkey", "italy", "spain", "poland", "netherlands"
+    ]
+  },
+  "biotech_rules": {
+    "note": "B10: the biotech tag (the Biotech tab and the Industrial Biotech interest) is industrial biotech only: microbial fermentation, precision and biomass fermentation, biomanufacturing, strain engineering and fermentation-derived food, dairy proteins, enzymes, cultures and ingredients. No source bucket gives it; an article's own title and dek must match. Every term matches on word boundaries, never inside another word. strong: always tags. weak: tags only when no negative term is present (biomanufacturing of antibodies is pharma). names: company names, case-insensitive. names_exact_case: short or common-word names matched with their exact capitals (EVERY Company, never 'every company'). names_with_context: names that are also everyday words or phrases; they match with their exact capitals and tag only alongside one of context. Terms in strong, weak, context and negative also match a plural s or es. negative: drug, clinical and mammalian cell work; a negative with no strong term keeps the article off Biotech.",
+    "strong": [
+      "precision fermentation", "precision-fermented", "biomass fermentation",
+      "gas fermentation", "microbial fermentation", "fermentation", "fermentations",
+      "fermenter", "fermentor", "fermentation-derived", "fermentation-enabled",
+      "industrial biotech", "industrial biotechnology", "synthetic biology", "synbio",
+      "strain engineering", "strain development", "metabolic engineering",
+      "mycoprotein", "mycelium", "single-cell protein", "animal-free dairy",
+      "animal-free protein", "animal-free whey", "animal-free egg", "animal-free casein",
+      "recombinant whey", "recombinant casein", "recombinant egg",
+      "casein", "lactoferrin", "starter culture", "dairy culture",
+      "probiotic", "postbiotic", "industrial enzyme", "food enzyme", "specialty ingredient",
+      "biomanufactured", "bio-based chemical", "biobased chemical", "bioplastic",
+      "biorefinery", "bioeconomy", "bioethanol", "cellulosic ethanol", "biosurfactant",
+      "sweet protein", "yeast protein", "fungal protein", "microbial protein",
+      "microbial oil", "yeast oil", "bioindustrial"
+    ],
+    "weak": [
+      "biomanufacturing", "bioreactor", "whey protein", "microbial",
+      "microbe", "microorganism", "yeast", "fungi", "fungal", "enzyme",
+      "recombinant protein", "biologicals"
+    ],
+    "names": [
+      "Ajinomoto", "Evonik", "Pow.bio", "Enduro Genetics", "Cauldron Ferm", "David Protein",
+      "Vivici", "Fonterra", "dsm-firmenich", "DSM Firmenich", "Novonesis", "Novozymes",
+      "Chr. Hansen", "Ginkgo Bioworks", "Solar Foods", "Liberation Labs", "Onego Bio",
+      "Formo", "Remilk", "Geltor", "Checkerspot", "Nature's Fynd", "Meati", "Amyris",
+      "LanzaTech", "Calysta", "Unibio", "Air Protein", "Quorn", "Motif FoodWorks",
+      "Those Vegan Cowboys", "Verley", "Imagindairy", "21st.BIO", "Superbrewed Food",
+      "MycoTechnology", "Mycorena", "Abunda", "Helaina", "TurtleTree", "Daisy Lab",
+      "Fooditive", "Nourish Ingredients", "C16 Biosciences", "Change Foods", "Knip Biotech",
+      "MOA Foodtech", "Bestzyme"
+    ],
+    "names_exact_case": ["EVERY Company", "EVERY Co."],
+    "names_with_context": ["Perfect Day", "Cauldron", "New Culture", "Standing Ovation", "EVERY"],
+    "context": [
+      "fermentation", "fermented", "protein", "whey", "casein", "egg white", "dairy",
+      "ingredient", "biotech", "startup", "biomanufacturing", "microbial", "yeast"
+    ],
+    "negative": [
+      "clinical", "clinical trial", "phase 1", "phase 2", "phase 3", "phase i", "phase ii",
+      "phase iii", "fda approval", "fda approves", "fda-approved", "ema approval", "drug",
+      "therapy", "therapies", "therapeutic", "therapeutics", "oncology", "cancer", "tumor",
+      "tumour", "antibody", "antibodies", "monoclonal", "car-t", "gene therapy",
+      "cell therapy", "mammalian", "cho cell", "cultivated meat", "cultured meat",
+      "cell-cultured", "cell-based meat", "lab-grown", "cultivated seafood", "patient",
+      "infection", "disease", "biologic", "biosimilar", "vaccine", "sirna", "mrna",
+      "pharma", "pharmaceutical", "glp-1", "pipeline", "supplementation"
     ]
   },
   "us_election_signals": {

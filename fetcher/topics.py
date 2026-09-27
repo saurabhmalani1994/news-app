@@ -56,8 +56,25 @@ bucket_topics now gives the bucket both tags directly, the same pattern biotech
 already used for its own bucket. The foodtech and climate_tech keyword lists were
 also widened (cell-based meat, mycoprotein, direct air capture, heat pump and more)
 so a relevant story from a general outlet still gets tagged.
+
+**biotech is industrial biotech, from the text only (B10).** The owner's Biotech tab
+and his Industrial Biotech interest mean microbial fermentation and biomanufacturing
+(precision and biomass fermentation, strain engineering, fermentation-derived food and
+dairy proteins, enzymes, cultures, specialty ingredients), not drug pipelines, clinical
+trials, antibodies, cell and gene therapy or cultivated meat. The biotech bucket
+(Labiotech, GEN, Fierce Biotech, BioProcess International...) used to give every one of
+its articles the biotech tag, and a measured pool showed 1 of 27 Biotech tab stories
+was industrial. Now no bucket gives biotech; topics.json `biotech_rules` decides it from
+the article's own title and dek, matched on word boundaries (never inside a word, so
+"Ferm" or "Every" alone never fire): a strong term always tags, a weak term only when
+no negative (drug, clinical, mammalian cell) term is present, a company name tags, and
+names that are everyday words ("EVERY", "Perfect Day") need their exact capitals plus
+a context word. The bucket keeps its science tag, so pharma pieces still reach the
+science interest as before.
 """
+import functools
 import json
+import re
 from pathlib import Path
 
 from fetcher.geo import tag_geo
@@ -82,6 +99,11 @@ def load_topics(path=TOPICS_PATH):
     for tag in doc["keyword_topics"]:
         if tag not in tags:
             raise TopicsError(f"keyword_topics names unknown tag {tag!r}")
+    for bucket, bucket_tags in doc["bucket_topics"].items():
+        if "biotech" in bucket_tags:
+            raise TopicsError(f"bucket_topics[{bucket!r}] adds 'biotech', which only biotech_rules may set (B10)")
+    if "biotech" in doc["keyword_topics"]:
+        raise TopicsError("keyword_topics adds 'biotech', which only biotech_rules may set (B10)")
     for geo_tag, tag in _geo_topics(doc).items():
         if tag not in tags:
             raise TopicsError(f"geo_topics[{geo_tag!r}] names unknown tag {tag!r}")
@@ -99,6 +121,44 @@ def _geo_topics(doc):
 
 def _keyword_hit(text, keywords):
     return any(kw in text for kw in keywords)
+
+
+_APOSTROPHES = str.maketrans({"’": "'", "‘": "'"})
+
+
+@functools.lru_cache(maxsize=64)
+def _term_re(terms, exact_case=False, plural=False):
+    """One regex matching any of terms as whole words: never preceded or followed by
+    a letter or digit, so "ferm" does not fire inside "fermions" or "Every" inside
+    "Everyday". plural lets a trailing s or es through ("yeasts", "enzymes")."""
+    if not terms:
+        return None
+    alts = sorted((re.escape(t.translate(_APOSTROPHES)) for t in terms), key=len, reverse=True)
+    tail = "(?:e?s)?" if plural else ""
+    flags = 0 if exact_case else re.IGNORECASE
+    return re.compile(r"(?<![0-9A-Za-z])(?:" + "|".join(alts) + ")" + tail + r"(?![0-9A-Za-z])", flags)
+
+
+def _rule_hit(text, rules, key, exact_case=False, plural=False):
+    pattern = _term_re(tuple(rules.get(key, ())), exact_case, plural)
+    return bool(pattern and pattern.search(text))
+
+
+def biotech_match(title, dek, topics_doc):
+    """Whether an article's own title and dek make it industrial biotech (B10, see
+    the module note and topics.json biotech_rules)."""
+    rules = topics_doc.get("biotech_rules")
+    if not rules:
+        return False
+    text = f"{title} {dek or ''}".translate(_APOSTROPHES)
+    if _rule_hit(text, rules, "strong", plural=True):
+        return True
+    if (_rule_hit(text, rules, "names") or _rule_hit(text, rules, "names_exact_case", exact_case=True)
+            or (_rule_hit(text, rules, "names_with_context", exact_case=True)
+                and _rule_hit(text, rules, "context", plural=True))):
+        return True
+    return (_rule_hit(text, rules, "weak", plural=True)
+            and not _rule_hit(text, rules, "negative", plural=True))
 
 
 def _us_election_signal(text, topics_doc):
@@ -129,6 +189,8 @@ def tag_article(bucket, title, dek, topics_doc, geo=None):
     for tag, keywords in topics_doc["keyword_topics"].items():
         if _keyword_hit(text, keywords):
             tags.add(tag)
+    if biotech_match(title, dek, topics_doc):
+        tags.add("biotech")
     if _us_election_signal(text, topics_doc):
         tags.add("us_politics")
     if "us_politics" in tags:

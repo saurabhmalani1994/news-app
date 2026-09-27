@@ -42,8 +42,8 @@ test("the real catalog's groups are the brief's own eight, with the right counts
     singapore: 5,
     business: 5,
     tech_ai: 5,
-    science_biotech: 7,
-    climate_food: 10,
+    science_biotech: 8, // B10: AgFunderNews Biomanufacturing
+    climate_food: 13, // B10: AgFunderNews Alternative Protein, FoodNavigator, DairyReporter
   }, JSON.stringify(byId));
   assert.equal(groups.map((g) => g.label).join(", "),
     "US politics, World, Asia, Singapore, Business, Tech and AI, Science and biotech, Climate and food");

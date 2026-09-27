@@ -46,7 +46,7 @@ def _results(feeds):
 # --- sources.json: the roster facts --------------------------------------------------
 
 def test_every_source_has_roster_paywall_country_and_a_lean_with_its_basis():
-    assert len(SOURCES) == 108
+    assert len(SOURCES) == 112  # B10 added four industrial biotech and food trade feeds
     for s in SOURCES:
         assert s["roster"] in ("core", "perspective"), s["id"]
         assert isinstance(s["paywall"], bool), s["id"]
