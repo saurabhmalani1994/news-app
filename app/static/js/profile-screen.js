@@ -72,6 +72,13 @@ import { scheduleSync, startSync } from "./interests-sync.js";
 import { standingForm, standingMessage } from "./standing-form.js";
 import { pageInput } from "./page-input.js";
 import { countWords, followFor, followRow } from "./following.js";
+import { nowIso } from "./profile/time.js";
+import { savesStore } from "./actions/store.js";
+import { openedStore, shownStore } from "./history/store.js";
+import { initStoragePersistence, readPersistRecord, persistLabel } from "./backup/persist.js";
+import { serializeBackup, backupFilename } from "./backup/serialize.js";
+import { validateBackup } from "./backup/validate.js";
+import { mergeById, importCounts, confirmMessage } from "./backup/merge.js";
 
 // W3: a phrase interest's page and a standing story's page list the stories that match
 // it now, newest first, as the front page's own rows (following.js). The front page is
@@ -232,6 +239,17 @@ function main(schema, catalog) {
   const sources = Array.isArray(catalog?.sources) ? catalog.sources : [];
   const bases = catalog && typeof catalog.lean_basis === "object" && catalog.lean_basis ? catalog.lean_basis : {};
   const { root, title, back } = pageChrome();
+
+  // --- S35 (R24): storage.persist() runs once on first load; the You page's own line
+  // just reads back whatever was last recorded, updated in place once the async check
+  // resolves so it never forces a full re-render mid-scroll. ---
+  let persistRecord = null;
+  try { persistRecord = readPersistRecord(window.localStorage); } catch { persistRecord = null; }
+  initStoragePersistence().then((record) => {
+    persistRecord = record;
+    const line = document.getElementById("storage-persist-state");
+    if (line) line.textContent = persistLabel(persistRecord);
+  }).catch(() => {});
 
   // --- Scroll memory: per view, kept for the tab's session so Back from Health (a
   // separate page) and Back between views both land where the reader left off. ---
@@ -464,6 +482,96 @@ function main(schema, catalog) {
     }
   }
 
+  // --- S35 (R24): "Your data", one collapsed group at the foot of You: the storage.persist
+  // state, and the one-tap export/import of everything the device keeps for the reader
+  // (profile, saved stories, history). Export downloads one JSON file with an anchor's
+  // own download attribute, no window or dialog. Import reads the picked file, validates
+  // it strictly (backup/validate.js, R26), then asks a plain confirm naming the counts
+  // before replacing the profile and merging saved/history; a decline changes nothing. ---
+  async function runExport() {
+    try {
+      const [saved, opened, shown] = await Promise.all([savesStore.list(), openedStore.list(), shownStore.list()]);
+      const backup = serializeBackup({ profile: store.current(), saved, history: { opened, shown }, now: nowIso });
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = el("a", { href: url, download: backupFilename(backup.exported_at) });
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast("Backup downloaded");
+    } catch (err) {
+      console.warn("You page: export failed", err);
+      showToast("Could not export your data");
+    }
+  }
+
+  async function handleImportFile(file) {
+    let parsed;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      showToast("Not a valid backup file: could not read it as JSON");
+      return;
+    }
+    const result = validateBackup(parsed, schema);
+    if (!result.ok) {
+      showToast(`Could not import: ${result.errors[0]}`);
+      return;
+    }
+    const [saved, opened, shown] = await Promise.all([savesStore.list(), openedStore.list(), shownStore.list()]);
+    const savedMerge = mergeById(saved, result.data.saved);
+    const openedMerge = mergeById(opened, result.data.history.opened);
+    const shownMerge = mergeById(shown, result.data.history.shown);
+    const counts = importCounts(result.data.profile, savedMerge, openedMerge, shownMerge);
+    if (!window.confirm(confirmMessage(counts))) return;
+    try {
+      await Promise.all([
+        ...savedMerge.toWrite.map((r) => savesStore.put(r)),
+        ...openedMerge.toWrite.map((r) => openedStore.put(r)),
+        ...shownMerge.toWrite.map((r) => shownStore.put(r)),
+      ]);
+    } catch (err) {
+      console.warn("You page: import could not write saved/history", err);
+      showToast("Could not import your data");
+      return;
+    }
+    // Same path a normal You-page edit takes (store.save -> onSave -> scheduleSync), so
+    // the imported phrase and standing-story interests reach the server the same way.
+    const profileResult = store.save(result.data.profile);
+    if (!profileResult.ok) {
+      showToast(`Could not import: ${profileResult.errors[0]}`);
+      return;
+    }
+    render({ keepScroll: true });
+    showToast(`Imported: ${counts.interestCount} interests, saved +${counts.savedDelta}, history +${counts.historyDelta}`);
+  }
+
+  function yourDataDetails() {
+    const fileInput = el("input", {
+      type: "file", accept: "application/json,.json", class: "file-input-hidden",
+      id: "import-backup-input", "aria-label": "Choose a backup file to import",
+      onchange: async (e) => {
+        const [file] = e.target.files;
+        e.target.value = "";
+        if (file) await handleImportFile(file);
+      },
+    });
+    const body = el("div", { class: "your-data-body" }, [
+      el("p", { class: "settings-hint settings-hint--top", id: "storage-persist-state", role: "status", text: persistLabel(persistRecord) }),
+      el("button", { class: "btn-row", type: "button", id: "export-backup", text: "Export your data", onclick: runExport }),
+      el("button", {
+        class: "btn-row", type: "button", id: "import-backup", text: "Import a backup file",
+        onclick: () => fileInput.click(),
+      }),
+      fileInput,
+    ]);
+    return el("details", { class: "settings-section your-data" }, [
+      el("summary", { class: "settings-label" }, [document.createTextNode("Your data"), chevron()]),
+      body,
+    ]);
+  }
+
   // --- You ---
   function viewYou(profile) {
     return [
@@ -499,6 +607,7 @@ function main(schema, catalog) {
         (on) => commit((p) => withLeanColor(p, on), on ? "Markers in color" : "Markers in grey"))]),
       section("Health", [linkRow("/health", "Feed health", "Pool age, the last run, every source's status")]),
       section("Advanced", () => [linkRow("#advanced", "Profile data and versions", `Raw JSON, history and revert. Now v${store.history()[0].version}`)]),
+      yourDataDetails(),
       el("footer", { class: "colophon colophon--settings" }, [
         el("p", { class: "colophon-text", text: "Kept on this device. Only the searches for your phrases and standing stories leave it, to this site's own server, for the hourly run." }),
       ]),

@@ -689,3 +689,47 @@ input.switch:focus-visible {
 .colophon--settings {
   margin-top: 8px;
 }
+
+/* S35: "Your data", one collapsed disclosure at the foot of You (storage.persist's
+   quiet state, export, import), the nested style the owner asked for rather than a new
+   top-level section. Closed by default; the summary reuses .settings-label's type but
+   needs its own marker handling and a touch target the label alone would not give it. */
+.your-data > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--touch-min);
+  margin: 0;
+  padding: 14px var(--space-gutter);
+  cursor: pointer;
+  list-style: none;
+}
+
+.your-data > summary::-webkit-details-marker {
+  display: none;
+}
+
+.your-data > summary::marker {
+  content: "";
+}
+
+.your-data > summary:active {
+  background: var(--color-pressed);
+}
+
+.your-data-body > .setting-row:first-child,
+.your-data-body > .settings-hint:first-child {
+  border-top: none;
+}
+
+.file-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
