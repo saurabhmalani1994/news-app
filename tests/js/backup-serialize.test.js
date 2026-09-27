@@ -51,10 +51,19 @@ test("validateBackup: accepts a well-formed backup, arrays passed through unchan
 });
 
 test("validateBackup: rejects the wrong format_version with a plain message", () => {
-  const backup = { ...validBackup(), format_version: 2 };
+  const backup = { ...validBackup(), format_version: 99 };
   const result = validateBackup(backup, SCHEMA);
   assert.equal(result.ok, false);
   assert.match(result.errors[0], /version/i);
+});
+
+test("validateBackup: accepts a version 1 file with no archives field, defaulting to {}", () => {
+  const backup = validBackup();
+  backup.format_version = 1;
+  delete backup.archives;
+  const result = validateBackup(backup, SCHEMA);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.data.archives, {});
 });
 
 test("validateBackup: rejects a non-object entirely", () => {

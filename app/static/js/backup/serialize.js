@@ -17,8 +17,15 @@
 // (history/record.js buildHistorySnapshot), in full: DESIGN-v1.1 R23 already keeps this
 // device only for up to a year, so a backup of it is exactly what R24 asks a manual
 // export/import to cover.
+//
+// S35b: version 2 adds the per-follow Timeline archive (S30, follow-archive.js and
+// follow-archive-store.js), left out of S35's own export by gap. Keyed by the same
+// `kind:id` follow key S30 already uses (archiveKey), each value the follow's own item
+// list exactly as stored (already capped to 30 days / 200 items by the live archive
+// itself). A version 1 file simply has no `archives` field; validate.js treats that the
+// same as an empty one rather than refusing an older file.
 
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2;
 
 /** almanac-backup-YYYY-MM-DD.json, the date from `now` (an ISO string or a Date). */
 export function backupFilename(now) {
@@ -33,9 +40,12 @@ export function backupFilename(now) {
  * @param {Array} args.saved - saves store records (actions/store.js savesStore.list()).
  * @param {{opened: Array, shown: Array}} args.history - history store records
  *   (history/store.js openedStore/shownStore .list()).
+ * @param {Object.<string, Array>} [args.archives] - the Timeline archive, keyed by
+ *   follow (follow-archive.js archiveKey), each value that follow's item list
+ *   (followArchiveStore.get(key).items). Missing or not an object exports as {}.
  * @param {Function|string} [args.now] - nowIso() or an ISO string, for deterministic tests.
  */
-export function serializeBackup({ profile, saved, history, now }) {
+export function serializeBackup({ profile, saved, history, archives, now }) {
   const exportedAt = typeof now === "function" ? now() : now || new Date().toISOString();
   return {
     format_version: BACKUP_VERSION,
@@ -46,5 +56,6 @@ export function serializeBackup({ profile, saved, history, now }) {
       opened: Array.isArray(history?.opened) ? history.opened : [],
       shown: Array.isArray(history?.shown) ? history.shown : [],
     },
+    archives: archives && typeof archives === "object" && !Array.isArray(archives) ? archives : {},
   };
 }

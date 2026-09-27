@@ -72,7 +72,7 @@ import { PHRASE_MAX, QUERIES_MAX } from "./phrase.js";
 import { scheduleSync, startSync } from "./interests-sync.js";
 import { standingForm, standingMessage } from "./standing-form.js";
 import { pageInput } from "./page-input.js";
-import { FOLLOW_PREVIEW, countWords, followFor, followRow } from "./following.js";
+import { FOLLOW_PREVIEW, countWords, followFor, followList, followRow } from "./following.js";
 import { rankPages, pageOptions } from "./passes.js";
 import { archiveKey } from "./follow-archive.js";
 import { followArchiveStore } from "./follow-archive-store.js";
@@ -84,7 +84,7 @@ import { openedStore, shownStore } from "./history/store.js";
 import { initStoragePersistence, readPersistRecord, persistLabel } from "./backup/persist.js";
 import { serializeBackup, backupFilename } from "./backup/serialize.js";
 import { validateBackup } from "./backup/validate.js";
-import { mergeById, importCounts, confirmMessage } from "./backup/merge.js";
+import { mergeById, mergeArchives, importCounts, confirmMessage } from "./backup/merge.js";
 import { weekOverWeek, formatWeekOverWeek } from "./breadth/math.js";
 import { weeklyReview, weekKey, summaryLine } from "./weekly/review.js";
 import { readWeekly, markAccepted, markSkipped, markUndone, undoDraft } from "./weekly/state.js";
@@ -660,8 +660,11 @@ function main(schema, catalog, proposalSchema) {
   // before replacing the profile and merging saved/history; a decline changes nothing. ---
   async function runExport() {
     try {
-      const [saved, opened, shown] = await Promise.all([savesStore.list(), openedStore.list(), shownStore.list()]);
-      const backup = serializeBackup({ profile: store.current(), saved, history: { opened, shown }, now: nowIso });
+      const [saved, opened, shown, archiveRows] = await Promise.all([
+        savesStore.list(), openedStore.list(), shownStore.list(), followArchiveStore.list(),
+      ]);
+      const archives = Object.fromEntries(archiveRows.map((row) => [row.follow, row.items]));
+      const backup = serializeBackup({ profile: store.current(), saved, history: { opened, shown }, archives, now: nowIso });
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const link = el("a", { href: url, download: backupFilename(backup.exported_at) });
@@ -693,13 +696,25 @@ function main(schema, catalog, proposalSchema) {
     const savedMerge = mergeById(saved, result.data.saved);
     const openedMerge = mergeById(opened, result.data.history.opened);
     const shownMerge = mergeById(shown, result.data.history.shown);
-    const counts = importCounts(result.data.profile, savedMerge, openedMerge, shownMerge);
+    // S35b: the Timeline archive merges against the profile the import is about to
+    // replace with, not the one still current: a follow the file's own profile drops is
+    // never worth merging back in. Only the keys the file actually carries and the new
+    // profile still follows are worth a read, so nothing else is fetched.
+    const importedArchives = result.data.archives || {};
+    const liveKeys = new Set(followList(result.data.profile).map((f) => archiveKey(f.kind, f.id)));
+    const archiveKeysToMerge = Object.keys(importedArchives).filter((k) => liveKeys.has(k));
+    const currentByKey = new Map(await Promise.all(
+      archiveKeysToMerge.map(async (key) => [key, (await followArchiveStore.get(key))?.items || []]),
+    ));
+    const archiveMerge = mergeArchives(currentByKey, importedArchives, liveKeys, Date.now());
+    const counts = importCounts(result.data.profile, savedMerge, openedMerge, shownMerge, archiveMerge);
     if (!window.confirm(confirmMessage(counts))) return;
     try {
       await Promise.all([
         ...savedMerge.toWrite.map((r) => savesStore.put(r)),
         ...openedMerge.toWrite.map((r) => openedStore.put(r)),
         ...shownMerge.toWrite.map((r) => shownStore.put(r)),
+        ...archiveMerge.toWrite.map(({ key, items }) => followArchiveStore.put(key, items)),
       ]);
     } catch (err) {
       console.warn("You page: import could not write saved/history", err);
@@ -713,8 +728,10 @@ function main(schema, catalog, proposalSchema) {
       showToast(`Could not import: ${profileResult.errors[0]}`);
       return;
     }
+    archiveCache.clear(); // the archive views' own cache: a re-open must read the merge, not a stale value
     render({ keepScroll: true });
-    showToast(`Imported: ${counts.interestCount} interests, saved +${counts.savedDelta}, history +${counts.historyDelta}`);
+    const timelineNote = counts.timelineDelta ? `, timeline +${counts.timelineDelta}` : "";
+    showToast(`Imported: ${counts.interestCount} interests, saved +${counts.savedDelta}, history +${counts.historyDelta}${timelineNote}`);
   }
 
   function yourDataDetails() {

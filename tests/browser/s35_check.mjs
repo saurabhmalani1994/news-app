@@ -20,6 +20,12 @@
 //      plain message and changes nothing.
 // Zero CSP violations, no console errors. Screenshots of the "Your data" group, dark
 // and light. Exits 1 on any failure.
+//
+// S35b: the gap S35 shipped with, closed. Its own follow-archive Timeline row
+// (almanac-follow-archive, S30) is seeded for a shipped default standing story before
+// export, proven present in the exported file (format_version 2, archives keyed by
+// follow), cleared along with everything else in step 4, then proven back in step 5:
+// Timeline survives export, clear, import, the same round trip as saved and history.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -129,6 +135,18 @@ await evaluate(`(async () => {
   tx.objectStore("opened").put({ id: "s35-story-2", cluster_id: "s35-story-2", title: "An opened story", source: "Wire Service", source_id: "wire", url: "https://example.com/s2", image: null, topics: [], article_id: "s35-story-2", time: "2026-09-21T00:00:00Z" });
   await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
 })()`);
+// S35b: one Timeline row for "israel_gaza", a shipped default standing story, so the
+// device also holds an archive worth backing up (following.js's followList includes
+// the shipped defaults with no profile edit needed).
+await evaluate(`(async () => {
+  const req = indexedDB.open("almanac-follow-archive", 1);
+  req.onupgradeneeded = () => { if (!req.result.objectStoreNames.contains("follows")) req.result.createObjectStore("follows", { keyPath: "follow" }); };
+  await new Promise((res, rej) => { req.onsuccess = res; req.onerror = rej; });
+  const db = req.result;
+  const tx = db.transaction("follows", "readwrite");
+  tx.objectStore("follows").put({ follow: "story:israel_gaza", items: [{ id: "s35-archive-1", title: "A timeline story", outlet: "Wire Service", time: "2026-09-22T00:00:00Z", markers: { lean: "center", country: "US" }, url: "https://example.com/t1" }] });
+  await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+})()`);
 
 // --- 3. Export: capture the page's own Blob, never a real download dialog. ---
 await open("/profile");
@@ -140,11 +158,14 @@ const exported = JSON.parse(await evaluate(`(async () => {
   const blob = window.__blobs[urls.at(-1)];
   return await blob.text();
 })()`));
-check("export_carries_profile_saved_and_history", exported.format_version === 1 && typeof exported.exported_at === "string"
+check("export_carries_profile_saved_and_history", exported.format_version === 2 && typeof exported.exported_at === "string"
   && Object.keys(exported.profile.topics).length === Object.keys(profileBefore.topics).length
   && exported.saved.some((s) => s.id === "s35-story-1")
   && exported.history.opened.some((h) => h.id === "s35-story-2"),
   { format_version: exported.format_version, topics: Object.keys(exported.profile.topics).length, saved: exported.saved.length, opened: exported.history.opened.length });
+check("export_carries_follow_archive_timeline", Array.isArray(exported.archives?.["story:israel_gaza"])
+  && exported.archives["story:israel_gaza"].some((r) => r.id === "s35-archive-1"),
+  { archiveKeys: Object.keys(exported.archives || {}) });
 
 const backupPath = join(TMP, "backup.json");
 writeFileSync(backupPath, JSON.stringify(exported));
@@ -160,6 +181,7 @@ await evaluate(`(async () => {
   localStorage.clear(); sessionStorage.clear();
   await new Promise((res) => { const r = indexedDB.deleteDatabase("almanac-actions"); r.onsuccess = res; r.onerror = res; r.onblocked = res; });
   await new Promise((res) => { const r = indexedDB.deleteDatabase("almanac-history"); r.onsuccess = res; r.onerror = res; r.onblocked = res; });
+  await new Promise((res) => { const r = indexedDB.deleteDatabase("almanac-follow-archive"); r.onsuccess = res; r.onerror = res; r.onblocked = res; });
 })()`);
 await open("/profile");
 const freshProfile = await storedProfile();
@@ -194,6 +216,15 @@ check("import_restores_identical_state", Object.keys(restoredProfile.topics).len
   && restoredSaved.some((s) => s.id === "s35-story-1")
   && restoredOpened.some((h) => h.id === "s35-story-2"),
   { topics: Object.keys(restoredProfile.topics).length, before: Object.keys(profileBefore.topics).length, saved: restoredSaved.length, opened: restoredOpened.length });
+const restoredArchive = JSON.parse(await evaluate(`(async () => {
+  const req = indexedDB.open("almanac-follow-archive", 1);
+  const db = await new Promise((res, rej) => { req.onsuccess = () => res(req.result); req.onerror = rej; });
+  const tx = db.transaction("follows");
+  const g = tx.objectStore("follows").get("story:israel_gaza");
+  const row = await new Promise((res, rej) => { g.onsuccess = () => res(g.result); g.onerror = rej; });
+  return JSON.stringify(row || null);
+})()`));
+check("import_restores_follow_archive_timeline", Boolean(restoredArchive?.items?.some((r) => r.id === "s35-archive-1")), { restoredArchive });
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
 await open("/profile");
 await openDetails();

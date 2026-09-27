@@ -52,4 +52,11 @@ async function put(follow, items) {
   });
 }
 
-export const followArchiveStore = { get, put };
+/** Every follow's `{follow, items}` row. S35b: the one export/import backup reads the
+ * whole archive this way rather than one key at a time. */
+async function list() {
+  const database = await db();
+  return request(database.transaction(STORE).objectStore(STORE).getAll());
+}
+
+export const followArchiveStore = { get, put, list };

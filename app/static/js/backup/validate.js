@@ -10,10 +10,20 @@
 // name directly than to express as a schema someone has to keep in sync with this file.
 
 import { validateProfile } from "../profile/validate.js";
+import { ARCHIVE_MAX_ITEMS } from "../follow-archive.js";
 
 export const MAX_SAVED = 20_000;
 export const MAX_HISTORY = 50_000;
 export const MAX_STRING = 2000;
+// S35b: the Timeline archive (S30, follow-archive.js), added to the backup at version
+// 2. A follow's own item list is already capped to ARCHIVE_MAX_ITEMS live, so an
+// imported list past that cap is refused outright rather than silently truncated, the
+// same "reject, don't repair" stance every other array here takes; the real 30-day
+// prune runs again at merge time (backup/merge.js), same as the live archive.
+export const MAX_ARCHIVE_FOLLOWS = 2000;
+const ARCHIVE_KEY_RE = /^(phrase|story):[A-Za-z0-9_-]{1,150}$/;
+const ARCHIVE_ITEM_KEYS = ["id", "title", "outlet", "time", "markers", "url"];
+const MARKER_KEYS = ["lean", "country"];
 
 // Own-key checks throughout (Object.hasOwn), never `in` or bracket reads that could
 // walk the prototype chain (profile/validate.js's own comment on this, S37): a key
@@ -66,6 +76,57 @@ function validateRecordArray(list, label, requiredKeys, max, errors) {
   return list;
 }
 
+/** One Timeline card snapshot (follow-archive.js snapshotFromStory): known keys only
+ * (id, title, outlet, time, markers, url), every string short and flat, `markers` a
+ * plain {lean, country} object with nothing else in it, `time` a real date. */
+function validArchiveItem(item) {
+  if (!plainObject(item) || hasDangerousKey(item)) return false;
+  const keys = Object.keys(item);
+  if (!keys.every((k) => ARCHIVE_ITEM_KEYS.includes(k))) return false;
+  if (!ARCHIVE_ITEM_KEYS.every((k) => Object.hasOwn(item, k))) return false;
+  if (!isShortString(item.id, 200)) return false;
+  if (!isShortString(item.time, 100) || Number.isNaN(Date.parse(item.time))) return false;
+  if (!isShortString(item.title)) return false;
+  if (!isShortString(item.outlet)) return false;
+  if (!isShortString(item.url)) return false;
+  if (!plainObject(item.markers) || hasDangerousKey(item.markers)) return false;
+  const markerKeys = Object.keys(item.markers);
+  if (!markerKeys.every((k) => MARKER_KEYS.includes(k))) return false;
+  if (!isShortString(item.markers.lean, 100)) return false;
+  if (!isShortString(item.markers.country, 100)) return false;
+  return true;
+}
+
+/** The Timeline archive object, keyed by follow (`"phrase:<id>"` or `"story:<id>"`,
+ * follow-archive.js archiveKey). Absent entirely reads as `{}` (a version 1 file, or a
+ * version 2 file that happened to have nothing to archive yet), never an error: R24's
+ * own "import must still accept the previous version" rule. Present, it is held to the
+ * same strictness as everything else: a plain object, known-shaped keys, each value a
+ * capped array of known-shaped items; one bad key or one bad item refuses the whole
+ * file rather than importing part of it. */
+function validateArchives(data, errors) {
+  if (data.archives === undefined) return {};
+  if (!plainObject(data.archives) || hasDangerousKey(data.archives)) {
+    errors.push("archives: expected an object keyed by follow.");
+    return {};
+  }
+  const keys = Object.keys(data.archives);
+  if (keys.length > MAX_ARCHIVE_FOLLOWS) {
+    errors.push(`archives: ${keys.length} follows, more than ${MAX_ARCHIVE_FOLLOWS} allowed`);
+    return {};
+  }
+  const result = {};
+  for (const key of keys) {
+    if (!ARCHIVE_KEY_RE.test(key)) { errors.push(`archives: invalid follow key ${JSON.stringify(key)}`); continue; }
+    const list = data.archives[key];
+    if (!Array.isArray(list)) { errors.push(`archives.${key}: expected an array`); continue; }
+    if (list.length > ARCHIVE_MAX_ITEMS) { errors.push(`archives.${key}: ${list.length} entries, more than ${ARCHIVE_MAX_ITEMS} allowed`); continue; }
+    if (!list.every(validArchiveItem)) { errors.push(`archives.${key}: entries have the wrong shape`); continue; }
+    result[key] = list;
+  }
+  return result;
+}
+
 /**
  * Strictly validates a parsed backup file. Returns {ok: true, data} with `data` the
  * same object (never mutated) on success, or {ok: false, errors} with plain-English
@@ -77,8 +138,8 @@ export function validateBackup(data, schema) {
   const errors = [];
   if (!plainObject(data)) return { ok: false, errors: ["Not a backup file: expected a JSON object."] };
   if (hasDangerousKey(data)) return { ok: false, errors: ["Not a backup file: unsafe field names."] };
-  if (data.format_version !== 1) {
-    errors.push(`Unknown backup version ${JSON.stringify(data.format_version)}. This build reads version 1.`);
+  if (data.format_version !== 1 && data.format_version !== 2) {
+    errors.push(`Unknown backup version ${JSON.stringify(data.format_version)}. This build reads version 1 or 2.`);
   }
   if (!isShortString(data.exported_at, 100) || Number.isNaN(new Date(data.exported_at).getTime())) {
     errors.push("Missing or invalid export timestamp.");
@@ -94,6 +155,7 @@ export function validateBackup(data, schema) {
   if (!historyOk) errors.push("history: expected an object with opened and shown arrays.");
   const opened = historyOk ? validateRecordArray(data.history.opened, "history.opened", ["id", "time"], MAX_HISTORY, errors) : [];
   const shown = historyOk ? validateRecordArray(data.history.shown, "history.shown", ["id", "time"], MAX_HISTORY, errors) : [];
+  const archives = validateArchives(data, errors);
   if (errors.length) return { ok: false, errors };
-  return { ok: true, data: { format_version: 1, exported_at: data.exported_at, profile: data.profile, saved, history: { opened, shown } } };
+  return { ok: true, data: { format_version: data.format_version, exported_at: data.exported_at, profile: data.profile, saved, history: { opened, shown }, archives } };
 }
