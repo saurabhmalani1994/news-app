@@ -792,3 +792,76 @@ input.switch:focus-visible {
 .timeline-day:first-of-type {
   padding-top: 0;
 }
+
+/* S29: the weekly review. Each suggestion is a stacked row: its sentence in the row's
+   own label type, then Accept and Skip as plain text buttons, each a full touch target,
+   never filled or boxed. "Also noticed" is collapsed, the same disclosure as Your data. */
+.weekly-sentence {
+  margin: 0;
+  font-family: var(--type-tab-label-family);
+  font-size: var(--type-tab-label-size);
+  line-height: 20px;
+  color: var(--color-headline);
+}
+
+.weekly-actions {
+  display: flex;
+  gap: 28px;
+  margin-top: 4px;
+}
+
+.weekly-action {
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  margin: 0 0 -14px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: var(--type-tab-label-family);
+  font-size: var(--type-tab-label-size);
+  font-weight: 600;
+  color: var(--color-headline);
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--motion-duration) var(--motion-ease);
+}
+
+.weekly-action--quiet {
+  color: var(--color-meta);
+}
+
+.weekly-action:active {
+  color: var(--color-meta);
+}
+
+.weekly-action:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: 2px;
+}
+
+.weekly-noticed > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--touch-min);
+  margin: 0;
+  padding: 14px var(--space-gutter);
+  cursor: pointer;
+  list-style: none;
+}
+
+.weekly-noticed > summary::-webkit-details-marker {
+  display: none;
+}
+
+.weekly-noticed > summary::marker {
+  content: "";
+}
+
+.weekly-noticed > summary:active {
+  background: var(--color-pressed);
+}
+
+.weekly-noticed-line {
+  padding-bottom: 12px;
+}
