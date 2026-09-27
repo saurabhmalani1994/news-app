@@ -128,7 +128,7 @@ def test_a_bad_tag_is_dropped_and_bad_values_are_counted():
             {"q": "   ", "tag": watch.tag_for("   ")},  # empty once trimmed
             "not an object",
         ]},
-        {"v": 2, "queries": []},  # unknown version
+        {"v": 3, "queries": []},  # unknown version (B11 made v 2 the work watch value)
         None,                     # a value that did not parse
     ]
     queries, drops = watch.union_queries(values)

@@ -3,7 +3,8 @@ stories. Standard library only (R30).
 
 The phone (W1) keeps each user's followed phrases and standing-story keywords in the
 Workers KV namespace titled almanac-interests, one key per user, each value
-{"v":1,"queries":[{"q":"...","tag":"w:<10 hex>"}]}. Every run:
+{"v":1,"queries":[{"q":"...","tag":"w:<10 hex>"}]} (B11: v 2 adds the work watch's
+rules, fetcher/workwatch.py). Every run:
 
 1. read_interests lists the namespace's keys and reads every value through the
    Cloudflare REST API, trying each token in TOKEN_ENV_NAMES that is set until one
@@ -43,7 +44,7 @@ import unicodedata
 import urllib.error
 import urllib.request
 from collections import Counter
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, unquote, urlencode, urlsplit
 
 from fetcher.fetch import USER_AGENT, FeedError, _clean, _utc, iter_feed_items, parse_xml
@@ -109,7 +110,7 @@ def union_queries(values):
     drops = Counter()
     per_user = []
     for value in values:
-        if not (isinstance(value, dict) and value.get("v") == 1
+        if not (isinstance(value, dict) and value.get("v") in (1, 2)
                 and isinstance(value.get("queries"), list)):
             drops["bad_value"] += 1
             continue
@@ -303,17 +304,25 @@ def fetch_searches(queries, fetch_fn, timeout, retries, workers=WATCH_WORKERS):
         return list(ex.map(_job, queries))
 
 
-def collect(env=None, http_get=None, fetch_fn=None, timeout=12, retries=1):
+def collect(env=None, http_get=None, fetch_fn=None, timeout=12, retries=1, now=None):
     """Everything main() needs before the pool is built: the KV status, the query
-    count and drops, and each search's result. Never raises."""
+    count and drops, and each search's result. B11: "work" holds the work watch's
+    rules and searches (fetcher/workwatch.py), read from the same KV values; a failure
+    there leaves the phrase searches as they were. Never raises."""
+    from fetcher import workwatch  # imported here: workwatch builds on this module
     try:
         values, kv, token_name = read_interests(env, http_get)
         queries, query_drops = union_queries(values)
         results = fetch_searches(queries, fetch_fn, timeout, retries) if queries else []
-        return {"kv": kv, "token": token_name, "queries": len(queries),
-                "query_drops": dict(query_drops), "results": results}
     except Exception:  # noqa: BLE001 - the watch step never fails the run
-        return {"kv": "error", "token": None, "queries": 0, "query_drops": {}, "results": []}
+        return {"kv": "error", "token": None, "queries": 0, "query_drops": {}, "results": [],
+                "work": workwatch.empty_work()}
+    try:
+        work = workwatch.collect_work(values, now or datetime.now(timezone.utc), fetch_fn, timeout, retries)
+    except Exception:  # noqa: BLE001
+        work = workwatch.empty_work()
+    return {"kv": kv, "token": token_name, "queries": len(queries),
+            "query_drops": dict(query_drops), "results": results, "work": work}
 
 
 # --- outlets and matching ----------------------------------------------------------

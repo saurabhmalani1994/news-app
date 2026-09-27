@@ -1,0 +1,40 @@
+{
+  "note": "B11: rule matching cases both app/static/js/work-watch.js matchRule and fetcher/workwatch.py rule_matches must answer the same way (R2). Every term here is an invented placeholder.",
+  "rules": {
+    "plain": {"id": "w_plain", "label": "Plain", "tier": 1, "terms": ["zorbium", "blue quill"], "pair_any": [], "exclude": [], "exact": false},
+    "exact": {"id": "w_exact", "label": "Exact", "tier": 2, "terms": ["Quillase", "Plovex Labs"], "pair_any": [], "exclude": [], "exact": true},
+    "paired": {"id": "w_paired", "label": "Paired", "tier": 1, "terms": ["fermentation"], "pair_any": ["precision", "industrial"], "exclude": [], "exact": false},
+    "excluded": {"id": "w_excluded", "label": "Excluded", "tier": 3, "terms": ["vexamide"], "pair_any": [], "exclude": ["brewquor", "gut health"], "exact": false},
+    "trap": {"id": "w_trap", "label": "Trap", "tier": 1, "terms": ["zorb"], "pair_any": ["scent", "perfume"], "exclude": [], "exact": false},
+    "empty": {"id": "w_empty", "label": "Empty", "tier": 4, "terms": ["!!"], "pair_any": [], "exclude": [], "exact": false}
+  },
+  "cases": [
+    {"rule": "plain", "texts": ["Zorbium output rises at a new plant"], "match": true, "why": "a term, any case"},
+    {"rule": "plain", "texts": ["Zorbiums gain ground"], "match": true, "why": "a plural folds"},
+    {"rule": "plain", "texts": ["Zörbium makers meet"], "match": true, "why": "accents are ignored"},
+    {"rule": "plain", "texts": ["Zorbiumization is a new word"], "match": false, "why": "never inside a longer word"},
+    {"rule": "plain", "texts": ["The Blue-Quill project grows"], "match": true, "why": "punctuation between words is a boundary"},
+    {"rule": "plain", "texts": ["Blue and quill are colors"], "match": false, "why": "words must be adjacent and in order"},
+    {"rule": "plain", "texts": ["Nothing to see", "but zorbium in the summary"], "match": true, "why": "the dek counts"},
+    {"rule": "plain", "texts": ["Blue", "quill"], "match": false, "why": "a phrase never runs from one text into the next"},
+    {"rule": "exact", "texts": ["Quillase signs a supply deal"], "match": true, "why": "exact capitals"},
+    {"rule": "exact", "texts": ["quillase signs a supply deal"], "match": false, "why": "wrong capitals"},
+    {"rule": "exact", "texts": ["QUILLASE SIGNS A DEAL"], "match": false, "why": "all caps is not the term's capitals"},
+    {"rule": "exact", "texts": ["Quillases on the rise"], "match": false, "why": "no plural folding when exact"},
+    {"rule": "exact", "texts": ["Quillase’s new plant"], "match": true, "why": "a possessive is dropped"},
+    {"rule": "exact", "texts": ["Plovex Labs raises money"], "match": true, "why": "an exact two word name"},
+    {"rule": "exact", "texts": ["plovex labs raises money"], "match": false, "why": "an exact two word name, wrong capitals"},
+    {"rule": "paired", "texts": ["Home brewers share fermentation tips"], "match": false, "why": "a generic term alone"},
+    {"rule": "paired", "texts": ["Precision fermentation plant opens"], "match": true, "why": "the pair term is there"},
+    {"rule": "paired", "texts": ["Fermentation plant opens", "An industrial site in the north"], "match": true, "why": "the pair term may be in the dek"},
+    {"rule": "paired", "texts": ["Industrial precision, no process named"], "match": false, "why": "pair terms without a term"},
+    {"rule": "excluded", "texts": ["Vexamide output climbs"], "match": true, "why": "no exclude term"},
+    {"rule": "excluded", "texts": ["Vexamide in brewquor, a trend"], "match": false, "why": "an exclude term"},
+    {"rule": "excluded", "texts": ["Vexamide", "for gut health"], "match": false, "why": "an exclude phrase in the dek"},
+    {"rule": "excluded", "texts": ["Vexamide", "Brewquors everywhere"], "match": false, "why": "an exclude term folds its plural"},
+    {"rule": "trap", "texts": ["Zorbs are back in fashion"], "match": false, "why": "a trap word without its context"},
+    {"rule": "trap", "texts": ["Zorb notes lift a new perfume"], "match": true, "why": "a trap word with its context"},
+    {"rule": "trap", "texts": ["Zorbium scent"], "match": false, "why": "stemming never reaches a longer word"},
+    {"rule": "empty", "texts": ["!! breaking !!"], "match": false, "why": "a term with no word never matches"}
+  ]
+}

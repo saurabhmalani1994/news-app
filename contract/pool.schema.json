@@ -377,7 +377,7 @@
         "kv": {"type": "string", "pattern": "^(ok|no_token|no_namespace|timeout|network|bad_response|error|http_[0-9]{3})$"},
         "queries": {"type": "integer", "minimum": 0},
         "query_drops": {
-          "description": "Queries not searched, by reason: bad_value (a KV value unreadable or not v1), bad_query (no q, an empty q or one over 100 characters), bad_tag (the tag is not the hash of its q), over_value_cap (past 25 in one value), duplicate (the same tag again), over_cap (past 60 for the run).",
+          "description": "Queries not searched, by reason: bad_value (a KV value unreadable or not v1 or v2), bad_query (no q, an empty q or one over 100 characters), bad_tag (the tag is not the hash of its q), over_value_cap (past 25 in one value), duplicate (the same tag again), over_cap (past 60 for the run).",
           "type": "object",
           "additionalProperties": false,
           "properties": {
@@ -405,6 +405,30 @@
           }
         },
         "merged": {"type": "integer", "minimum": 0},
+        "published": {"type": "integer", "minimum": 0},
+        "over_budget": {"type": "integer", "minimum": 0},
+        "bytes": {"type": "integer", "minimum": 0},
+        "budget_bytes": {"type": "integer", "minimum": 0},
+        "errors": {"$ref": "#/$defs/count_map"},
+        "work": {"$ref": "#/$defs/work_watch_counts"}
+      }
+    },
+    "work_watch_counts": {
+      "description": "B11: this run's work watch (fetcher/workwatch.py), counts only: a rule's label, terms and tag never leave the fetcher here. Present only when some KV value carried work rules. rules is how many were kept after rule_drops (bad_rule, bad_tag, over_value_cap, duplicate, over_cap). queries is how many Google News searches ran; deferred is how many tier 3 and 4 rules waited for their slower cadence. fetched is the raw items across those searches; each ends in drops (the same item checks as the phrase watches), no_match (its own headline and dek fail its rule) or candidates, so fetched equals candidates plus no_match plus the sum of drops. merged candidates were already in the pool; tagged counts pool candidates the rules matched by text. published and over_budget count work-only items and work-tagged articles past the per-source cap against budget_bytes, a budget of their own, apart from the phrase watches'.",
+      "type": "object",
+      "required": ["rules", "rule_drops", "queries", "deferred", "fetched", "candidates", "no_match", "drops", "merged", "tagged", "published", "over_budget", "bytes", "budget_bytes", "errors"],
+      "additionalProperties": false,
+      "properties": {
+        "rules": {"type": "integer", "minimum": 0},
+        "rule_drops": {"$ref": "#/$defs/count_map"},
+        "queries": {"type": "integer", "minimum": 0},
+        "deferred": {"type": "integer", "minimum": 0},
+        "fetched": {"type": "integer", "minimum": 0},
+        "candidates": {"type": "integer", "minimum": 0},
+        "no_match": {"type": "integer", "minimum": 0},
+        "drops": {"$ref": "#/$defs/count_map"},
+        "merged": {"type": "integer", "minimum": 0},
+        "tagged": {"type": "integer", "minimum": 0},
         "published": {"type": "integer", "minimum": 0},
         "over_budget": {"type": "integer", "minimum": 0},
         "bytes": {"type": "integer", "minimum": 0},

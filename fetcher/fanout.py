@@ -52,6 +52,11 @@ tag saves from the per-source cap, are exempt from that cap but share one byte b
 (fetcher.watch.BUDGET_BYTES), reported in counts.watch. A watch failure of any kind
 publishes the pool without watch items; it never fails the run.
 
+B11: the same KV values carry the owner's work watch rules (fetcher/workwatch.py). Their
+searches run on a tier cadence; a result publishes only when its own headline and dek
+pass its rule, and any other candidate that passes gets the rule's tag. Work items use
+their own byte budget (workwatch.BUDGET_BYTES), reported in counts.watch.work.
+
 B8: after health, every version of a story with 2+ outlets gets `bv`, the best version's
 fact terms (fetcher/best_version.py, DESIGN-bundles section 4a). Lean and roster are
 never inputs.
@@ -93,6 +98,7 @@ from fetcher.health import compute_source_health, fetch_previous_pool, parse_pre
 from fetcher.state import DEFAULT_STATE_PATH, embed_budget_from, load_state, write_state
 from fetcher.truth_archive import TRUTH_ARCHIVE_URL, link_clusters, load_archive
 from fetcher import watch as wsearch
+from fetcher import workwatch as wwork
 from fetcher.fetch import (
     DEK_MAX,
     TITLE_MAX,
@@ -350,7 +356,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                       cluster_extra_cap=CLUSTER_EXTRA_CAP, timings=None, topics_doc=None,
                       previous_health=None, previous_pool_status="absent", bodies_out=None,
                       previous_events=None, candidates_out=None, watch=None,
-                      watch_budget=wsearch.BUDGET_BYTES, embedder=None,
+                      watch_budget=wsearch.BUDGET_BYTES, embedder=None, work_budget=wwork.BUDGET_BYTES,
                       truth_archive_posts=None, truth_archive_status="disabled"):
     """Turn fetch results for every source into one pool dict. Pure: no network, no clock.
 
@@ -458,6 +464,8 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     watch_only_ids = set()
     wcounts = None
     merged = 0
+    work_tags = frozenset()
+    work = kc = None
     if watch is not None:
         items, wcounts, wstate, wnewest = wsearch.watch_items(
             watch["results"], sources, now, topics_doc, leniency, image_rejected, _extract_article)
@@ -468,10 +476,50 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
         for item in new_items:
             watch_only_ids.add(item["id"])
             candidates.append(item)
-        if watch["queries"]:
+        search_states = [(wstate, wcounts["fetched"], wnewest)] if watch["queries"] else []
+        # B11: the work watch's searches, then its rules over every candidate. A result
+        # is kept only when its own headline and dek pass its rule (workwatch.rule_matches,
+        # the phone's own test); a feed candidate that passes gets the rule's tag too.
+        work = watch.get("work") or wwork.empty_work()
+        work_tags = frozenset(r["tag"] for r in work["rules"])
+        kc = {"fetched": 0, "candidates": 0, "no_match": 0, "merged": 0, "tagged": 0, "errors": {}, "drops": {}}
+        if work["rules"]:
+            by_tag = {r["tag"]: r for r in work["rules"]}
+            kitems, kcounts, kstate, knewest = wsearch.watch_items(
+                work["results"], sources, now, topics_doc, leniency, image_rejected, _extract_article)
+            kept_items = []
+            for item in kitems:
+                tags = [t for t in item["watch"]
+                        if t in by_tag and wwork.rule_matches(by_tag[t], [item["title"], item.get("dek", "")])]
+                if tags:
+                    item["watch"] = sorted(tags)
+                    kept_items.append(item)
+            kc.update(fetched=kcounts["fetched"], candidates=len(kept_items),
+                      no_match=len(kitems) - len(kept_items), errors=kcounts["errors"], drops=kcounts["drops"])
+            fetched_total += len(kept_items)
+            new_items, kc["merged"] = wsearch.merge_into(candidates, kept_items)
+            if kc["merged"]:
+                drops["duplicate_url"] += kc["merged"]
+            for item in new_items:
+                watch_only_ids.add(item["id"])
+                candidates.append(item)
+            for article in candidates:
+                if article["id"] in watch_only_ids:
+                    continue
+                texts = [article["title"], article.get("dek", "")]
+                tags = [r["tag"] for r in work["rules"] if r["tag"] not in article.get("watch", ())
+                        and wwork.rule_matches(r, texts)]
+                if tags:
+                    wsearch.add_tags(article, tags, (wsearch.ITEMS_PER_QUERY, 0))
+                    kc["tagged"] += 1
+            if work["queries"]:
+                search_states.append((kstate, kcounts["fetched"], knewest))
+        if search_states:
             pool_sources.append(wsearch.SOURCE)
-            feed_states[wstate] += 1
-            run_states[wsearch.SOURCE["id"]] = (wstate, wcounts["fetched"], wnewest)
+            state = wsearch._feed_state([st for st, _f, _n in search_states])
+            feed_states[state] += 1
+            newest = max((n for _s, _f, n in search_states if n is not None), default=None)
+            run_states[wsearch.SOURCE["id"]] = (state, sum(f for _s, f, _n in search_states), newest)
     t0 = time.perf_counter()
     vectors = embedder(candidates) if embedder is not None else None
     if timings is not None:
@@ -513,20 +561,40 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     # W2: the watch byte budget. Tags on articles that publish anyway count first; then
     # watch-only items and tagged articles past the cap, round robin across queries
     # (every query's newest item, then every query's second...), while bytes remain.
-    watch_bytes = sum(wsearch.tag_bytes(a) for a in articles if a.get("watch"))
-    watch_published = over_budget = 0
+    # B11: the work watch has its own budget (workwatch.BUDGET_BYTES), so the phrase
+    # watches' is untouched: an article with any phrase tag is the phrase budget's, one
+    # with work tags only is the work budget's, and each side pays for its own tags.
+    def phrase_tags(a):
+        return [t for t in a.get("watch", ()) if t not in work_tags]
+
+    watch_bytes = work_bytes = 0
+    for a in articles:
+        if a.get("watch"):
+            phrase = phrase_tags(a)
+            phrase_part = wsearch.tag_bytes({"watch": phrase}) if phrase else 0
+            watch_bytes += phrase_part
+            work_bytes += wsearch.tag_bytes(a) - phrase_part
+    watch_published = over_budget = work_published = work_over = 0
     exempt.extend(c for c in candidates if c["id"] in watch_only_ids)
     for article in sorted(exempt, key=lambda a: (a["_watch_order"], a["id"])):
         if article["url"] in published_urls:
             drops["duplicate_url"] += 1
             continue
         size = wsearch.record_bytes(article)
-        if watch_bytes + size > watch_budget:
-            drops["over_cap"] += 1
-            over_budget += 1
-            continue
-        watch_bytes += size
-        watch_published += 1
+        if phrase_tags(article):
+            if watch_bytes + size > watch_budget:
+                drops["over_cap"] += 1
+                over_budget += 1
+                continue
+            watch_bytes += size
+            watch_published += 1
+        else:
+            if work_bytes + size > work_budget:
+                drops["over_cap"] += 1
+                work_over += 1
+                continue
+            work_bytes += size
+            work_published += 1
         published_urls.add(article["url"])
         articles.append(article)
     for article in candidates:
@@ -572,9 +640,12 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
 
     generated_at = _utc(now)
     if candidates_out is not None:
+        # B11: feed candidates a work rule matched are left out too, so the public dump
+        # never lists which stories the owner's private rules picked.
+        work_hits = {a["id"] for a in candidates if work_tags.intersection(a.get("watch", ()))}
         candidates_out["dump"] = candidate_dump(candidates, all_clusters,
                                                 {a["id"] for a in articles}, generated_at,
-                                                hidden=watch_only_ids)
+                                                hidden=watch_only_ids | work_hits)
     source_health = compute_source_health(pool_sources, run_states, previous_health, generated_at)
     # B8: the best version's fact terms, on every version of a story with 2+ outlets.
     # Section 4a's facts only: a source's lean and provenance are never inputs.
@@ -622,6 +693,25 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             "budget_bytes": watch_budget,
             "errors": wcounts["errors"],
         }
+        if work_tags:
+            counts["watch"]["work"] = {
+                "rules": len(work_tags),
+                "rule_drops": {k: work["rule_drops"][k] for k in wwork.RULE_DROP_KEYS
+                               if work["rule_drops"].get(k)},
+                "queries": work["queries"],
+                "deferred": work["deferred"],
+                "fetched": kc["fetched"],
+                "candidates": kc["candidates"],
+                "no_match": kc["no_match"],
+                "drops": kc["drops"],
+                "merged": kc["merged"],
+                "tagged": kc["tagged"],
+                "published": work_published,
+                "over_budget": work_over,
+                "bytes": work_bytes,
+                "budget_bytes": work_budget,
+                "errors": kc["errors"],
+            }
     _assert_ledger_invariant(counts)
     return {
         "schema_version": 1,
@@ -737,13 +827,24 @@ def watch_log_line(wc, watch_input, seconds):
         head = f"watch: {watch_input['queries']} queries (kv ok via {watch_input['token']})"
     if wc is None:
         return f"{head} dropped from this pool after a failed build seconds={seconds:.2f}"
-    return (
+    line = (
         f"{head} query_drops={json.dumps(wc['query_drops'])} fetched={wc['fetched']} "
         f"kept={wc['candidates']} item_drops={json.dumps(wc['drops'])} merged={wc['merged']} "
         f"published={wc['published']} over_budget={wc['over_budget']} "
         f"errors={json.dumps(wc['errors'])} bytes={wc['bytes']}/{wc['budget_bytes']} "
         f"seconds={seconds:.2f}"
     )
+    # B11: the work watch's counts, numbers only (never a rule's label, term or tag).
+    kc = wc.get("work")
+    if kc:
+        line += (
+            f" work: rules={kc['rules']} rule_drops={json.dumps(kc['rule_drops'])} "
+            f"queries={kc['queries']} deferred={kc['deferred']} fetched={kc['fetched']} "
+            f"kept={kc['candidates']} no_match={kc['no_match']} merged={kc['merged']} "
+            f"tagged={kc['tagged']} published={kc['published']} over_budget={kc['over_budget']} "
+            f"errors={json.dumps(kc['errors'])} bytes={kc['bytes']}/{kc['budget_bytes']}"
+        )
+    return line
 
 
 def main(argv=None):

@@ -18,6 +18,15 @@
 // queries list of at most 25 {q, tag}, each q 1 to 100 characters with no control
 // characters, each tag "w:" and 10 hex digits that must equal SHA-256(q normalized), no
 // tag twice. Nothing here logs, and no answer repeats a query back.
+//
+// B11: version 2 adds the owner's work watch rules (app/static/js/work-watch.js,
+// fetcher/workwatch.py): {"v":2,"queries":[...],"work":[{id, label, tag, tier, terms,
+// pair_any, exclude, exact}]}, at most 40 rules, each id a short slug, tag "w:" and 10
+// hex of SHA-256("work:<id>"), tier 1 to 4, at most 30 terms, 20 pair_any and 20
+// exclude terms of 2 to 60 characters (no double quotes, no control characters). A
+// version 1 PUT (a phone with no work rules of its own yet) keeps any work rules already
+// stored, so rules seeded straight into KV survive the phone's next phrase sync; a
+// version 2 PUT replaces them. The body limit is 32 KB for the rules.
 
 // The Access application in front of this site. Neither value is a secret: Access puts
 // both in every login redirect it sends (the team host, and the audience as `kid`).
@@ -25,9 +34,14 @@
 export const ACCESS_TEAM_DOMAIN = "almanac-dt5-pages.cloudflareaccess.com";
 export const ACCESS_AUD = "3940188317cc7fb06aea6cae0af45c5b12ca215ab0f2224104c5fcf6061bda79";
 
-export const MAX_BODY_BYTES = 8192;
+export const MAX_BODY_BYTES = 32768;
 export const MAX_QUERIES = 25;
 export const MAX_Q = 100;
+export const MAX_WORK_RULES = 40;
+export const MAX_WORK_TERMS = 30;
+export const MAX_WORK_PAIR = 20;
+export const MAX_WORK_EXCLUDE = 20;
+const WORK_ID = /^[a-z][a-z0-9_]{1,31}$/;
 const TAG = /^w:[0-9a-f]{10}$/;
 const CONTROL = /[\u0000-\u001f\u007f]/;
 const EMPTY = JSON.stringify({ v: 1, queries: [] });
@@ -140,9 +154,44 @@ async function readLimited(request, limit) {
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const onlyKeys = (o, keys) => Object.keys(o).length === keys.length && keys.every((k) => Object.hasOwn(o, k));
 
-/** {ok: true, value} with exactly the stored shape, or {ok: false, error}. */
+/** A work rule's term list: `low` to `high` strings of 2 to 60 characters, no double
+ * quotes (the search quotes them) and no control characters. */
+function termsOk(list, low, high) {
+  return Array.isArray(list) && list.length >= low && list.length <= high
+    && list.every((t) => typeof t === "string" && t.length >= 2 && t.length <= 60 && !CONTROL.test(t) && !/["“”]/.test(t) && t.trim().length >= 2);
+}
+
+const WORK_KEYS = ["id", "label", "tag", "tier", "terms", "pair_any", "exclude", "exact"];
+
+/** B11: {ok: true, work} with exactly the stored rule shape, or {ok: false, error}. */
+export async function validateWork(work) {
+  if (!Array.isArray(work)) return { ok: false, error: "work must be a list" };
+  if (work.length > MAX_WORK_RULES) return { ok: false, error: `at most ${MAX_WORK_RULES} work rules` };
+  const tags = new Set();
+  const out = [];
+  for (const rule of work) {
+    if (!isObject(rule) || !onlyKeys(rule, WORK_KEYS)) return { ok: false, error: "each work rule is exactly {id, label, tag, tier, terms, pair_any, exclude, exact}" };
+    const { id, label, tag, tier, terms, pair_any: pair, exclude, exact } = rule;
+    if (typeof id !== "string" || !WORK_ID.test(id)) return { ok: false, error: "a work rule id is a short lowercase slug" };
+    if (typeof label !== "string" || !label.trim() || label.length > 60 || CONTROL.test(label)) return { ok: false, error: "a work rule label is 1 to 60 characters of text" };
+    if (!Number.isInteger(tier) || tier < 1 || tier > 4) return { ok: false, error: "a work rule tier is 1 to 4" };
+    if (!termsOk(terms, 1, MAX_WORK_TERMS) || !termsOk(pair, 0, MAX_WORK_PAIR) || !termsOk(exclude, 0, MAX_WORK_EXCLUDE)) {
+      return { ok: false, error: "a work rule's terms are 2 to 60 characters each, within the counts" };
+    }
+    if (typeof exact !== "boolean") return { ok: false, error: "a work rule's exact is true or false" };
+    if (typeof tag !== "string" || !TAG.test(tag) || tag !== (await watchTag(`work:${id}`))) return { ok: false, error: "a work tag does not match its rule" };
+    if (tags.has(tag)) return { ok: false, error: "a work rule appears twice" };
+    tags.add(tag);
+    out.push({ id, label, tag, tier, terms, pair_any: pair, exclude, exact });
+  }
+  return { ok: true, work: out };
+}
+
+/** {ok: true, value} with exactly the stored shape, or {ok: false, error}. A version 1
+ * value is {v, queries}; a version 2 value adds `work` (B11). */
 export async function validatePayload(data) {
-  if (!isObject(data) || !onlyKeys(data, ["v", "queries"]) || data.v !== 1) return { ok: false, error: "expected {v: 1, queries}" };
+  const v2 = isObject(data) && data.v === 2 && onlyKeys(data, ["v", "queries", "work"]);
+  if (!isObject(data) || (!v2 && (!onlyKeys(data, ["v", "queries"]) || data.v !== 1))) return { ok: false, error: "expected {v: 1, queries} or {v: 2, queries, work}" };
   if (!Array.isArray(data.queries)) return { ok: false, error: "queries must be a list" };
   if (data.queries.length > MAX_QUERIES) return { ok: false, error: `at most ${MAX_QUERIES} queries` };
   const tags = new Set();
@@ -158,7 +207,22 @@ export async function validatePayload(data) {
     tags.add(tag);
     queries.push({ q, tag });
   }
-  return { ok: true, value: { v: 1, queries } };
+  if (!v2) return { ok: true, value: { v: 1, queries } };
+  const checked = await validateWork(data.work);
+  if (!checked.ok) return checked;
+  return { ok: true, value: { v: 2, queries, work: checked.work } };
+}
+
+/** B11: what a PUT stores. A version 1 value keeps the work rules the stored value
+ * already has, so rules seeded into KV are not wiped by a phone that has none yet. */
+export function storedValue(previousText, value) {
+  if (value.v === 2) return value;
+  let previous = null;
+  try { previous = JSON.parse(previousText || "null"); } catch { previous = null; }
+  if (isObject(previous) && previous.v === 2 && Array.isArray(previous.work) && previous.work.length) {
+    return { v: 2, queries: value.queries, work: previous.work };
+  }
+  return value;
 }
 
 /**
@@ -205,8 +269,9 @@ export async function handle(request, env = {}, deps = {}) {
   }
   const checked = await validatePayload(data);
   if (!checked.ok) return reply(400, { error: checked.error });
-  await kv.put(key, JSON.stringify(checked.value));
-  return reply(200, { ok: true, count: checked.value.queries.length });
+  const stored = storedValue(await kv.get(key), checked.value);
+  await kv.put(key, JSON.stringify(stored));
+  return reply(200, { ok: true, count: stored.queries.length, ...(stored.work ? { work: stored.work.length } : {}) });
 }
 
 /** Pages Functions entry: every method on /api/interests. */

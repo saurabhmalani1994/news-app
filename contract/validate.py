@@ -197,6 +197,9 @@ def check_integrity(pool):
     w = c.get("watch")
     if w is not None and w["fetched"] != w["candidates"] + sum(w["drops"].values()):
         errors.append("$.counts.watch: fetched does not equal candidates plus the sum of drops")
+    k = (w or {}).get("work")
+    if k is not None and k["fetched"] != k["candidates"] + k["no_match"] + sum(k["drops"].values()):
+        errors.append("$.counts.watch.work: fetched does not equal candidates plus no_match plus the sum of drops")
     if "feed_states" in c:
         total_feeds = sum(c["feed_states"].values())
         if total_feeds != len(pool["sources"]):
