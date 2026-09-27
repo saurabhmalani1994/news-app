@@ -74,13 +74,18 @@ import { standingForm, standingMessage } from "./standing-form.js";
 import { pageInput } from "./page-input.js";
 import { countWords, followFor, followRow } from "./following.js";
 import { nowIso } from "./profile/time.js";
-import { savesStore } from "./actions/store.js";
+import { savesStore, thumbsStore } from "./actions/store.js";
 import { openedStore, shownStore } from "./history/store.js";
 import { initStoragePersistence, readPersistRecord, persistLabel } from "./backup/persist.js";
 import { serializeBackup, backupFilename } from "./backup/serialize.js";
 import { validateBackup } from "./backup/validate.js";
 import { mergeById, importCounts, confirmMessage } from "./backup/merge.js";
 import { weekOverWeek, formatWeekOverWeek } from "./breadth/math.js";
+import { weeklyReview, weekKey, summaryLine } from "./weekly/review.js";
+import { readWeekly, markAccepted, markSkipped, markUndone, undoDraft } from "./weekly/state.js";
+import { weeklyView } from "./weekly/view.js";
+import { applyApprovedProposal } from "./ai/review.js";
+import { RejectionLedger } from "./ai/ledger.js";
 
 // S16: the breadth number's own history read, the same "read once in the background,
 // a view that needs it waits" shape as the front-page read above (frontReady). Kept
@@ -94,7 +99,17 @@ const breadthReady = openedStore.list()
     console.warn("You page: the breadth number could not be read", err);
     breadth = null;
   });
-const breadthOrTimeout = () => Promise.race([breadthReady, new Promise((resolve) => setTimeout(resolve, BREADTH_WAIT_MS))]);
+
+// S29: the weekly review's own reads (shown and opened history, thumbs), the same
+// background shape; only the You row's value and the #weekly view wait on them.
+let weeklyData; // undefined while the reads run, then {opened, shown, thumbs}, or null on failure
+const weeklyReady = Promise.all([openedStore.list(), shownStore.list(), thumbsStore.list()])
+  .then(([opened, shown, thumbs]) => { weeklyData = { opened, shown, thumbs }; })
+  .catch((err) => {
+    console.warn("You page: the weekly review could not read history", err);
+    weeklyData = null;
+  });
+const historyOrTimeout = () => Promise.race([Promise.all([breadthReady, weeklyReady]), new Promise((resolve) => setTimeout(resolve, BREADTH_WAIT_MS))]);
 
 // W3: a phrase interest's page and a standing story's page list the stories that match
 // it now, newest first, as the front page's own rows (following.js). The front page is
@@ -255,7 +270,7 @@ async function loadJson(path) {
   return response.json();
 }
 
-function main(schema, catalog) {
+function main(schema, catalog, proposalSchema) {
   const store = new ProfileStore({
     storage: window.localStorage, schema, seedDefault: buildDefaultProfile, migrate: migrateProfile,
     onSave: () => scheduleSync(),
@@ -264,6 +279,7 @@ function main(schema, catalog) {
   const sources = Array.isArray(catalog?.sources) ? catalog.sources : [];
   const bases = catalog && typeof catalog.lean_basis === "object" && catalog.lean_basis ? catalog.lean_basis : {};
   const { root, title, back } = pageChrome();
+  const sourceInfo = Object.fromEntries(sources.map((r) => [r.id, { name: r.name, lean: r.lean, country: r.country, bucket: r.bucket }]));
 
   // --- S35 (R24): storage.persist() runs once on first load; the You page's own line
   // just reads back whatever was last recorded, updated in place once the async check
@@ -315,7 +331,7 @@ function main(schema, catalog) {
     if (view === "interest" && id) return { view, id, key: hash };
     if (view === "story" && id) return { view, id, key: hash };
     if (view === "sources" && id) return { view: "sourceGroup", id, key: hash };
-    if (view === "sources" || view === "advanced" || view === "breadth") return { view, key: view };
+    if (view === "sources" || view === "advanced" || view === "breadth" || view === "weekly") return { view, key: view };
     return { view: "you", key: "you" };
   }
 
@@ -618,7 +634,10 @@ function main(schema, catalog) {
       }),
       section("Reading breadth", () => {
         const summary = breadth === undefined ? "Loading" : breadth === null ? "Not available" : formatWeekOverWeek(breadth);
-        return [linkRow("#breadth", "Breadth", "How many topics your reading has crossed this week", summary, { id: "breadth-row" })];
+        const weekly = weeklyNow();
+        const weeklyValue = weekly === undefined ? "Loading" : weekly === null ? "Not available" : summaryLine(weekly.review);
+        return [linkRow("#breadth", "Breadth", "How many topics your reading has crossed this week", summary, { id: "breadth-row" }),
+          linkRow("#weekly", "Weekly review", "Small changes this week's reading suggests", weeklyValue, { id: "weekly-row" })];
       }),
       section("News sources", () => {
         const counts = sourceCounts(profile, sources);
@@ -1086,6 +1105,63 @@ function main(schema, catalog) {
     ];
   }
 
+  // --- S29: the weekly review. Proposals are computed fresh from the history reads
+  // and this week's decisions on every draw (weekly/review.js is pure and cheap).
+  // Accept goes through the S19 gate again and ProfileStore.save, the same save a You
+  // edit makes (onSave schedules the interests sync); nothing changes without it. ---
+  const schemas = proposalSchema ? { profileSchema: schema, proposalSchema } : null;
+  const ledger = new RejectionLedger({ storage: window.localStorage });
+
+  function weeklyNow() {
+    if (weeklyData === undefined) return undefined;
+    if (weeklyData === null || !schemas) return null;
+    const nowMs = Date.now();
+    const week = weekKey(nowMs);
+    const state = readWeekly(window.localStorage, week);
+    const review = weeklyReview({ ...weeklyData, profile: store.current(), catalog: sourceInfo, nowMs, schemas,
+      decided: state.decided, acceptedCount: state.accepted.length });
+    return { review, state, week };
+  }
+
+  function acceptWeekly(item, week) {
+    const result = applyApprovedProposal(store, { proposal: item.proposal }, { schemas, ledger });
+    if (!result.ok) {
+      showToast("Not applied: your settings changed since this was suggested");
+      render({ keepScroll: true });
+      return;
+    }
+    markAccepted(window.localStorage, week, item, result.version);
+    render({ keepScroll: true });
+    showToast(`${item.name} ${item.direction === "up" ? "raised" : "lowered"}`);
+  }
+
+  function skipWeekly(item, week) {
+    markSkipped(window.localStorage, week, item.path);
+    render({ keepScroll: true });
+    showToast("Skipped for this week");
+  }
+
+  function undoWeekly(week) {
+    const state = readWeekly(window.localStorage, week);
+    const { paths } = undoDraft(store.current(), state.accepted);
+    const result = paths.length ? commitEdit(store, (p) => undoDraft(p, state.accepted).draft) : null;
+    if (result && !result.ok) {
+      showToast(`Not saved: ${result.errors[0]}`);
+      render({ keepScroll: true });
+      return;
+    }
+    markUndone(window.localStorage, week);
+    render({ keepScroll: true });
+    showToast(paths.length ? `Undone: ${paths.length === 1 ? "1 change" : `${paths.length} changes`}` : "Nothing to undo: changed by hand since");
+  }
+
+  function viewWeekly() {
+    const data = weeklyNow();
+    const week = data ? data.week : null;
+    return weeklyView({ el, section, data: data && { review: data.review, state: data.state },
+      onAccept: (item) => acceptWeekly(item, week), onSkip: (item) => skipWeekly(item, week), onUndo: () => undoWeekly(week) });
+  }
+
   // --- Routing and rendering ---
   function titleFor(route, profile) {
     if (route.view === "interest") { const t = profile.topics?.[route.id]; return t && topicName(route.id, t); }
@@ -1094,6 +1170,7 @@ function main(schema, catalog) {
     if (route.view === "sources") return "News sources";
     if (route.view === "advanced") return "Advanced";
     if (route.view === "breadth") return "Breadth";
+    if (route.view === "weekly") return "Weekly review";
     return "You";
   }
 
@@ -1102,7 +1179,7 @@ function main(schema, catalog) {
   // list it was opened from.
   const backTarget = (view) => (view === "sourceGroup" ? "sources" : "you");
 
-  const VIEWS = { you: viewYou, interest: viewInterest, story: viewStory, sources: viewSources, sourceGroup: viewSourceGroup, advanced: viewAdvanced, breadth: viewBreadth };
+  const VIEWS = { you: viewYou, interest: viewInterest, story: viewStory, sources: viewSources, sourceGroup: viewSourceGroup, advanced: viewAdvanced, breadth: viewBreadth, weekly: viewWeekly };
 
   function render({ keepScroll = false } = {}) {
     const profile = store.current();
@@ -1153,7 +1230,8 @@ function main(schema, catalog) {
   const listsStories = (r) => (r.view === "interest" || r.view === "story") && front === undefined;
   // S16: the #breadth view waits on its own history read the same way, so it never
   // draws "Loading" for an instant and then jumps to a number.
-  const needsBreadth = (r) => r.view === "breadth" && breadth === undefined;
+  // S29: the #weekly view waits on its reads the same way.
+  const needsBreadth = (r) => (r.view === "breadth" && breadth === undefined) || (r.view === "weekly" && weeklyData === undefined);
   let waiting = false;
 
   function route() {
@@ -1162,7 +1240,7 @@ function main(schema, catalog) {
     if (listsStories(next) || needsBreadth(next)) {
       if (!waiting) {
         waiting = true;
-        Promise.all([listsStories(next) ? frontOrTimeout() : null, needsBreadth(next) ? breadthOrTimeout() : null])
+        Promise.all([listsStories(next) ? frontOrTimeout() : null, needsBreadth(next) ? historyOrTimeout() : null])
           .then(() => { waiting = false; route(); });
       }
       return;
@@ -1214,10 +1292,13 @@ function main(schema, catalog) {
   breadthReady.then(() => {
     if (current.view === "you" || current.view === "breadth") render({ keepScroll: true });
   });
+  weeklyReady.then(() => {
+    if (current.view === "you" || current.view === "weekly") render({ keepScroll: true });
+  });
 
   current = parseHash();
   if (listsStories(current) || needsBreadth(current)) {
-    Promise.all([listsStories(current) ? frontOrTimeout() : null, needsBreadth(current) ? breadthOrTimeout() : null])
+    Promise.all([listsStories(current) ? frontOrTimeout() : null, needsBreadth(current) ? historyOrTimeout() : null])
       .then(() => { render(); place(); });
   } else {
     render();
@@ -1225,8 +1306,8 @@ function main(schema, catalog) {
   }
 }
 
-Promise.all([loadJson("profile.schema.json"), loadJson("source-catalog.json").catch(() => null)])
-  .then(([schema, catalog]) => main(schema, catalog))
+Promise.all([loadJson("profile.schema.json"), loadJson("source-catalog.json").catch(() => null), loadJson("proposal.schema.json").catch(() => null)])
+  .then(([schema, catalog, proposalSchema]) => main(schema, catalog, proposalSchema))
   .catch((err) => {
     console.warn("You page could not load", err);
     const { root } = pageChrome();
