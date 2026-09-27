@@ -30,6 +30,8 @@ import { retier, placeOtherSide } from "./tiers.js";
 import { currentLiveEvent } from "./live.js";
 import { pageInput } from "./page-input.js";
 import { FOLLOW_PREVIEW, countWords, followMatches, followRow } from "./following.js";
+import { recordFollowArchive } from "./follow-archive.js";
+import { followArchiveStore } from "./follow-archive-store.js";
 
 const root = document.documentElement;
 const pager = document.getElementById("pager");
@@ -185,6 +187,11 @@ function buildSections() {
   const profile = currentProfile();
   const pages = rankPages(input.pool, profile, input.now, pageOptions(input));
   syncLiveTab(profile);
+  // S30: this is "the page input ranked on device" the Timeline archive is recorded
+  // from (follow-archive.js); fire and forget, so a slow or blocked IndexedDB never
+  // holds up Today's own sections.
+  recordFollowArchive(followArchiveStore, input, profile, Date.now())
+    .catch((err) => console.warn("Follow archive could not be recorded", err));
   const todayRows = [...document.querySelectorAll("#section-today li.story[data-sid]")];
   const byId = new Map(todayRows.map((li) => [li.dataset.sid, li]));
   for (const section of SECTIONS) {

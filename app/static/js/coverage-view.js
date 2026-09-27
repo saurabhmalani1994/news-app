@@ -143,9 +143,13 @@ function coverageContent(cluster, ctx) {
 }
 
 /** Opens the coverage sheet for cluster `sid`; `opener` takes focus back on close.
- * False when the page holds no such cluster. */
-export function openCoverage(sid, opener) {
-  const input = getInput();
+ * False when the page holds no such cluster. `pageInputOverride` (S30): a follow's own
+ * page (You, /profile#interest or #story) holds no #rank-input of its own (it draws its
+ * stories from a background fetch of the front page, profile-screen.js's `front.input`),
+ * so it passes that decoded input straight through instead of this module reading the
+ * local document, reusing this same sheet rather than a new renderer. */
+export function openCoverage(sid, opener, pageInputOverride) {
+  const input = pageInputOverride || getInput();
   const cluster = (input.pool?.clusters || []).find((c) => c.id === sid);
   if (!cluster) return false;
   const content = coverageContent(cluster, coverageContext(input, { muted: storedMutes() }));

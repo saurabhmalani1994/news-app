@@ -72,7 +72,12 @@ import { PHRASE_MAX, QUERIES_MAX } from "./phrase.js";
 import { scheduleSync, startSync } from "./interests-sync.js";
 import { standingForm, standingMessage } from "./standing-form.js";
 import { pageInput } from "./page-input.js";
-import { countWords, followFor, followRow } from "./following.js";
+import { FOLLOW_PREVIEW, countWords, followFor, followRow } from "./following.js";
+import { rankPages, pageOptions } from "./passes.js";
+import { archiveKey } from "./follow-archive.js";
+import { followArchiveStore } from "./follow-archive-store.js";
+import { followCoverageSummary } from "./follow-coverage.js";
+import { groupHistoryByDay } from "./history/group.js";
 import { nowIso } from "./profile/time.js";
 import { savesStore } from "./actions/store.js";
 import { openedStore, shownStore } from "./history/store.js";
@@ -122,6 +127,35 @@ const frontReady = fetch("/")
     front = null;
   });
 const frontOrTimeout = () => Promise.race([frontReady, new Promise((resolve) => setTimeout(resolve, FRONT_WAIT_MS))]);
+
+// S30: a follow's own page (#interest/<id>, #story/<id>) also reads its Timeline, the
+// local per-follow archive tabs.js records each time the device ranks (follow-archive.js,
+// follow-archive-store.js). Read once per follow key and cached, the same "a view that
+// needs it waits, once, then it is settled" shape as `front` and `breadth` above.
+const ARCHIVE_WAIT_MS = 1500;
+const archiveCache = new Map(); // key -> items[] once read, or null on failure
+const archivePending = new Map();
+function loadArchive(key) {
+  if (archiveCache.has(key)) return Promise.resolve(archiveCache.get(key));
+  let pending = archivePending.get(key);
+  if (!pending) {
+    pending = followArchiveStore.get(key)
+      .then((record) => {
+        const items = Array.isArray(record?.items) ? record.items : [];
+        archiveCache.set(key, items);
+        return items;
+      })
+      .catch((err) => {
+        console.warn("You page: the timeline could not be read", err);
+        archiveCache.set(key, null);
+        return null;
+      })
+      .finally(() => archivePending.delete(key));
+    archivePending.set(key, pending);
+  }
+  return pending;
+}
+const archiveOrTimeout = (key) => Promise.race([loadArchive(key), new Promise((resolve) => setTimeout(resolve, ARCHIVE_WAIT_MS))]);
 
 /** W1: a phrase interest's name as the page shows it, in quotes. */
 const phraseName = (phrase) => `“${phrase}”`;
@@ -210,6 +244,101 @@ function storiesSection(profile, kind, id) {
     }
     return [hint, list];
   }, { "data-stories": `${kind}:${id}` });
+}
+
+/** S30: the "Coverage" section of a phrase interest's or standing story's page: a
+ * one-line outlet and country count across its current matches (follow-coverage.js),
+ * and a row per match that opens the S14 coverage sheet (coverage-view.js openCoverage,
+ * with the front page's own input passed through, since this page has no #rank-input of
+ * its own) for that story's clusters, the same sheet a Today row's "N sources" opens.
+ * Reuses that sheet rather than a new renderer. */
+function coverageSection(profile, kind, id) {
+  return section("Coverage", () => {
+    if (front === undefined) return [el("p", { class: "settings-hint", text: "Coverage is still loading. Open this page again in a moment." })];
+    if (front === null) return [el("p", { class: "settings-hint", text: "Coverage could not be read just now. Open this page again to retry." })];
+    const follow = followFor(front.input, profile, kind, id);
+    const stories = follow ? follow.stories.filter((s) => front.rows.has(s.id)) : [];
+    const summary = followCoverageSummary(stories, front.input, profile.mutes?.sources || []);
+    const hint = el("p", { class: "settings-hint settings-hint--top", text: summary.text });
+    if (!stories.length) return [hint];
+    const list = el("div", { class: "coverage-follow-list" });
+    for (const story of stories.slice(0, FOLLOW_PREVIEW)) {
+      const headline = front.rows.get(story.id)?.querySelector(".headline")?.textContent || story.titles?.[0] || "Untitled";
+      list.appendChild(el("button", {
+        class: "setting-row coverage-story-row", type: "button", "data-sid": story.id, "data-focus-key": `coverage-${story.id}`,
+      }, [rowText(headline), chevron()]));
+    }
+    return [hint, list];
+  }, { "data-coverage": `${kind}:${id}` });
+}
+
+/** S30: one Timeline row for an archived card snapshot (follow-archive.js): its
+ * headline (linking out, same target as a Today row), its outlet, lean marker
+ * (js/lean.js, the same marker every other row draws) and time. Text only (R26): every
+ * feed string, the title and outlet, is set through the `el` helper's `text` prop. */
+function timelineRow(item) {
+  const marker = item.markers?.lean ? leanMarker(item.markers.lean, { labelled: true, country: item.markers.country }) : null;
+  const time = new Date(item.time);
+  const parts = [];
+  if (item.outlet) parts.push(el("span", { class: "meta-source", text: item.outlet }));
+  if (marker) parts.push(marker);
+  if (!Number.isNaN(time.getTime())) parts.push(el("time", { class: "meta-age", datetime: item.time, text: dateFormat.format(time) }));
+  const line = el("span", { class: "meta-line" });
+  parts.forEach((part, i) => {
+    if (i > 0) line.appendChild(el("span", { class: "meta-sep", text: ` · ` }));
+    line.appendChild(part);
+  });
+  const body = el("span", { class: "story-body" }, [
+    el("span", { class: "headline", text: item.title || "Untitled" }),
+    el("span", { class: "meta" }, [line]),
+  ]);
+  const link = item.url
+    ? el("a", { class: "story-link", href: item.url, target: "_blank", rel: "noopener noreferrer" }, [body])
+    : el("span", { class: "story-link" }, [body]);
+  return el("li", { class: "story story--text-only timeline-row" }, [link]);
+}
+
+/** S30: the "Timeline" section: the follow's local archive, grouped by day (Today,
+ * Yesterday, a plain date), newest day and newest row first, reusing S34's own day
+ * grouping (history/group.js groupHistoryByDay) rather than a second one. */
+function timelineSection(kind, id) {
+  const key = archiveKey(kind, id);
+  return section("Timeline", () => {
+    const items = archiveCache.get(key);
+    if (items === undefined) return [el("p", { class: "settings-hint", text: "Its timeline is still loading. Open this page again in a moment." })];
+    if (items === null) return [el("p", { class: "settings-hint", text: "Its timeline could not be read just now. Open this page again to retry." })];
+    if (!items.length) return [el("p", { class: "settings-hint", text: "Nothing recorded yet. Matches are recorded here each time this device ranks the front page." })];
+    const nodes = [];
+    for (const group of groupHistoryByDay(items, Date.now())) {
+      nodes.push(el("h3", { class: "timeline-day", text: group.label }));
+      const list = el("ol", { class: "river river--text-only timeline-list" });
+      for (const item of group.records) list.appendChild(timelineRow(item));
+      nodes.push(list);
+    }
+    return nodes;
+  }, { "data-timeline": key });
+}
+
+/** S30: the silence notice (standing.js silenceNotices) for a standing story's own
+ * page, the same markup and classes app/build.py and rerank.js draw under the nameplate
+ * on Today (style.css .notice), so a story whose alarm is active carries the notice at
+ * the top of its own page too. null when the alarm is not active, or the front page has
+ * not been read yet. */
+function standingSilenceNotice(profile, id) {
+  if (!front) return null;
+  try {
+    const pages = rankPages(front.input.pool, profile, front.input.now, pageOptions(front.input));
+    const notice = pages.notices.find((n) => n.id === id);
+    if (!notice) return null;
+    return el("div", { class: "notice", "data-standing": notice.id, "data-kind": notice.kind }, [
+      el("p", { class: "notice-kicker", text: notice.kicker }),
+      el("p", { class: "notice-head", text: notice.head }),
+      el("p", { class: "notice-text", text: notice.text }),
+    ]);
+  } catch (err) {
+    console.warn("You page: the silence notice could not be computed", err);
+    return null;
+  }
 }
 
 /** H2: the page's own chrome, found by id, or made when an older or newer page lacks
@@ -723,6 +852,8 @@ function main(schema, catalog) {
       return [
         levelSection,
         storiesSection(profile, "phrase", id),
+        timelineSection("phrase", id),
+        coverageSection(profile, "phrase", id),
         section("Phrase", [
           el("p", { class: "settings-hint", id: "phrase-how", text: `Lifts a story whose headline or summary holds ${name}: the whole words, in this order, in any case, singular or plural.` }),
           el("p", { class: "settings-hint", text: topic.enabled === false
@@ -802,9 +933,12 @@ function main(schema, catalog) {
     });
     keywords.value = (story.keywords || []).join(", ");
     return [
+      standingSilenceNotice(profile, id),
       section("Following", [switchRow("enabled", "Follow this story", "Off stops the floor and the silence alarm for it.",
         story.enabled, (on) => commit((p) => withStandingField(p, id, "enabled", on), on ? `${story.label} on` : `${story.label} off`))]),
       storiesSection(profile, "story", id),
+      timelineSection("story", id),
+      coverageSection(profile, "story", id),
       section("Keywords", [
         el("p", { class: "settings-hint", text: "A headline with any of these words or phrases counts as this story. Separate them with commas." }),
         el("div", { class: "setting-row setting-row--stack" }, [keywords]),
@@ -1121,7 +1255,7 @@ function main(schema, catalog) {
     // L1: the owner's lean marker switches, as rank-gate.js applies them on the front page.
     document.documentElement.classList.toggle("lean-off", !leanMarkersOn(profile));
     document.documentElement.classList.toggle("lean-color", leanColorOn(profile));
-    root.replaceChildren(...nodes);
+    root.replaceChildren(...nodes.filter(Boolean));
     rendering = false;
     root.removeAttribute("aria-busy");
     root.dataset.view = current.view;
@@ -1154,16 +1288,24 @@ function main(schema, catalog) {
   // S16: the #breadth view waits on its own history read the same way, so it never
   // draws "Loading" for an instant and then jumps to a number.
   const needsBreadth = (r) => r.view === "breadth" && breadth === undefined;
+  // S30: an interest's or story's own page also waits on its Timeline archive read
+  // (its follow key is not known until the profile is loaded, but the id and view are
+  // enough: "interest" is only ever a phrase's archive, since a plain topic has none).
+  const archiveKeyFor = (r) => archiveKey(r.view === "interest" ? "phrase" : "story", r.id);
+  const needsArchive = (r) => (r.view === "interest" || r.view === "story") && !archiveCache.has(archiveKeyFor(r));
   let waiting = false;
 
   function route() {
     const next = parseHash();
     if (next.key === current.key && root.childElementCount) return;
-    if (listsStories(next) || needsBreadth(next)) {
+    if (listsStories(next) || needsBreadth(next) || needsArchive(next)) {
       if (!waiting) {
         waiting = true;
-        Promise.all([listsStories(next) ? frontOrTimeout() : null, needsBreadth(next) ? breadthOrTimeout() : null])
-          .then(() => { waiting = false; route(); });
+        Promise.all([
+          listsStories(next) ? frontOrTimeout() : null,
+          needsBreadth(next) ? breadthOrTimeout() : null,
+          needsArchive(next) ? archiveOrTimeout(archiveKeyFor(next)) : null,
+        ]).then(() => { waiting = false; route(); });
       }
       return;
     }
@@ -1176,6 +1318,18 @@ function main(schema, catalog) {
     persist();
   }
 
+  // S30: the Coverage section's own row opens the S14 sheet for that story's clusters
+  // (coverage-view.js, loaded on this first tap, same lazy pattern as the lean sheet).
+  async function openStoryCoverage(sid, opener) {
+    if (!front) return;
+    try {
+      const { openCoverage } = await import("./coverage-view.js");
+      openCoverage(sid, opener, front.input);
+    } catch (err) {
+      console.warn("You page: the coverage sheet could not open", err);
+    }
+  }
+
   // A tap on an in-page row is a forward step: the view it opens starts at its top.
   root.addEventListener("click", (e) => {
     if (e.target.closest?.('a[href^="#"]')) forward = true;
@@ -1183,6 +1337,12 @@ function main(schema, catalog) {
     if (lean) {
       e.preventDefault();
       openLean(lean.getAttribute("data-lean-source"), lean);
+      return;
+    }
+    const coverage = e.target.closest?.(".coverage-story-row[data-sid]");
+    if (coverage) {
+      e.preventDefault();
+      openStoryCoverage(coverage.dataset.sid, coverage);
     }
   });
 
@@ -1216,9 +1376,12 @@ function main(schema, catalog) {
   });
 
   current = parseHash();
-  if (listsStories(current) || needsBreadth(current)) {
-    Promise.all([listsStories(current) ? frontOrTimeout() : null, needsBreadth(current) ? breadthOrTimeout() : null])
-      .then(() => { render(); place(); });
+  if (listsStories(current) || needsBreadth(current) || needsArchive(current)) {
+    Promise.all([
+      listsStories(current) ? frontOrTimeout() : null,
+      needsBreadth(current) ? breadthOrTimeout() : null,
+      needsArchive(current) ? archiveOrTimeout(archiveKeyFor(current)) : null,
+    ]).then(() => { render(); place(); });
   } else {
     render();
     place();
