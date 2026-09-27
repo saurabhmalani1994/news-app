@@ -13,6 +13,7 @@
 import { STARTER_TOPICS } from "./default-profile.js";
 import { STANDING_DEFAULTS, STANDING_NEW } from "../standing.js";
 import { PHRASE_MAX, QUERIES_MAX, isPhraseTopic, normalizePhrase, textWords } from "../phrase.js";
+import { WORK_LABEL_MAX, WORK_RULES_MAX, WORK_TIERS, parseTerms, WORK_PAIR_MAX, WORK_EXCLUDE_MAX } from "../work-watch.js";
 
 // --- Interest levels: plain words over the 0 to 1 affinity weight. ---
 //
@@ -322,6 +323,83 @@ export function withStandingRemoved(profile, id) {
   const stories = storiesOf(profile);
   if (!stories.some((s) => s.id === id)) return null;
   return { ...profile, standing_stories: stories.filter((s) => s.id !== id) };
+}
+
+// --- B11: the work watch (work-watch.js), from You's "Work watch" group. A rule is
+// added with a name and its terms at tier 2, no pair or exclude terms and not exact;
+// its own page edits every field. An absent work_watch field means no rules. ---
+
+const rulesOf = (profile) => (Array.isArray(profile.work_watch) ? profile.work_watch : []);
+const cleanLabel = (label) => String(label ?? "").trim().replace(/\s+/g, " ").slice(0, WORK_LABEL_MAX);
+
+/** Whether a name and terms can become a work rule: {ok, label, terms} or {ok: false,
+ * reason}, reason one of name, terms, duplicate or full. */
+export function workStatus(profile, { label, terms }) {
+  const name = cleanLabel(label);
+  const list = parseTerms(terms ?? "");
+  const rules = rulesOf(profile);
+  if (!name) return { ok: false, reason: "name" };
+  if (!list.length) return { ok: false, reason: "terms", label: name };
+  if (rules.some((r) => String(r.label).toLowerCase() === name.toLowerCase())) return { ok: false, reason: "duplicate", label: name };
+  if (rules.length >= WORK_RULES_MAX) return { ok: false, reason: "full", label: name };
+  return { ok: true, label: name, terms: list };
+}
+
+/** The id a new rule gets: "w_" and its name's letters, unique among the rules. */
+export function workRuleId(profile, label) {
+  const base = `w_${slug(label).slice(0, 28).replace(/_+$/, "") || "rule"}`;
+  return freeId(base, new Set(rulesOf(profile).map((r) => r.id)));
+}
+
+/** Appends a work rule at `tier` (default 2). Null when workStatus refuses it. */
+export function withWorkRuleAdded(profile, draft) {
+  const status = workStatus(profile, draft);
+  if (!status.ok) return null;
+  const tier = WORK_TIERS.includes(Number(draft.tier)) ? Number(draft.tier) : 2;
+  const rule = { id: workRuleId(profile, status.label), label: status.label, tier, terms: status.terms, pair_any: [], exclude: [], exact: false };
+  return { ...profile, work_watch: [...rulesOf(profile), rule] };
+}
+
+const WORK_LIST_MAX = { terms: undefined, pair_any: WORK_PAIR_MAX, exclude: WORK_EXCLUDE_MAX };
+
+/** One field of one rule: label (text), tier (1 to 4), terms, pair_any or exclude
+ * (comma separated text or a list), exact (true or false). Null when nothing changes. */
+export function withWorkRuleField(profile, id, field, value) {
+  const rules = rulesOf(profile);
+  const index = rules.findIndex((r) => r.id === id);
+  if (index < 0) return null;
+  let next;
+  if (field === "label") next = cleanLabel(value);
+  else if (field === "tier") next = Number(value);
+  else if (field === "exact") next = value === true;
+  else if (Object.hasOwn(WORK_LIST_MAX, field)) next = parseTerms(value, WORK_LIST_MAX[field]);
+  else return null;
+  if (field === "tier" && !WORK_TIERS.includes(next)) return null;
+  if (field === "label" && !next) return null;
+  if (JSON.stringify(rules[index][field]) === JSON.stringify(next)) return null;
+  const out = rules.slice();
+  out[index] = { ...rules[index], [field]: next };
+  return { ...profile, work_watch: out };
+}
+
+/** Removes a work rule by id; null when there is no such rule. */
+export function withWorkRuleRemoved(profile, id) {
+  const rules = rulesOf(profile);
+  if (!rules.some((r) => r.id === id)) return null;
+  return { ...profile, work_watch: rules.filter((r) => r.id !== id) };
+}
+
+/** Takes server-held rules (interests-sync.js adopt) into a profile with no work_watch
+ * field of its own; null when it has one, so the phone's own list always wins. */
+export function withWorkAdopted(profile, rules) {
+  if (Array.isArray(profile.work_watch) || !Array.isArray(rules) || !rules.length) return null;
+  return { ...profile, work_watch: rules.slice(0, WORK_RULES_MAX) };
+}
+
+/** The rules grouped by tier, 1 first, each group in list order: [{tier, rules}]. */
+export function workByTier(profile) {
+  const rules = rulesOf(profile);
+  return WORK_TIERS.map((tier) => ({ tier, rules: rules.filter((r) => r.tier === tier) })).filter((g) => g.rules.length);
 }
 
 // --- Display (U1 reads it): summaries on every story, or only on the lead stories. ---

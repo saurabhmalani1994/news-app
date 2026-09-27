@@ -102,6 +102,10 @@ function describeTerm(term, story, profile, names) {
   if (term.term === "seen_penalty") {
     return { label: term.detail || "Seen before, on this device", editHref: "/profile#raw-json" };
   }
+  // B11: the work watch rule's own label (never its terms), edited on You.
+  if (term.term === "work") {
+    return { label: `Work watch: ${term.detail}`, editHref: "/profile#work" };
+  }
   // boost:<id>: term.detail is the boost's own label, already plain text (S11).
   return { label: `Boost: ${term.detail}`, editHref: "/profile#raw-json" };
 }

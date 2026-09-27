@@ -16,6 +16,10 @@
 //   importance  W_IMPORTANCE * log2(independent sources), so one outlet adds nothing
 //   trust       (trust - 1) * (recency + affinity + importance): the profile's trust is
 //               a multiplier (R10, default 1.0), shown as its own signed contribution
+//   work        B11: WORK_TIER_POINTS of the strongest work watch rule the story
+//               matches (work-watch.js), tier 1 strongest; its detail is that rule's
+//               label, never its terms. A match also counts as industrial_biotech in
+//               affinity and recency, the interest the Biotech tab serves
 //   boost:<id>  each matching flat boost's amount * W_BOOST
 // Seams: S15 adds the seen penalty (R17) through `opts.terms`. S13's post-passes (mute,
 // dedup, lean quota, exploration, other side, must-know floor) live in passes.js, whose
@@ -29,6 +33,7 @@
 // matched by a pool tag. A phrase topic never matches by tag, only by its phrase.
 
 import { isPhraseTopic, matchesPhrase, phraseMatcher, textWords } from "./phrase.js";
+import { WORK_TIER_POINTS, storyWorkRules, workRules } from "./work-watch.js";
 
 export const SCALE = 1_000_000;
 export const WEIGHTS = Object.freeze({ recency: 1, affinity: 1, importance: 0.5, boost: 1 });
@@ -125,9 +130,12 @@ function wordsOf(story) {
   return words;
 }
 
-function matchedTopics(story, profile, eligible) {
+function matchedTopics(story, profile, eligible, work = false) {
   const topics = profile.topics || {};
   const ids = new Set();
+  // B11: a work watch match is the owner's industrial biotech interest too (the Biotech
+  // tab holds it), so it counts there as a biotech-tagged story would.
+  if (work && topics[TAG_TO_TOPIC.biotech]?.enabled) ids.add(TAG_TO_TOPIC.biotech);
   for (const tag of story.topics) {
     const id = Object.hasOwn(topics, tag) ? tag : TAG_TO_TOPIC[tag];
     if (id && topics[id] && topics[id].enabled && !isPhraseTopic(topics[id])) ids.add(id);
@@ -157,7 +165,8 @@ const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 /** One story's explanation: [{term, value, detail}], value an integer in micro-points. */
 export function scoreStory(story, profile, nowMs) {
   const eligible = mustKnowEligible(story);
-  const matched = matchedTopics(story, profile, eligible);
+  const work = storyWorkRules(story, workRules(profile));
+  const matched = matchedTopics(story, profile, eligible, work.length > 0);
   const topics = profile.topics || {};
   const halfLife = matched.length ? Math.max(...matched.map((id) => topics[id].half_life_hours)) : DEFAULT_HALF_LIFE_HOURS;
   const ageHours = Math.max(0, (nowMs - story.latest_ms) / HOUR_MS);
@@ -176,13 +185,17 @@ export function scoreStory(story, profile, nowMs) {
     { term: "importance", value: importance, detail: `${story.independent_sources} independent sources` },
     { term: "trust", value: Math.round((trust - 1) * (recency + affinity + importance)), detail: `x${trust}` },
   ];
+  if (work.length) {
+    const more = work.length > 1 ? ` and ${work.length - 1} more` : "";
+    terms.push({ term: "work", value: micro(WORK_TIER_POINTS[work[0].tier]), detail: `${work[0].label}${more}` });
+  }
   const boosts = [...(profile.boosts || [])].sort((a, b) => byStr(a.id, b.id));
   for (const b of boosts) {
     if (boostMatches(b, story, matched)) {
       terms.push({ term: `boost:${b.id}`, value: micro(WEIGHTS.boost * clamp(b.amount, -1, 1)), detail: b.label });
     }
   }
-  return { terms, matched, eligible };
+  return { terms, matched, eligible, work: work.map((r) => r.id) };
 }
 
 const sum = (terms) => terms.reduce((s, t) => s + t.value, 0);
@@ -204,7 +217,7 @@ export function rank(pool, profile, now, opts = {}) {
   const nowMs = typeof now === "number" ? now : epochMs(now);
   const ctx = { profile, nowMs, ...(opts.context || {}) };
   const ranked = storiesFromPool(pool).map((story) => {
-    const { terms, matched, eligible } = scoreStory(story, profile, nowMs);
+    const { terms, matched, eligible, work } = scoreStory(story, profile, nowMs);
     for (const extra of opts.terms || []) {
       const result = extra.fn(story, ctx);
       const perStory = result !== null && typeof result === "object";
@@ -212,7 +225,7 @@ export function rank(pool, profile, now, opts = {}) {
       const detail = perStory && result.detail !== undefined ? result.detail : (extra.detail || "");
       terms.push({ term: extra.name, value: micro(raw), detail });
     }
-    return { ...story, topics_matched: matched, must_know: eligible, score: sum(terms), explanation: terms, passes: [] };
+    return { ...story, topics_matched: matched, work_rules: work, must_know: eligible, score: sum(terms), explanation: terms, passes: [] };
   });
   ranked.sort((a, b) => b.score - a.score || b.latest_ms - a.latest_ms || byStr(a.id, b.id));
   let out = ranked;
@@ -222,10 +235,14 @@ export function rank(pool, profile, now, opts = {}) {
 
 /** A canonical string of the profile fields that change ranking. The build stamps the
  * default profile's key on the page; the device re-ranks only when its key differs.
- * rank-gate.js carries a byte-identical copy of `canonical` (a node test checks). */
+ * rank-gate.js carries a byte-identical copy of `canonical` (a node test checks).
+ * B11: work rules join the key only when there are some, so the key of a profile
+ * without any is exactly what it was before them. */
 export function profileKey(profile) {
   const p = profile || {};
-  return canonical([p.topics, p.trust, p.boosts, p.mutes, p.seen_penalty, p.passes, p.standing_stories]);
+  const fields = [p.topics, p.trust, p.boosts, p.mutes, p.seen_penalty, p.passes, p.standing_stories];
+  if (Array.isArray(p.work_watch) && p.work_watch.length) fields.push(p.work_watch);
+  return canonical(fields);
 }
 
 export function canonical(v) {

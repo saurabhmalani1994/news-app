@@ -157,6 +157,18 @@ export function checkIntegrity(profile) {
       else phrases.set(words, id);
     }
   }
+  // B11: work rule ids are unique (each is its own search tag), and every term holds a
+  // word to match.
+  const workIds = new Set();
+  (profile.work_watch || []).forEach((rule, i) => {
+    if (workIds.has(rule.id)) errors.push(`$.work_watch[${i}].id: duplicate rule id ${JSON.stringify(rule.id)}`);
+    workIds.add(rule.id);
+    for (const field of ["terms", "pair_any", "exclude"]) {
+      (rule[field] || []).forEach((term, j) => {
+        if (!textWords(term).length) errors.push(`$.work_watch[${i}].${field}[${j}]: needs at least one letter or digit`);
+      });
+    }
+  });
   const boostIds = new Set();
   (profile.boosts || []).forEach((boost, i) => {
     if (boostIds.has(boost.id)) errors.push(`$.boosts[${i}].id: duplicate boost id ${JSON.stringify(boost.id)}`);

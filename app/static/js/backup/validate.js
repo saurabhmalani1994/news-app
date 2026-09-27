@@ -10,6 +10,7 @@
 // name directly than to express as a schema someone has to keep in sync with this file.
 
 import { validateProfile } from "../profile/validate.js";
+import { buildDefaultProfile } from "../profile/default-profile.js";
 import { ARCHIVE_MAX_ITEMS } from "../follow-archive.js";
 
 export const MAX_SAVED = 20_000;
@@ -134,12 +135,39 @@ function validateArchives(data, errors) {
  * ProfileStore validates a save against), so an imported profile is held to exactly the
  * rules a normal edit is.
  */
+/** B11: a work watch only file (serialize.js serializeWorkBackup): version 3, scope
+ * "work_watch", a profile holding work_watch and nothing else, and no saved, history or
+ * archives at all. The rules are held to profile.schema.json by checking them inside a
+ * default profile, the same rules a You-page edit meets. */
+function validateWorkBackup(data, schema) {
+  const errors = [];
+  const allowed = ["format_version", "exported_at", "scope", "profile"];
+  if (Object.keys(data).some((k) => !allowed.includes(k))) errors.push("A work watch file holds only its rules.");
+  if (!isShortString(data.exported_at, 100) || Number.isNaN(new Date(data.exported_at).getTime())) {
+    errors.push("Missing or invalid export timestamp.");
+  }
+  const profile = data.profile;
+  if (!plainObject(profile) || hasDangerousKey(profile) || Object.keys(profile).join() !== "work_watch" || !Array.isArray(profile.work_watch)) {
+    errors.push("A work watch file's profile holds work_watch only.");
+  } else if (schema) {
+    const trial = { ...buildDefaultProfile("2026-01-01T00:00:00Z"), work_watch: profile.work_watch };
+    const profileErrors = validateProfile(trial, schema);
+    if (profileErrors.length) errors.push(`Work rules do not match the app's schema: ${profileErrors[0]}`);
+  }
+  if (errors.length) return { ok: false, errors };
+  return { ok: true, data: { format_version: 3, exported_at: data.exported_at, scope: "work_watch", profile: { work_watch: profile.work_watch }, saved: [], history: { opened: [], shown: [] }, archives: {} } };
+}
+
 export function validateBackup(data, schema) {
   const errors = [];
   if (!plainObject(data)) return { ok: false, errors: ["Not a backup file: expected a JSON object."] };
   if (hasDangerousKey(data)) return { ok: false, errors: ["Not a backup file: unsafe field names."] };
-  if (data.format_version !== 1 && data.format_version !== 2) {
-    errors.push(`Unknown backup version ${JSON.stringify(data.format_version)}. This build reads version 1 or 2.`);
+  if (![1, 2, 3].includes(data.format_version)) {
+    errors.push(`Unknown backup version ${JSON.stringify(data.format_version)}. This build reads versions 1 to 3.`);
+  }
+  if (data.scope !== undefined) {
+    if (data.format_version !== 3 || !["all", "work_watch"].includes(data.scope)) return { ok: false, errors: ["Unknown backup scope."] };
+    if (data.scope === "work_watch") return validateWorkBackup(data, schema);
   }
   if (!isShortString(data.exported_at, 100) || Number.isNaN(new Date(data.exported_at).getTime())) {
     errors.push("Missing or invalid export timestamp.");

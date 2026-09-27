@@ -65,7 +65,7 @@ import {
   matchesQuery, searchSources, sourceDetail, HEALTH_WORDS, commitEdit,
   availableInterests, withTopicAdded, withTopicRemoved,
   isPhraseTopic, phraseStatus, withPhraseAdded, standingStatus, withStandingAdded, withStandingRemoved,
-  INTEREST_CATALOG,
+  INTEREST_CATALOG, workStatus, withWorkRuleAdded, withWorkRuleField, withWorkRuleRemoved, withWorkAdopted, workByTier,
 } from "./profile/you-edits.js";
 import { leanHit, leanMarker, leanSheetContent, setBasis } from "./lean.js";
 import { PHRASE_MAX, QUERIES_MAX } from "./phrase.js";
@@ -84,7 +84,8 @@ import { openedStore, shownStore } from "./history/store.js";
 import { initStoragePersistence, readPersistRecord, persistLabel } from "./backup/persist.js";
 import { serializeBackup, backupFilename } from "./backup/serialize.js";
 import { validateBackup } from "./backup/validate.js";
-import { mergeById, mergeArchives, importCounts, confirmMessage } from "./backup/merge.js";
+import { mergeById, mergeArchives, importCounts, confirmMessage, withWorkImported, workImportMessage } from "./backup/merge.js";
+import { WORK_TIERS } from "./work-watch.js";
 import { weekOverWeek, formatWeekOverWeek } from "./breadth/math.js";
 import { weeklyReview, weekKey, summaryLine } from "./weekly/review.js";
 import { readWeekly, markAccepted, markSkipped, markUndone, undoDraft } from "./weekly/state.js";
@@ -404,7 +405,16 @@ function main(schema, catalog, proposalSchema) {
     storage: window.localStorage, schema, seedDefault: buildDefaultProfile, migrate: migrateProfile,
     onSave: () => scheduleSync(),
   });
-  startSync();
+  // B11: work rules seeded into the server's store come back into a profile that has
+  // none of its own (interests-sync.js), saved as one version like any other edit.
+  startSync(3000, {
+    adopt: (rules) => {
+      const result = commitEdit(store, (p) => withWorkAdopted(p, rules));
+      if (!result || !result.ok) return null;
+      if (current.view === "you") render({ keepScroll: true });
+      return result.profile;
+    },
+  });
   const sources = Array.isArray(catalog?.sources) ? catalog.sources : [];
   const bases = catalog && typeof catalog.lean_basis === "object" && catalog.lean_basis ? catalog.lean_basis : {};
   const { root, title, back } = pageChrome();
@@ -434,6 +444,7 @@ function main(schema, catalog, proposalSchema) {
   let forward = false; // set by a tap on an in-page row: the new view opens at its top
   let sourceQuery = "";
   let focusRaw = false;
+  let workOpen = false; // B11: the Work watch group stays open across redraws once opened
   let rendering = false;
 
   let ticking = false;
@@ -456,7 +467,13 @@ function main(schema, catalog, proposalSchema) {
       focusRaw = true;
       return { view: "advanced", key: "advanced" };
     }
+    if (hash === "work") {
+      history.replaceState(history.state, "", location.pathname);
+      workOpen = true;
+      return { view: "you", key: "you" };
+    }
     const [view, id] = hash.split("/");
+    if (view === "work" && id) return { view, id, key: hash };
     if (view === "interest" && id) return { view, id, key: hash };
     if (view === "story" && id) return { view, id, key: hash };
     if (view === "sources" && id) return { view: "sourceGroup", id, key: hash };
@@ -692,6 +709,17 @@ function main(schema, catalog, proposalSchema) {
       showToast(`Could not import: ${result.errors[0]}`);
       return;
     }
+    // B11: a work watch file replaces the work rules alone; every other interest, and
+    // saved, history and timeline, stay exactly as they are.
+    if (result.data.scope === "work_watch") {
+      const rules = result.data.profile.work_watch;
+      if (!window.confirm(workImportMessage(store.current(), rules))) return;
+      const saved = commitEdit(store, (p) => withWorkImported(p, rules));
+      if (saved && !saved.ok) { showToast(`Could not import: ${saved.errors[0]}`); return; }
+      render({ keepScroll: true });
+      showToast(`Imported: ${rules.length} work watch rules`);
+      return;
+    }
     const [saved, opened, shown] = await Promise.all([savesStore.list(), openedStore.list(), shownStore.list()]);
     const savedMerge = mergeById(saved, result.data.saved);
     const openedMerge = mergeById(opened, result.data.history.opened);
@@ -759,6 +787,119 @@ function main(schema, catalog, proposalSchema) {
     ]);
   }
 
+  // --- B11: the work watch, one collapsed group under Standing stories: the owner's
+  // private rules by tier, each opening its own page, and a quiet add form at its foot.
+  // Text only (R26): labels and terms go in through textContent and input values. ---
+  const WORK_REASONS = {
+    name: "Give the rule a name.",
+    terms: "Give it at least one term of 2 to 60 characters. Separate terms with commas.",
+    duplicate: "A rule already has that name.",
+    full: "You have 40 rules, the most the hourly search takes.",
+  };
+  const TIER_HINTS = {
+    1: "Tier 1: the strongest lift, searched every hour.",
+    2: "Tier 2: a strong lift, searched every hour.",
+    3: "Tier 3: a modest lift, searched every third hour.",
+    4: "Tier 4: a small lift, searched every third hour.",
+  };
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  function workSummary(rule) {
+    const parts = [plural(rule.terms.length, "term")];
+    if (rule.pair_any.length) parts.push("paired");
+    if (rule.exclude.length) parts.push(`${rule.exclude.length} excluded`);
+    if (rule.exact) parts.push("exact");
+    return parts.join(", ");
+  }
+
+  function workWatchDetails(profile) {
+    const groups = workByTier(profile);
+    const rows = [];
+    for (const group of groups) {
+      rows.push(el("h3", { class: "timeline-day work-tier", text: `Tier ${group.tier}` }));
+      for (const rule of group.rules) {
+        rows.push(linkRow(`#work/${encodeURIComponent(rule.id)}`, rule.label, workSummary(rule), null, { "data-work": rule.id }));
+      }
+    }
+    const name = el("input", { class: "text-field", type: "text", placeholder: "Name", autocomplete: "off",
+      "aria-label": "New rule name", id: "work-new-name", "data-focus-key": "work-new-name", maxlength: "60" });
+    const terms = el("input", { class: "text-field", type: "text", placeholder: "Terms, with commas", autocomplete: "off",
+      spellcheck: "false", "aria-label": "New rule terms", id: "work-new-terms", "data-focus-key": "work-new-terms" });
+    const errors = el("div", { class: "form-errors", role: "alert", "aria-live": "polite" });
+    const add = el("button", {
+      class: "btn-quiet", type: "button", id: "work-add", text: "+ Add rule", "data-focus-key": "work-add",
+      onclick: () => {
+        const status = workStatus(store.current(), { label: name.value, terms: terms.value });
+        if (!status.ok) { showErrors(errors, [WORK_REASONS[status.reason]]); return; }
+        commit((p) => withWorkRuleAdded(p, { label: name.value, terms: terms.value }), `Added ${status.label}`);
+      },
+    });
+    const body = el("div", { class: "your-data-body work-watch-body" }, [
+      el("p", { class: "settings-hint settings-hint--top", text: groups.length
+        ? "Stories matching a rule join Biotech and rank higher, tier 1 most."
+        : "No rules yet. A rule puts matching stories on Biotech and ranks them higher." }),
+      ...rows,
+      el("div", { class: "setting-row setting-row--stack work-add" }, [
+        el("div", { class: "add-topic-fields" }, [name, terms]), add, errors,
+      ]),
+    ]);
+    const details = el("details", { class: "settings-section your-data work-watch", id: "work", open: workOpen }, [
+      el("summary", { class: "settings-label" }, [document.createTextNode("Work watch"), chevron()]),
+      body,
+    ]);
+    details.addEventListener("toggle", () => { workOpen = details.open; });
+    return details;
+  }
+
+  // --- One work rule: name, tier, terms, pair and exclude terms, exact, remove. ---
+  function viewWork(profile, id) {
+    const rule = (profile.work_watch || []).find((r) => r.id === id);
+    workOpen = true; // Back lands on You with the group open
+    const name = rule.label;
+    const labelField = el("input", {
+      class: "text-field", type: "text", "aria-label": "Rule name", "data-focus-key": "work-label", maxlength: "60", autocomplete: "off",
+      onchange: (e) => commit((p) => withWorkRuleField(p, id, "label", e.target.value), "Name saved"),
+    });
+    labelField.value = rule.label;
+    const tiers = el("div", { class: "level-control", role: "radiogroup", "aria-label": `${name} tier` },
+      WORK_TIERS.map((t) => el("button", {
+        class: "level-option", type: "button", role: "radio", "aria-checked": String(t === rule.tier),
+        "data-focus-key": `tier-${t}`, text: `Tier ${t}`,
+        onclick: () => commit((p) => withWorkRuleField(p, id, "tier", t), `${name}: tier ${t}`),
+      })));
+    const area = (field, label, key) => {
+      const node = el("textarea", {
+        class: "text-field text-field--area", rows: "3", "aria-label": label, "data-focus-key": key, spellcheck: "false",
+        onchange: (e) => commit((p) => withWorkRuleField(p, id, field, e.target.value), `${name}: ${label.toLowerCase()} saved`),
+      });
+      node.value = (rule[field] || []).join(", ");
+      return el("div", { class: "setting-row setting-row--stack" }, [node]);
+    };
+    return [
+      section("Name", [el("div", { class: "setting-row setting-row--stack" }, [labelField])]),
+      el("section", { class: "settings-section" }, [
+        el("h2", { class: "settings-label", text: "Tier" }),
+        tiers,
+        el("p", { class: "settings-hint settings-hint--after", text: TIER_HINTS[rule.tier] }),
+      ]),
+      section("Terms", [
+        el("p", { class: "settings-hint", text: "A headline or summary with any of these counts. Whole words, in order. Separate them with commas." }),
+        area("terms", "Terms", "work-terms"),
+        switchRow("work-exact", "Exact", "Terms match only with these capitals, and no plural is folded.", rule.exact === true,
+          (on) => commit((p) => withWorkRuleField(p, id, "exact", on), on ? `${name}: exact` : `${name}: any case`)),
+      ]),
+      section("Only with", [
+        el("p", { class: "settings-hint", text: "When set, one of these must be there too. For a term too common alone." }),
+        area("pair_any", "Only with", "work-pair"),
+      ]),
+      section("Never with", [
+        el("p", { class: "settings-hint", text: "A story with any of these never counts." }),
+        area("exclude", "Never with", "work-exclude"),
+      ]),
+      el("button", { class: "btn-row", type: "button", text: "Remove rule", "data-focus-key": "remove-work",
+        onclick: () => removeAndReturn((p) => withWorkRuleRemoved(p, id), `Removed ${name}.`) }),
+    ];
+  }
+
   // --- You ---
   function viewYou(profile) {
     return [
@@ -778,6 +919,7 @@ function main(schema, catalog, proposalSchema) {
           el("div", { id: "standing-list" }, [...stories, addStandingRow()]),
         ];
       }),
+      workWatchDetails(profile),
       section("Reading breadth", () => {
         const summary = breadth === undefined ? "Loading" : breadth === null ? "Not available" : formatWeekOverWeek(breadth);
         const weekly = weeklyNow();
@@ -803,7 +945,7 @@ function main(schema, catalog, proposalSchema) {
       section("Advanced", () => [linkRow("#advanced", "Profile data and versions", `Raw JSON, history and revert. Now v${store.history()[0].version}`)]),
       yourDataDetails(),
       el("footer", { class: "colophon colophon--settings" }, [
-        el("p", { class: "colophon-text", text: "Kept on this device. Only the searches for your phrases and standing stories leave it, to this site's own server, for the hourly run." }),
+        el("p", { class: "colophon-text", text: "Kept on this device. Only the searches for your phrases and standing stories, and your work watch rules, leave it, to this site's own server, for the hourly run." }),
       ]),
     ];
   }
@@ -1316,6 +1458,7 @@ function main(schema, catalog, proposalSchema) {
   // --- Routing and rendering ---
   function titleFor(route, profile) {
     if (route.view === "interest") { const t = profile.topics?.[route.id]; return t && topicName(route.id, t); }
+    if (route.view === "work") { const r = (profile.work_watch || []).find((x) => x?.id === route.id); return r && r.label; }
     if (route.view === "story") { const s = (profile.standing_stories || []).find((x) => x?.id === route.id); return s && (s.label || s.id); }
     if (route.view === "sourceGroup") { const g = groupSources(sources).find((x) => x.id === route.id); return g && g.label; }
     if (route.view === "sources") return "News sources";
@@ -1330,7 +1473,7 @@ function main(schema, catalog, proposalSchema) {
   // list it was opened from.
   const backTarget = (view) => (view === "sourceGroup" ? "sources" : "you");
 
-  const VIEWS = { you: viewYou, interest: viewInterest, story: viewStory, sources: viewSources, sourceGroup: viewSourceGroup, advanced: viewAdvanced, breadth: viewBreadth, weekly: viewWeekly };
+  const VIEWS = { you: viewYou, interest: viewInterest, story: viewStory, work: viewWork, sources: viewSources, sourceGroup: viewSourceGroup, advanced: viewAdvanced, breadth: viewBreadth, weekly: viewWeekly };
 
   function render({ keepScroll = false } = {}) {
     const profile = store.current();

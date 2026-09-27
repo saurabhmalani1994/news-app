@@ -29,13 +29,13 @@ function validBackup(archives = {}) {
   return serializeBackup({ profile: buildDefaultProfile(NOW), saved: [], history: { opened: [], shown: [] }, archives, now: NOW });
 }
 
-test("serializeBackup: version 2, archives keyed by follow round-trips", () => {
+test("serializeBackup: version 2 and later (3 since B11), archives keyed by follow round-trips", () => {
   const backup = serializeBackup({
     profile: buildDefaultProfile(NOW), saved: [], history: { opened: [], shown: [] },
     archives: { "phrase:p1": [item("s1", 1)] }, now: NOW,
   });
-  assert.equal(backup.format_version, 2);
-  assert.equal(BACKUP_VERSION, 2);
+  assert.equal(backup.format_version, 3); // B11 bumped 2 to 3; archives still ride along
+  assert.equal(BACKUP_VERSION, 3);
   assert.deepEqual(backup.archives["phrase:p1"], [item("s1", 1)]);
 });
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://almanac.local/app/profile.schema.json",
   "title": "Almanac profile",
-  "description": "S10: the owner's opinions about ranking (R10). Device owned, local, versioned, never sent anywhere, with one exception (W1, R50): the search queries built from phrase interests and standing stories go to this site's own /api/interests, behind Cloudflare Access, so the hourly run can search for them. Lean and source facts stay in the repo's sources.json; this file only holds what the owner has tuned. Every object is closed except topics, trust and boosts entries which use additionalProperties/items on purpose so new topic buckets and trust overrides are a settings action, not a code change (DESIGN-v1.1 section 9 item 2). Key patterns that additionalProperties cannot express (topic id shape, cross references) are checked by validate.js's checkIntegrity, mirroring contract/validate.py's two-phase approach.",
+  "description": "S10: the owner's opinions about ranking (R10). Device owned, local, versioned, never sent anywhere, with one exception (W1, R50): the search queries built from phrase interests and standing stories, and the work watch rules (B11), go to this site's own /api/interests, behind Cloudflare Access, so the hourly run can search for them. Lean and source facts stay in the repo's sources.json; this file only holds what the owner has tuned. Every object is closed except topics, trust and boosts entries which use additionalProperties/items on purpose so new topic buckets and trust overrides are a settings action, not a code change (DESIGN-v1.1 section 9 item 2). Key patterns that additionalProperties cannot express (topic id shape, cross references) are checked by validate.js's checkIntegrity, mirroring contract/validate.py's two-phase approach.",
   "type": "object",
   "required": [
     "schema_version", "profile_version", "updated_at", "topics", "trust", "boosts",
@@ -79,6 +79,12 @@
         "blocked_labels": {"type": "array", "maxItems": 40, "items": {"type": "string", "minLength": 1, "maxLength": 200}}
       }
     },
+    "work_watch": {
+      "description": "B11: the owner's work watch, private tiered keyword rules (app/static/js/work-watch.js), optional: absent means none. A story matches a rule when one of terms is in its headlines or deks as whole words (exact: with the term's own capitals and no plural folding; otherwise any case, plural folded), one of pair_any is too when pair_any is not empty, and none of exclude is. A matching story joins the Biotech tab and gets a ranking lift by tier, 1 strongest. The rules, labels included, go with the searches above to this site's own /api/interests for the hourly search; the pool only ever carries a rule's hashed tag. Owner only: the S19 AI gate reserves this path.",
+      "type": "array",
+      "maxItems": 40,
+      "items": {"$ref": "#/$defs/work_rule"}
+    },
     "display": {
       "description": "U1/U2 display settings, optional: an absent object or field takes the default. summaries: \"all\" shows a summary under every story, \"top\" only under the lead stories. Default \"all\". L1: lean_markers shows the five-dot lean marker after a source name (default true); lean_color fills its dot muted blue for left, muted red for right, grey for center (default false). V1: word_marks marks, in the versions carousel, the headline words no other version used (default true, R40 answer 8).",
       "type": "object",
@@ -130,6 +136,27 @@
           "pattern": "^[^\"“”]*$"
         }
       }
+    },
+    "work_rule": {
+      "type": "object",
+      "required": ["id", "label", "tier", "terms", "pair_any", "exclude", "exact"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$"},
+        "label": {"type": "string", "minLength": 1, "maxLength": 60},
+        "tier": {"type": "integer", "minimum": 1, "maximum": 4},
+        "terms": {"type": "array", "minItems": 1, "maxItems": 30, "items": {"$ref": "#/$defs/work_term"}},
+        "pair_any": {"type": "array", "maxItems": 20, "items": {"$ref": "#/$defs/work_term"}},
+        "exclude": {"type": "array", "maxItems": 20, "items": {"$ref": "#/$defs/work_term"}},
+        "exact": {"type": "boolean"}
+      }
+    },
+    "work_term": {
+      "description": "B11: one term of a work rule, 2 to 60 characters, no double quotes (the search wraps each term in them) and no control characters.",
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 60,
+      "pattern": "^[^\"“”\u0000-\u001f\u007f]*$"
     },
     "standing_story": {
       "type": "object",

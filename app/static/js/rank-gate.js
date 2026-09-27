@@ -32,7 +32,9 @@
     // so turning it off moves nothing (style.css .lean-off, .lean-color).
     if (p && p.display && p.display.lean_markers === false) root.classList.add("lean-off");
     if (p && p.display && p.display.lean_color === true) root.classList.add("lean-color");
-    var sameProfile = !p || canonical([p.topics, p.trust, p.boosts, p.mutes, p.seen_penalty, p.passes, p.standing_stories]) === root.getAttribute("data-rank-key");
+    var fields = p ? [p.topics, p.trust, p.boosts, p.mutes, p.seen_penalty, p.passes, p.standing_stories] : null;
+    if (p && Array.isArray(p.work_watch) && p.work_watch.length) fields.push(p.work_watch); // B11, as ranker.js profileKey
+    var sameProfile = !p || canonical(fields) === root.getAttribute("data-rank-key");
 
     var summary = null;
     try {

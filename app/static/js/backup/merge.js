@@ -96,6 +96,21 @@ export function importCounts(profile, savedMerge, openedMerge, shownMerge, archi
   };
 }
 
+/** B11: the profile after a work watch file's import: its rules replace the work
+ * rules, and nothing else changes. Null when they are already the same. */
+export function withWorkImported(profile, rules) {
+  const next = Array.isArray(rules) ? rules : [];
+  if (JSON.stringify(profile.work_watch || []) === JSON.stringify(next) && Array.isArray(profile.work_watch)) return null;
+  return { ...profile, work_watch: next };
+}
+
+/** B11: the confirm for a work watch file, naming both counts. */
+export function workImportMessage(profile, rules) {
+  const now = Array.isArray(profile?.work_watch) ? profile.work_watch.length : 0;
+  const count = Array.isArray(rules) ? rules.length : 0;
+  return `Replace your ${now} work watch ${now === 1 ? "rule" : "rules"} with ${count} from the file? Your other interests stay as they are.`;
+}
+
 export function confirmMessage({ interestCount, savedDelta, historyDelta, timelineDelta = 0 }) {
   const base = `Replace your interests with ${interestCount} from the file? Saved +${savedDelta}, history +${historyDelta}`;
   return timelineDelta ? `${base}, timeline +${timelineDelta}` : base;

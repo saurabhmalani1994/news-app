@@ -24,8 +24,16 @@
 // list exactly as stored (already capped to 30 days / 200 items by the live archive
 // itself). A version 1 file simply has no `archives` field; validate.js treats that the
 // same as an empty one rather than refusing an older file.
+//
+// B11: version 3 carries the profile's work watch rules (work-watch.js) like any other
+// profile field, and adds an optional `scope`. A whole backup has none (or "all"). A
+// file with scope "work_watch" holds only {profile: {work_watch: [...]}}: importing it
+// replaces the work rules alone and leaves every other interest, saved story, history
+// entry and timeline as it is (validate.js, merge.js withWorkImported). Versions 1 and
+// 2 still import.
 
-export const BACKUP_VERSION = 2;
+export const BACKUP_VERSION = 3;
+export const WORK_SCOPE = "work_watch";
 
 /** almanac-backup-YYYY-MM-DD.json, the date from `now` (an ISO string or a Date). */
 export function backupFilename(now) {
@@ -45,6 +53,12 @@ export function backupFilename(now) {
  *   (followArchiveStore.get(key).items). Missing or not an object exports as {}.
  * @param {Function|string} [args.now] - nowIso() or an ISO string, for deterministic tests.
  */
+/** B11: a work watch only file: the rules and nothing else. */
+export function serializeWorkBackup({ rules, now }) {
+  const exportedAt = typeof now === "function" ? now() : now || new Date().toISOString();
+  return { format_version: BACKUP_VERSION, exported_at: exportedAt, scope: WORK_SCOPE, profile: { work_watch: Array.isArray(rules) ? rules : [] } };
+}
+
 export function serializeBackup({ profile, saved, history, archives, now }) {
   const exportedAt = typeof now === "function" ? now() : now || new Date().toISOString();
   return {

@@ -25,7 +25,9 @@ export const SECTIONS = Object.freeze([
   // B10: Biotech is the biotech tag alone, never the biotech source bucket. That bucket
   // is mostly pharma (Fierce Biotech, GEN...), and the tag is now set only when the
   // article's own text is industrial biotech (fetcher/topics.py, topics.json biotech_rules).
-  { id: "biotech", label: "Biotech", tags: ["biotech"] },
+  // B11: and every story one of the owner's work watch rules matches (work-watch.js):
+  // the ranker names those rules on the story (work_rules), ranked with their tier lift.
+  { id: "biotech", label: "Biotech", tags: ["biotech"], work: true },
 ].map((s) => Object.freeze(s)));
 
 /** {source_id: bucket} from sources.json's sources array. */
@@ -41,6 +43,7 @@ export function inSection(story, section, buckets) {
   const tags = section.tags || [];
   const wanted = section.buckets || [];
   const geo = section.geo || [];
+  if (section.work && (story.work_rules || []).length) return true;
   return (story.topics || []).some((t) => tags.includes(t))
     || (story.geo || []).some((g) => geo.includes(g))
     || (story.source_ids || []).some((id) => Object.hasOwn(buckets || {}, id) && wanted.includes(buckets[id]));

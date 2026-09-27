@@ -42,7 +42,7 @@ import { openedStore } from "./history/store.js";
 import { recordOpened } from "./history/record.js";
 import { readSummary, summaryToHistory, noteSeen } from "./history/summary.js";
 import { seenPenaltyTerm } from "./history/penalty.js";
-import { standingStatus, withStandingAdded } from "./profile/you-edits.js";
+import { standingStatus, withStandingAdded, commitEdit, withWorkAdopted } from "./profile/you-edits.js";
 import { suggestStanding } from "./story-keywords.js";
 import { standingForm, standingMessage } from "./standing-form.js";
 import { scheduleSync, startSync } from "./interests-sync.js";
@@ -434,7 +434,13 @@ async function doFollow({ li, sid }) {
 }
 
 // W1: once per page load, a check that the phone's searches reached the hourly run.
-startSync();
+// B11: work rules seeded into the server's store come back into a profile with none.
+startSync(3000, {
+  adopt: async (rules) => {
+    const result = commitEdit(await getStore(), (p) => withWorkAdopted(p, rules));
+    return result && result.ok ? result.profile : null;
+  },
+});
 
 document.addEventListener("click", (event) => {
   const button = event.target.closest(".story-overflow");

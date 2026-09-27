@@ -37,12 +37,12 @@ export const AI_WRITABLE = Object.freeze({
 /**
  * Path segments no proposal may name, whatever else matches: the must-know topic and
  * its floor (R16), standing stories (R2), exploration slots, trust (R10), and the S33
- * Live tab overrides (R22, "the device only applies the owner's pins and blocks").
+ * Live tab overrides (R22, "the device only applies the owner's pins and blocks"), and B11 work_watch, the owner's private work rules.
  * Standing stories and exploration are not in profile.schema.json yet; naming them
  * here means they are refused the day a later slice adds them, without anyone
  * remembering to.
  */
-const RESERVED_SEGMENT = /^(must_know|floor_slots|trust|standing_stor(y|ies)|exploration(_[a-z_]+)?|live_overrides)$/;
+const RESERVED_SEGMENT = /^(must_know|floor_slots|trust|standing_stor(y|ies)|exploration(_[a-z_]+)?|live_overrides|work_watch)$/;
 const RESERVED_TOPICS = new Set(["must_know"]);
 
 /** Keys that are never legitimate data and could reach a prototype. */
