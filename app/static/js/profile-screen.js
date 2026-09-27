@@ -834,7 +834,7 @@ function main(schema, catalog, proposalSchema) {
       },
     });
     const body = el("div", { class: "your-data-body work-watch-body" }, [
-      el("p", { class: "settings-hint settings-hint--top", text: groups.length
+      el("p", { class: "settings-hint", text: groups.length
         ? "Stories matching a rule join Biotech and rank higher, tier 1 most."
         : "No rules yet. A rule puts matching stories on Biotech and ranks them higher." }),
       ...rows,
