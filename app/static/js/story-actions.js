@@ -47,6 +47,11 @@ import { suggestStanding } from "./story-keywords.js";
 import { standingForm, standingMessage } from "./standing-form.js";
 import { scheduleSync, startSync } from "./interests-sync.js";
 import { pageInput } from "./page-input.js";
+// J1: "Analyse with Jev", a typed read of the story (js/jev/*): answers are the app's own
+// labels only, cached per story on this phone, and change nothing in the profile.
+import { askJev } from "./jev/client.js";
+import { storyState, analysisCache, STORY_QUESTIONS } from "./jev/story.js";
+import { renderAnalysis } from "./jev/story-view.js";
 
 function currentHistoryTerms() {
   return [seenPenaltyTerm(summaryToHistory(readSummary(window.localStorage)))];
@@ -66,6 +71,7 @@ const ICONS = Object.freeze({
   mute: "M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zM4 12c0-4.4 3.6-8 8-8 1.8 0 3.5.6 4.9 1.7L5.7 16.9C4.6 15.5 4 13.8 4 12zm8 8c-1.8 0-3.5-.6-4.9-1.7L18.3 7.1C19.4 8.5 20 10.2 20 12c0 4.4-3.6 8-8 8z",
   boost: "M4 14l1.4 1.4L11 9.8V20h2V9.8l5.6 5.6L20 14l-8-8-8 8z",
   follow: "M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z",
+  jev: "M21.4 11.6l-9-9C12.1 2.2 11.6 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .6.2 1.1.6 1.4l9 9c.4.4.9.6 1.4.6s1-.2 1.4-.6l7-7c.4-.4.6-.9.6-1.4s-.2-1.1-.6-1.4zM5.5 7C4.7 7 4 6.3 4 5.5S4.7 4 5.5 4 7 4.7 7 5.5 6.3 7 5.5 7z",
   why: "M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.4 0-8-3.6-8-8s3.6-8 8-8 8 3.6 8 8-3.6 8-8 8z",
   more: "M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
 });
@@ -92,7 +98,8 @@ function loadSchema() {
 }
 
 let storeInstance = null;
-async function getStore() {
+/** The page's one ProfileStore (J1: the Ask bar saves through it too). */
+export async function getStore() {
   if (!storeInstance) {
     storeInstance = new ProfileStore({
       storage: window.localStorage, schema: await loadSchema(), seedDefault: buildDefaultProfile,
@@ -166,6 +173,7 @@ async function openStoryMenu(li) {
   items.push(menuItem({ action: "boost-topic", icon: ICONS.boost, text: "Boost topic" }));
   items.push(menuItem({ action: "follow", icon: ICONS.follow, text: "Follow this story" }));
   items.push(menuItem({ action: "why", icon: ICONS.why, text: "Why this", hidden: !WHY_THIS_ENABLED }));
+  items.push(menuItem({ action: "jev", icon: ICONS.jev, text: "Analyse with Jev" }));
 
   const menu = document.createElement("div");
   menu.className = "sheet-menu";
@@ -194,6 +202,7 @@ function handleAction(action, ctx) {
   if (action === "boost-topic") return doBoostTopic(ctx);
   if (action === "follow") return doFollow(ctx);
   if (action === "why") return doWhy(ctx);
+  if (action === "jev") return doJev(ctx);
   return null;
 }
 
@@ -253,6 +262,64 @@ async function doWhy({ li, sid, facts }) {
   const content = renderWhyContent({ story, profile, nowMs, names: input.names || {}, headline: facts.title, lead });
   await sheetClosed();
   openSheet({ title: "Why this", content, opener });
+}
+
+// J1: the menu stays up, its item reading "Analysing…", until Jev answers, then gives way
+// to the analysis sheet, the same close-then-open doWhy uses, so the sheet never
+// changes height on screen. A cached analysis opens at once.
+const jevCache = analysisCache(window.localStorage);
+
+/** The row's body as plain text, through the reader's own loader and cache (a story
+ * read once is not fetched again), or "" when it cannot be had. DOMParser only parses:
+ * nothing in the body runs or reaches the page (R26). */
+async function bodyText(li) {
+  const id = li.querySelector(".story-link")?.dataset.body;
+  if (!id) return "";
+  try {
+    const got = await loadBody(id, { cache: bodyCache });
+    if (got.state !== "ready" || typeof got.body?.body_html !== "string") return "";
+    return new DOMParser().parseFromString(got.body.body_html, "text/html").body.textContent || "";
+  } catch {
+    return "";
+  }
+}
+
+async function doJev({ li, sid, facts }) {
+  const opener = li.querySelector(".story-overflow");
+  const item = document.querySelector('#sheet-body .sheet-item[data-action="jev"]');
+  const label = item?.querySelector(".sheet-item-text");
+  let result = jevCache.get(sid);
+  const cached = Boolean(result);
+  if (!result) {
+    if (item?.getAttribute("aria-busy") === "true") return;
+    item?.setAttribute("aria-busy", "true");
+    if (label) label.textContent = "Analysing…";
+    try {
+      const articleText = facts.has_body ? await bodyText(li) : "";
+      const { answers, missing, model } = await askJev(storyState(getInput(), sid, facts.title, articleText), STORY_QUESTIONS);
+      result = { answers, missing, model, full_text: Boolean(articleText), at: nowIso() };
+      // The local stand-in's answers are never kept, so switching to the real Jev
+      // never shows a mock answer from the cache.
+      if (Object.keys(answers).length && model !== "mock-jev") jevCache.put(sid, result);
+    } catch (error) {
+      item?.removeAttribute("aria-busy");
+      if (label) label.textContent = "Analyse with Jev";
+      closeSheet();
+      showToast(error.message);
+      return;
+    }
+  }
+  closeSheet();
+  if (!Object.keys(result.answers).length) {
+    showToast("Jev couldn't read this story.");
+    return;
+  }
+  const content = renderAnalysis({
+    answers: result.answers, missing: result.missing, headline: facts.title, cached,
+    fullText: Boolean(result.full_text), model: result.model || "",
+  });
+  await sheetClosed();
+  openSheet({ title: "Jev's read", content, opener });
 }
 
 async function doSave({ sid, attrs, facts }) {
@@ -327,7 +394,7 @@ function applyPanel(panel, stories, input, faces = {}, trust = {}) {
  * every other already-built panel is refreshed too, off screen, so returning to it
  * later shows the same profile without a reload. A panel S27 has not built yet needs
  * nothing: it builds fresh from window.almanacProfile the first time it is opened. */
-function rerenderAfterProfileChange(profile, sourcePanel) {
+export function rerenderAfterProfileChange(profile, sourcePanel) {
   const input = getInput();
   window.almanacProfile = profile;
   const pages = rankPages(input.pool, profile, input.now, pageOptions(input, { terms: currentHistoryTerms() }));
@@ -440,6 +507,17 @@ startSync(3000, {
     const result = commitEdit(await getStore(), (p) => withWorkAdopted(p, rules));
     return result && result.ok ? result.profile : null;
   },
+});
+
+// C3: the action row's open button ("Read here" or "Open site") is the card's own tap,
+// handed to the row's link, so the reader, the opened record (R17) and the new tab all
+// behave exactly as a tap on the card does. The link's click happens inside this
+// trusted tap, so a browser still lets it open its tab.
+document.addEventListener("click", (event) => {
+  const open = event.target.closest(".story-act--open");
+  if (!open) return;
+  event.preventDefault();
+  open.closest("li.story")?.querySelector(".story-link")?.click();
 });
 
 document.addEventListener("click", (event) => {

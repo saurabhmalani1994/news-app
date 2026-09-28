@@ -1,0 +1,14 @@
+# J1: local testing with `wrangler pages dev` (docs/JEV-SPIKE.md). Copy to .dev.vars,
+# which git ignores. Neither value does anything on the deployed site: the dev email is
+# honoured only when the request's host is localhost, and the deployed Pages project
+# never sets JEV_MOCK.
+
+# Stands in for the Cloudflare Access login on this machine only.
+ACCESS_DEV_EMAIL=you@example.com
+
+# 1 = answer from app/static/js/jev/mock.js (no account, no key, no cost).
+JEV_MOCK=1
+
+# To ask the real Jev through OpenRouter: remove JEV_MOCK above and set your key here.
+# This file is ignored by git; never put the key anywhere that is committed.
+# OPENROUTER_API_KEY=

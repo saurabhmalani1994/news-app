@@ -69,6 +69,9 @@ export function openSheet({ title = "", content, opener: openedFrom = null } = {
   clearTimeout(hideTimer);
   label.textContent = title;
   body.replaceChildren(...(Array.isArray(content) ? content : [content]));
+  // C2: the panel is reused by every sheet; each opens at its own top, never at the
+  // offset the last one was scrolled to.
+  panel.scrollTop = 0;
   opener = openedFrom || document.activeElement;
   token += 1;
   current = { token };

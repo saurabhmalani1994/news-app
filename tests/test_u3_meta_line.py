@@ -116,23 +116,28 @@ def test_the_source_name_is_written_in_full_and_the_split_follows_content_only()
         # Line 1: who and when. The age is on it, and line 2 carries it as data-age.
         age = re.search(r'<span class="meta-age">([^<]*)</span>', line1).group(1)
         assert attrs == f' data-age="{age}"'
-        # Line 2: what the row offers, and only that; empty when there is nothing.
-        multi = 'class="meta-count"' in line2
-        read = 'class="meta-read"' in line2
-        assert bool(line2) == (multi or read), sid
-        assert "meta-source" not in line2 and "meta-age" not in line2 and "lean" not in line2
-        lines2 += bool(line2)
+        # C3: line 2 carries nothing but the age (data-age); what the row offers, the
+        # count and "Read here", is in the card's action row as real buttons.
+        assert line2 == "", sid
+        acts = re.search(r'<div class="story-acts">(.*?)</div>', row).group(1)
+        multi = 'class="meta-count"' in acts
+        read = 'class="meta-read"' in acts
+        assert 'class="meta-source"' not in acts and 'class="meta-age"' not in acts and 'class="lean' not in acts
+        lines2 += multi or read
     assert 0 < lines2 < len(rows)
 
 
-def test_line_two_leads_with_the_count_then_read_here_then_the_other_outlet():
+def test_the_action_row_reads_here_then_names_the_other_outlet_then_the_count():
+    """C3: the open button leads ("Read here", then R43's other outlet), then the count."""
     pool = _real_pool(_pool_with_bodies())
     next(a for a in pool["articles"] if a["id"] == "a007")["has_body"] = False
     row = _row(render(pool), "a005")
-    sep = '<span class="meta-sep"> · </span>'
-    assert (sep + '<span class="meta-count">3 sources</span>' + sep
-            + '<span class="meta-read"><span class="meta-read-label">Read here</span></span>'
-            + '<span class="meta-read-source">NPR</span></span>') in row
+    acts = re.search(r'<div class="story-acts">(.*?)</div>', row).group(1)
+    read = ('<span class="meta-read"><span class="meta-read-label">Read here</span></span>'
+            '<span class="meta-read-source">NPR</span>')
+    assert read in acts
+    assert '<span class="meta-count">3 sources</span>' in acts
+    assert acts.index(read) < acts.index("meta-count") < acts.index("story-overflow")
 
 
 def test_the_other_side_line_uses_the_row_marker_never_the_lean_in_words():
@@ -170,7 +175,7 @@ class N {
       + text + this.kids.map((k) => k.html()).join("") + "</" + this.tag + ">";
   }
 }
-globalThis.document = { createElement: (t) => new N(t) };
+globalThis.document = { createElement: (t) => new N(t), createElementNS: (ns, t) => new N(t) };
 const out = [];
 for (const [sid, lean, country] of [["dawn_pk", "non-us", "PK"], ["fox_politics", "right", "US"], ["al_jazeera", "state", "QA"], ["x", "", ""]]) {
   const li = new N("li");

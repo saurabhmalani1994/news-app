@@ -255,7 +255,8 @@ function storiesSection(profile, kind, id) {
     for (const story of shown) {
       const row = followRow(document.importNode(front.rows.get(story.id), true), front.input);
       // No story menu on this page: its sheet and actions live on the front page.
-      row.querySelectorAll(".story-overflow, .story-coverage").forEach((n) => n.remove());
+      // C3: the whole action row goes, since "Read here" needs the front page's reader.
+      row.querySelectorAll(".story-acts, .story-overflow, .story-coverage").forEach((n) => n.remove());
       list.appendChild(row);
     }
     return [hint, list];

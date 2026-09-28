@@ -3302,3 +3302,476 @@ body {
   outline: 2px solid var(--color-headline);
   outline-offset: -2px;
 }
+
+/* J1: the Ask bar at the top of Today (js/jev/ask-bar.js). The sheet form's own field
+   language: no box, one hairline under the field, 16px text so a phone never zooms. It
+   is always laid out, so wiring it up never moves the page. */
+.ask-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 var(--space-gutter);
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.ask-input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--touch-min);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border-style: none;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 22px;
+  color: var(--color-headline);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.ask-input::placeholder {
+  color: var(--color-meta-tertiary);
+}
+
+.ask-input:focus-visible {
+  outline: none;
+}
+
+.ask-bar:focus-within {
+  border-bottom-color: var(--color-headline);
+}
+
+.ask-send {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-min);
+  height: var(--touch-min);
+  margin-right: -14px;
+  padding: 0;
+  background: none;
+  border-style: none;
+  color: var(--color-meta);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ask-send:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -6px;
+}
+
+.ask-icon {
+  fill: currentColor;
+}
+
+.ask-bar[aria-busy="true"] .ask-send {
+  opacity: 0.4;
+  animation: jev-pulse 1s ease-in-out infinite alternate;
+}
+
+.sheet-item[aria-busy="true"] {
+  animation: jev-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes jev-pulse {
+  from { opacity: 1; }
+  to { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ask-bar[aria-busy="true"] .ask-send,
+  .sheet-item[aria-busy="true"] {
+    animation: none;
+  }
+}
+
+/* J1: Jev's read of a story, in the why-this sheet's own rows. The overall verdict
+   leads: a kicker, the label in the headline serif, Jev's confidence in meta grey,
+   then one thin bar per sentiment in the why-this bars' tonal language (no red and
+   green: the label says it). */
+.jev-verdict {
+  margin: 0 var(--space-gutter) 14px;
+  padding-bottom: 14px;
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.jev-verdict-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.jev-verdict-kicker {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-meta);
+}
+
+.jev-verdict-label {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  line-height: 26px;
+  font-weight: 700;
+  color: var(--color-headline);
+}
+
+.jev-verdict-conf,
+.jev-row-conf,
+.jev-bar-value {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-meta);
+}
+
+.jev-bars {
+  display: grid;
+  gap: 6px;
+}
+
+.jev-bar-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 40px;
+  align-items: center;
+  column-gap: 10px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-meta);
+}
+
+.jev-bar-value {
+  text-align: right;
+}
+
+.jev-bar-track {
+  height: 3px;
+  background: var(--color-pressed);
+}
+
+.jev-bar-fill {
+  display: block;
+  height: 100%;
+  width: calc(var(--p, 0) * 100%);
+  background: var(--color-meta-tertiary);
+}
+
+.jev-verdict[data-sentiment="positive"] .jev-bar-row:nth-child(1) .jev-bar-fill,
+.jev-verdict[data-sentiment="negative"] .jev-bar-row:nth-child(2) .jev-bar-fill,
+.jev-verdict[data-sentiment="mixed"] .jev-bar-row:nth-child(3) .jev-bar-fill,
+.jev-verdict[data-sentiment="neutral"] .jev-bar-row:nth-child(4) .jev-bar-fill {
+  background: var(--color-headline);
+}
+
+.jev-row-right {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  text-align: right;
+}
+
+.jev-note {
+  margin-top: 12px;
+}
+
+.jev-actions {
+  padding-bottom: 8px;
+}
+
+.jev-skip {
+  margin-top: 0;
+  font-weight: 500;
+  color: var(--color-meta);
+}
+
+/* C2: coverage scrolling. A long bundle gets most of the screen (the story list is the
+   point of this sheet), each lean's label stays pinned under the sheet header while its
+   rows scroll past, and the jump row under the summary moves straight to a lean. The
+   pinned label and a jump both clear the sticky header: the grabber's 18px plus the
+   48px label row (.sheet-drag). */
+.sheet:has(.coverage) {
+  max-height: 92vh;
+  max-height: 92dvh;
+}
+
+.coverage-group-label {
+  position: sticky;
+  top: calc(18px + var(--touch-min));
+  z-index: 1;
+  padding-bottom: 8px;
+  background: var(--color-nav-surface);
+}
+
+.coverage-jump {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 var(--space-gutter) 14px;
+  scrollbar-width: none;
+}
+
+.coverage-jump::-webkit-scrollbar {
+  display: none;
+}
+
+.coverage-jump-item {
+  flex: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  background: transparent;
+  border: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--type-meta-family);
+  font-size: 13px;
+  line-height: 34px;
+  font-weight: 500;
+  color: var(--color-headline);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.coverage-jump-item:active {
+  background: var(--color-pressed);
+}
+
+.coverage-jump-item:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.coverage-jump-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-meta);
+}
+
+/* C3: the card's action row (app/build.py STORY_ACTS). Each control says where it
+   goes: "Read here" (Almanac's reader) or "Open site" (the publisher's page, out-arrow),
+   then "N sources" (the versions carousel), then More (the story menu). Real buttons
+   with hairline square outlines, the ownership tags' own language, at least 44dp tall
+   and 10dp apart, under the meta line, never over the photo, never laid over text. The
+   card itself still taps through to the same place the first button names. */
+.story-acts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  /* Clear of the lean marker's 48dp target, which reaches 24dp below the dots. */
+  margin: -2px var(--space-gutter) 0;
+  padding-bottom: 20px;
+}
+
+.story-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  background: transparent;
+  border: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--color-headline);
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.story-act:active {
+  background: var(--color-pressed);
+}
+
+.story-act:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.story-act-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+/* The open button: only the half that matches the card's own link shows. */
+.story-act--open {
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
+.act-read,
+.act-site {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.act-site .story-act-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--color-meta);
+}
+
+.story:has(.story-link[data-body]) .act-site,
+.story:not(:has(.story-link[data-body])) .act-read {
+  display: none;
+}
+
+.story-act .meta-read {
+  flex: none;
+}
+
+.story-act .meta-read-label {
+  color: inherit;
+}
+
+.story-act .meta-read-source {
+  font-weight: 500;
+  color: var(--color-meta);
+}
+
+/* The versions button: S14's trigger, no longer laid over the meta. */
+.story-acts .story-coverage {
+  position: static;
+  flex: none;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+}
+
+.story-acts .story-coverage:not(:has(.meta-count)) {
+  display: none;
+}
+
+.story-acts .story-coverage:active {
+  background: var(--color-pressed);
+}
+
+/* More: the story menu, at the end of the row on every card, dots laid flat. */
+.story-acts .story-overflow,
+.story-acts .story-overflow:active {
+  position: static;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin-left: auto;
+  border: var(--divider-weight) solid var(--color-divider);
+  background: transparent;
+  color: var(--color-meta);
+}
+
+.story-acts .story-overflow:active {
+  background: var(--color-pressed);
+}
+
+.story-acts .story-overflow-icon {
+  transform: rotate(90deg);
+}
+
+/* Nothing sits over the text any more, so rows take their full measure. */
+.story:has(> .story-acts) :is(.headline, .dek, .meta) {
+  padding-right: 0;
+}
+
+/* Text-only rows (More headlines) keep a lighter row: the same buttons, shorter. */
+.story--text-only .story-acts {
+  margin-top: 0;
+  padding-bottom: 16px;
+}
+
+.story--text-only .story-act,
+.story--text-only .story-acts .story-coverage,
+.story--text-only .story-acts .story-overflow {
+  min-height: 40px;
+}
+
+.story--text-only .story-acts .story-overflow {
+  width: 40px;
+  height: 40px;
+}
+
+/* C3: the other side reads as attached, indented on a hairline, and says where it
+   opens. Its lean target keeps to the label line (36dp), clear of the headline. */
+.story-acts:has(+ .other-side) {
+  padding-bottom: 12px;
+}
+
+.other-side {
+  margin: 0 var(--space-gutter) 0 calc(var(--space-gutter) + 2px);
+  padding: 8px 0 20px 12px;
+  border-left: 2px solid var(--color-divider);
+}
+
+.other-side-label {
+  min-height: 28px;
+  align-items: center;
+}
+
+.other-side-title {
+  margin-top: 4px;
+}
+
+.other-side-go {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-meta);
+}
+
+.other-side-go .story-act-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.lean-hit--other {
+  height: 36px;
+  top: calc(anchor(center) - 18px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story-act {
+    transition: none;
+  }
+}
+
+/* J2: under each suggested change, how sure Jev was (confidence, runner-up), in the
+   quietest meta tone; and each Did-you-mean option with Jev's own probability. */
+.jev-why {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 17px;
+  color: var(--color-meta);
+}
+
+.jev-option {
+  justify-content: space-between;
+}
+
+.jev-option-p {
+  margin-left: auto;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-meta);
+}
+
+/* J2: an answer Jev was not sure of reads quieter than one it was. */
+.jev-row:is([data-status="lean"], [data-status="ambiguous"], [data-status="unsure"], [data-status="conflict"], [data-status="unlikely"], [data-status="uncertain"]) .jev-row-value {
+  color: var(--color-meta);
+}

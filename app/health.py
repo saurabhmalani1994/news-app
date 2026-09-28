@@ -300,6 +300,7 @@ PAGE = """<!doctype html>
 <p class="settings-hint">Unhealthy and failing sources first, then the rest grouped by bucket.</p>
 {sources}
 </section>
+{jev}
 </main>
 <footer class="colophon"><p class="colophon-text">Read from the pool generated <time datetime="{generated_at}">{generated_label}</time>.</p></footer>
 <script src="js/health-age.js"></script>
@@ -313,6 +314,64 @@ PAGE = """<!doctype html>
 </html>"""
 
 
+# J3: the Jev report (fetcher/jev_shadow.py, dist/jev.json beside the pool), when a
+# shadow run wrote one. Every number is a count; every title is escaped text (R26).
+JEV_SECTION = """<section class="settings-section" aria-labelledby="jev-label" id="jev-report">
+<h2 class="settings-label" id="jev-label">Jev, shadow mode</h2>
+<p class="settings-hint">{hint}</p>
+{rows}
+</section>"""
+
+
+def _of(part, whole):
+    pct = f" ({round(100 * part / whole)}%)" if whole else ""
+    return f"{part} of {whole}{pct}"
+
+
+def _budget_row(run):
+    """Today's spend against the day's cap, in the route's own unit."""
+    spent, cap = run.get("spent_day", 0) or 0, run.get("budget_day", 0) or 0
+    if run.get("unit") == "usd":
+        return ("Spent today (OpenRouter)", f"${spent:.3f} of ${cap:.2f}")
+    return ("Free allowance used today", f"{spent:.0f} of {cap:.0f} neurons")
+
+
+def render_jev(doc):
+    """The Jev report section, or '' when there is no report to show."""
+    if not isinstance(doc, dict) or not isinstance(doc.get("report"), dict):
+        return ""
+    r, run = doc["report"], doc.get("run") or {}
+    sec, reg, same = r["section_vs_bucket"], r["region_vs_bucket"], r["same_event_known"]
+    ai = r["ai_rules_vs_jev"]
+    ai_total = ai["both"] + ai["rules_only"] + ai["jev_only"] + ai["neither"]
+    conf = r.get("confidence") or {}
+    conf_text = ", ".join(f"{k} {v}" for k, v in sorted(conf.items(), key=lambda kv: -kv[1])) or "none yet"
+    rows = [
+        ("Model", "Local stand-in (mock)" if doc.get("mock") else doc.get("model", "")),
+        ("Last run", f"{run.get('state', '')}: {run.get('asked', 0)} asked, {run.get('cached', 0)} cached"),
+        ("Articles answered", _of(r["articles_answered"], r["articles_in_pool"])),
+        ("Section matches the feed's bucket", _of(sec["agree"], sec["scored"])),
+        ("Region matches the feed's bucket", _of(reg["agree"], reg["scored"])),
+        ("Syndicated copies read as the same event", _of(same["syndicated_read_same"], same["syndicated_pairs"])),
+        ("Unrelated pairs read as different events", _of(same["unrelated_read_different"], same["unrelated_pairs"])),
+        ("Clinical and industrial biotech both likely", str(r["clinical_and_industrial_both_likely"])),
+        ("AI: rules and Jev agree", _of(ai["both"] + ai["neither"], ai_total)),
+        ("AI: tagged by rules only", str(ai["rules_only"])),
+        ("AI: found by Jev only", str(ai["jev_only"])),
+        ("How sure Jev was", conf_text),
+        _budget_row(run),
+    ]
+    body = [LEDGER_ROW.format(label=_esc(label), value=_esc(value)) for label, value in rows]
+    for cell, heading in (("jev_only", "Found by Jev only"), ("rules_only", "Tagged by rules only")):
+        for ex in ai["examples"].get(cell, [])[:3]:
+            body.append(LEDGER_ROW.format(label=_esc(ex["title"]), value=_esc(heading)))
+    hint = ("Jev answers questions about new articles here, and nothing it says changes your feed. "
+            "A feed's bucket is a rough answer key, so these are agreement rates, not accuracy.")
+    if doc.get("mock"):
+        hint += " These answers come from the local stand-in, not the real Jev."
+    return JEV_SECTION.format(hint=_esc(hint), rows="\n".join(body))
+
+
 def _relative_age(seconds):
     if seconds is None:
         return "recently"
@@ -324,7 +383,7 @@ def _relative_age(seconds):
     return f"{minutes // (24 * 60)}d ago"
 
 
-def render(pool, sources_path=None, now=None):
+def render(pool, sources_path=None, now=None, jev=None):
     """The Health screen for this pool. `now` defaults to the pool's own generated_at
     (build time has nothing else to compare against); js/health-age.js immediately
     replaces the age line with the device's real clock, before first paint, the same
@@ -353,6 +412,7 @@ def render(pool, sources_path=None, now=None):
         watch_line=f'\n<p class="notice-text notice-text--watch" id="watch-counts">{_esc(watch_text)}</p>' if watch_text else "",
         ledger=_render_ledger(counts),
         sources=_render_sources(pool, sources_path),
+        jev=render_jev(jev),
     )
 
 

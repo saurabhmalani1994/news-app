@@ -8,7 +8,7 @@ import re
 import pytest
 
 from app import frontpage
-from app.build import _meta, render
+from app.build import STORY_COVERAGE, _acts, _meta, render
 from app.frontpage import (HERO_COUNT, RIVER_COUNT, SECONDARY_COUNT, _lead, build_stories,
                            clean_dek, front_page, independent_source_count, run_ranker,
                            visible_source_count)
@@ -163,29 +163,25 @@ def test_visible_source_count_drops_a_muted_outlet_but_a_syndicated_group_surviv
     assert visible_source_count([], [], ()) == 0
 
 
-def test_cluster_meta_names_its_source_count_quietly():
-    pool = fixture_pool()
-    parsed = _parse(render(pool))
-    hero_meta = parsed.metas[0]
-    assert "4 sources" in hero_meta
-    singles = [m for m, tier in zip(parsed.metas, parsed.tiers) if tier == "text-only"]
-    assert singles and not any("sources" in m for m in singles)
+def test_cluster_row_names_its_source_count_on_its_versions_button():
+    # C3: "N sources" moved off the meta line onto the visible versions button.
+    page = render(fixture_pool())
+    hero = re.search(r'<li class="story story--hero"[^>]*>(.*?)</li>', page, re.S).group(1)
+    assert '<span class="meta-count">4 sources</span></button>' in hero
+    assert "sources" not in re.search(r'<span class="meta">(.*?)</span></span></a>', hero, re.S).group(1)
+    singles = re.findall(r'<li class="story story--text-only"[^>]*>(.*?)</li>', page, re.S)
+    assert singles and not any("meta-count" in r for r in singles)
 
 
-def test_meta_shows_visible_sources_not_the_raw_pool_count():
+def test_the_count_shows_visible_sources_not_the_raw_pool_count():
     # H4 item 3: a viewer's mutes never reach app.build.render (it always renders the
-    # shipped, mute-free default profile), but _meta itself takes the shown count as a
-    # caller-supplied override, the seam js/rerank.js's device-side equivalent uses;
-    # this proves the number and its own show/hide gate follow that override, not the
-    # pool-wide independent_sources story scoring reads.
-    pool = fixture_pool()
-    story = next(s for s in build_stories(pool) if s.id == "a000")
-    names = {s: f"Outlet {s}" for s in SOURCES}
-    full = _meta(story, names, None)
-    assert "4 sources" in full
-    muted = _meta(story, names, None, visible_sources=3)
-    assert "3 sources" in muted
-    one_left = _meta(story, names, None, visible_sources=1)
+    # shipped, mute-free default profile), but the row takes the shown count as a
+    # caller-supplied value, the seam js/rerank.js's device-side equivalent uses; this
+    # proves the number follows that value. C3: the count is on the versions button.
+    trigger = STORY_COVERAGE.format(sid="a000", label="4 outlets")
+    assert "4 sources" in _acts("https://example.org/a", None, trigger, 4)
+    assert "3 sources" in _acts("https://example.org/a", None, trigger, 3)
+    one_left = _acts("https://example.org/a", None, "", 1)
     assert "sources" not in one_left
 
 
@@ -209,10 +205,12 @@ def test_meta_shows_visible_sources_not_the_raw_pool_count():
 # L1: lean-view.js is the app's own module wiring the lean sheet, no feed data.
 # S34: the Saved screen's static History chrome adds "input" (the search field), never
 # fed a feed string; the Seen filter is a plain button, no new tag for that.
+# J1: jev/ask-bar.js is the app's own module wiring the Ask bar, no feed data; the bar
+# is a static "form" around the app's own input and button.
 APP_TAGS = {"html", "head", "meta", "title", "link", "body", "header", "h1", "main", "ol", "li",
             "a", "span", "section", "h2", "footer", "p", "time", "svg", "circle", "path",
             "script", "template", "nav", "div", "button", "article", "input",
-            "symbol", "use"}  # T2: the overflow glyph, drawn once and pointed at by each row
+            "symbol", "use", "form"}  # T2: the overflow glyph, drawn once and pointed at by each row
 APP_SCRIPTS = ['<script src="js/offline-gate.js">', '<script src="js/rank-gate.js">',
                '<script type="module" src="js/tabs.js">', '<script type="module" src="js/reader.js">',
                '<script type="module" src="js/story-actions.js">',
@@ -223,6 +221,7 @@ APP_SCRIPTS = ['<script src="js/offline-gate.js">', '<script src="js/rank-gate.j
                '<script type="module" src="js/breadth-banner.js">',
                '<script type="module" src="js/live-actions.js">',
                '<script type="module" src="js/saved-screen.js">',
+               '<script type="module" src="js/jev/ask-bar.js">',
                '<script src="js/sw-register.js" defer>', '<script src="js/offline.js">']
 
 

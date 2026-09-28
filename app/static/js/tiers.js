@@ -230,6 +230,30 @@ export function placeSourceCount(li, count) {
 // tap target follows the link as a sibling.
 const WEB = /^https?:\/\/[^\s]+$/i;
 
+/** C3: the host a link opens, "www." dropped (app/build.py site_host). */
+export function siteHost(url) {
+  let host = "";
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    host = "";
+  }
+  return host.startsWith("www.") ? host.slice(4) : host;
+}
+
+/** C3: an icon from the page's sprite, as app/build.py ACT_ICON writes it. */
+function actIcon(id) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("class", "story-act-icon");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS(ns, "use");
+  use.setAttribute("href", `#${id}`);
+  svg.append(use);
+  return svg;
+}
+
 export function placeOtherSide(li, record, input) {
   if (!li) return;
   li.querySelector(".other-side")?.remove();
@@ -263,6 +287,14 @@ export function placeOtherSide(li, record, input) {
   headline.className = "other-side-title";
   headline.textContent = title;
   node.append(label, headline);
+  // C3: where the other side opens, as app/build.py OTHER_GO writes it.
+  if (web) {
+    const go = document.createElement("span");
+    go.className = "other-side-go";
+    go.textContent = `Opens ${siteHost(url)}`;
+    go.append(actIcon("i-out"));
+    node.append(go);
+  }
   li.append(node);
   const hit = leanHit(record.source_id, lean, document, country, "lean-hit--other");
   if (hit) li.append(hit);

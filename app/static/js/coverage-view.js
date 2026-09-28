@@ -124,6 +124,7 @@ function alsoNode(also) {
 
 function groupNode(group, now) {
   const wrap = el("div", "coverage-group");
+  wrap.dataset.bucket = group.bucket;
   wrap.append(el("h3", "coverage-group-label", LEAN_LABELS[group.bucket] || group.bucket));
   for (const row of group.rows) {
     wrap.append(rowNode(row, now));
@@ -138,8 +139,36 @@ function coverageContent(cluster, ctx) {
   const { summary, groups } = buildCoverage(cluster, ctx);
   const wrap = el("div", "coverage");
   wrap.append(el("p", "coverage-summary", summary.text));
+  if (groups.length > 1) wrap.append(jumpNode(groups, wrap));
   for (const group of groups) wrap.append(groupNode(group, now));
   return wrap;
+}
+
+/** C2: one button per lean group ("Left 2", "International 6") that scrolls the sheet
+ * to that group, whose label then stays pinned under the sheet's header while its rows
+ * scroll (style.css .coverage-group-label). Labels are LEAN_LABELS, the app's own. */
+function jumpNode(groups, wrap) {
+  const nav = el("nav", "coverage-jump");
+  nav.setAttribute("aria-label", "Jump to a lean");
+  for (const group of groups) {
+    const button = el("button", "coverage-jump-item");
+    button.type = "button";
+    button.append(el("span", "", LEAN_LABELS[group.bucket] || group.bucket), el("span", "coverage-jump-count", String(group.rows.length)));
+    button.addEventListener("click", () => {
+      // The sheet panel is the scroller. scrollIntoView would also scroll its fixed
+      // ancestors and push the sheet's own header off screen, so this sets the panel's
+      // offset directly: the group's top, less the sticky header's height.
+      const target = [...wrap.querySelectorAll(".coverage-group")].find((g) => g.dataset.bucket === group.bucket);
+      const panel = wrap.closest(".sheet");
+      if (!target || !panel) return;
+      const head = document.getElementById("sheet-drag")?.offsetHeight || 0;
+      const top = target.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop - head;
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      panel.scrollTo({ top: Math.max(0, top), behavior: reduce ? "auto" : "smooth" });
+    });
+    nav.append(button);
+  }
+  return nav;
 }
 
 /** Opens the coverage sheet for cluster `sid`; `opener` takes focus back on close.
