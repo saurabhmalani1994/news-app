@@ -297,6 +297,7 @@ PAGE = """<!doctype html>
 <p class="notice-text">{summary_line}</p>{watch_line}
 </section>
 {ledger}
+{keep}
 <section class="settings-section" aria-labelledby="sources-label">
 <h2 class="settings-label" id="sources-label">Sources</h2>
 <p class="settings-hint">Unhealthy and failing sources first, then the rest grouped by bucket.</p>
@@ -768,7 +769,82 @@ def _with_sorted_counts(jev, pool):
     return {**jev, "_sorted_counts": counts}
 
 
-def render(pool, sources_path=None, now=None, jev=None):
+# J24: the keep-rule trial (fetcher/keep_rule.py, dist/select.json). Facts first: what
+# the new rule would change, today's number then the new rule's; the evidence (which
+# articles differ and why, how points are earned, the balance by outlet group and lean)
+# is folded underneath.
+KEEP_SECTION = """<section class="settings-section" aria-labelledby="keep-label" id="keep-trial">
+<h2 class="settings-label" id="keep-label">Keep rule trial</h2>
+<p class="settings-hint">{summary}</p>
+{rows}
+</section>"""
+KEEP_FOLD = ('<details class="jev-fold"><summary class="setting-row"><span class="setting-row-text">'
+             '<span class="setting-label">{label}</span></span><span class="setting-value">{value}</span></summary>'
+             '<div class="jev-evidence">{lines}</div></details>')
+KEEP_TERM_WORDS = (
+    ("corroboration", "Covered by other outlets: up to 36 points, more for more independent outlets."),
+    ("lean_span", "Covered across the left-right spread: 8 points."),
+    ("original", "Original reporting, not a wire copy: 10 points."),
+    ("complete", "Full text in the feed: 6 points; a real summary: 3."),
+    ("health", "Outlet failing 3 or more runs in a row: minus 10."),
+    ("paywall", "Paywalled with no full text: minus 6."),
+    ("hard", "Hard news (world, politics, economy, science, conflict): 10 points."),
+    ("recency", "Freshness: 20 points when new, half that at 12 hours old."),
+    ("incumbent", "Already in the last edition: 6 points, so the feed does not churn."),
+)
+
+
+def render_keep(doc, pool):
+    """The Keep rule trial section, or '' without a report."""
+    if not isinstance(doc, dict):
+        return ""
+    if doc.get("state") != "ok":
+        return KEEP_SECTION.format(summary=_esc(f"The trial could not run this hour ({doc.get('error', 'unknown')}). "
+                                                 "Your feed was not affected."), rows="")
+    cap, new = doc["rules"]["cap"], doc["rules"]["score"]
+    names = source_names(pool)
+    summary = (f"Trial only: your feed still uses today's rule (each outlet's first 5 items in feed order). "
+               f"At the same size, the new rule would keep {new['kept']} articles; {doc['differ']['only_score']} of them are different. "
+               "Numbers read today, then the new rule.")
+    m = doc.get("missed") or {}
+    rows = [
+        ("Older than 36 hours", f"{cap['over_36h']} → {new['over_36h']}"),
+        ("In stories 2 or more outlets cover", f"{cap['corroborated']} → {new['corroborated']}"),
+        ("From Singapore outlets", f"{cap['singapore']['outlets']} → {new['singapore']['outlets']}"),
+        ("Tagged Singapore", f"{cap['singapore']['tag']} → {new['singapore']['tag']}"),
+        ("Missed stories last hour", f"{m['cap']} → {m['score']}" if m.get("status") == "ok" else "from next run"),
+        ("Outlets with at least one article", f"{doc['floors']['sources_met']} of {doc['floors']['sources_total']}"),
+    ]
+    body = [LEDGER_ROW.format(label=_esc(label), value=_esc(value)) for label, value in rows]
+
+    def examples(key):
+        out = []
+        for e in doc["examples"].get(key, []):
+            points = sum(e["terms"].values())
+            out.append(JEV_LINE.format(text=_esc(
+                f"“{e['title']}” ({names.get(e['source_id'], e['source_id'])}, {round(e['age_h'])}h old): {points} points.")))
+        return "".join(out) or JEV_LINE.format(text="None.")
+
+    body.append(KEEP_FOLD.format(label="Articles only the new rule keeps", value=doc["differ"]["only_score"],
+                                 lines=examples("only_score")))
+    body.append(KEEP_FOLD.format(label="Articles only today's rule keeps", value=doc["differ"]["only_cap"],
+                                 lines=examples("only_cap")))
+    body.append(KEEP_FOLD.format(label="How an article earns points", value="9 ways",
+                                 lines="".join(JEV_LINE.format(text=_esc(t)) for _k, t in KEEP_TERM_WORDS)
+                                 + JEV_LINE.format(text=_esc("Nothing about you counts: your topics, trust and reading stay on your phone. "
+                                                             "Each outlet group (Singapore, AI, biotech ...) keeps the same space it has today; "
+                                                             "the rule picks better articles inside it."))))
+    body.append(KEEP_FOLD.format(label="Missed stories: what the count means", value="",
+                                 lines=JEV_LINE.format(text=_esc(
+                                     "A fresh story only one outlet had, which a rule dropped, and which 2 or more outlets "
+                                     "carried an hour later. Fewer is better. No one labels anything: the next hour's coverage decides."))))
+    balance = [JEV_LINE.format(text=_esc(f"{b.replace('_', ' ')}: {c} → {n}")) for b, (c, n) in sorted(doc.get("buckets", {}).items())]
+    leans = [JEV_LINE.format(text=_esc(f"Lean {l}: {c} → {n}")) for l, (c, n) in sorted(doc.get("lean", {}).items())]
+    body.append(KEEP_FOLD.format(label="Balance by outlet group and lean", value="", lines="".join(balance + leans)))
+    return KEEP_SECTION.format(summary=_esc(summary), rows="\n".join(body))
+
+
+def render(pool, sources_path=None, now=None, jev=None, keep=None):
     """The Health screen for this pool. `now` defaults to the pool's own generated_at
     (build time has nothing else to compare against); js/health-age.js immediately
     replaces the age line with the device's real clock, before first paint, the same
@@ -796,6 +872,7 @@ def render(pool, sources_path=None, now=None, jev=None):
         summary_line=_esc(", ".join(bits) + "."),
         watch_line=f'\n<p class="notice-text notice-text--watch" id="watch-counts">{_esc(watch_text)}</p>' if watch_text else "",
         ledger=_render_ledger(counts),
+        keep=render_keep(keep, pool),
         sources=_render_sources(pool, sources_path),
         jev=render_jev(_with_sorted_counts(jev, pool)) + ("\n" + render_jev_articles(jev, pool) if jev else ""),
     )

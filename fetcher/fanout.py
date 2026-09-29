@@ -95,7 +95,9 @@ from fetcher.geo import tag_countries, tag_geo
 from fetcher import best_version, locality
 from fetcher.topics import hard_news_topics, load_topics, tag_article
 from fetcher.health import compute_source_health, fetch_previous_pool, parse_previous_health
-from fetcher.state import DEFAULT_STATE_PATH, embed_budget_from, first_seen_from, load_state, stamp_first_seen, write_state
+from fetcher import keep_rule
+from fetcher.state import (DEFAULT_STATE_PATH, embed_budget_from, first_seen_from, load_state, select_dropped_from,
+                           stamp_first_seen, write_state)
 from fetcher.truth_archive import TRUTH_ARCHIVE_URL, link_clusters, load_archive
 from fetcher import watch as wsearch
 from fetcher import workwatch as wwork
@@ -357,7 +359,8 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                       previous_health=None, previous_pool_status="absent", bodies_out=None,
                       previous_events=None, candidates_out=None, watch=None,
                       watch_budget=wsearch.BUDGET_BYTES, embedder=None, work_budget=wwork.BUDGET_BYTES,
-                      truth_archive_posts=None, truth_archive_status="disabled"):
+                      truth_archive_posts=None, truth_archive_status="disabled", select_out=None,
+                      select_prev=None):
     """Turn fetch results for every source into one pool dict. Pure: no network, no clock.
 
     timings, if a dict is passed, receives the clustering wall time in seconds.
@@ -392,6 +395,12 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     {id: vector} for the clusterer's embedding term (fetcher.embed.run, wrapped by
     main(), is the only network in it). None, or an empty answer, clusters exactly as
     B2. timings also receives embed_seconds.
+
+    J24: select_out, if a dict is passed, receives {"doc", "dropped"} from the keep-rule
+    trial (fetcher/keep_rule.py), run on the same candidates beside the cap loop in
+    shadow; select_prev is {"ids": the previous pool's article ids, "dropped": the
+    previous run's dropped fresh singletons}. The trial never changes the pool, and an
+    error in it only sets doc.state to "error".
 
     B9: truth_archive_posts is fetcher.truth_archive.load_archive's post list (never
     None from a real run; main() passes [] on a down or broken archive), read as a
@@ -557,6 +566,23 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                 continue
             published_urls.add(article["url"])
             articles.append(article)
+
+    # J24: the keep-rule trial, on the same candidates (watch-only items left out, as the
+    # cap loop leaves them out), against the cap's own picks. Shadow only.
+    if select_out is not None:
+        try:
+            prev = select_prev or {}
+            ctx = keep_rule.build_context(
+                sources, [c for c in candidates if c["id"] not in watch_only_ids], all_clusters,
+                body_candidates, previous_health, prev.get("ids", ()), now, topics_doc.get("hard_news", ()))
+            doc, dropped = keep_rule.run_shadow(list(ctx["by_id"].values()),
+                                                [a["id"] for a in articles if a["id"] not in watch_only_ids],
+                                                ctx, prev.get("dropped"))
+            doc["generated_at"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+            select_out.update(doc=doc, dropped=dropped)
+        except Exception as exc:  # noqa: BLE001 - the trial never stops a publish
+            select_out.update(doc={"schema_version": keep_rule.SCHEMA_VERSION, "mode": "shadow", "state": "error",
+                                   "error": type(exc).__name__}, dropped=None)
 
     # W2: the watch byte budget. Tags on articles that publish anyway count first; then
     # watch-only items and tagged articles past the cap, round robin across queries
@@ -929,6 +955,8 @@ def main(argv=None):
         return vectors
 
     first_seen = first_seen_from(previous_bytes)  # J22: when each article was first pulled
+    select_out = {}  # J24: the keep-rule trial's report
+    select_prev = {"ids": set(first_seen), "dropped": select_dropped_from(state_bytes)}
 
     def _build(watch):
         return stamp_first_seen(build_pool_fanout(
@@ -937,6 +965,7 @@ def main(argv=None):
             bodies_out=bodies_out, previous_events=previous_events, candidates_out=candidates_out,
             watch=watch, embedder=_embedder,
             truth_archive_posts=truth_posts, truth_archive_status=truth_status,
+            select_out=select_out, select_prev=select_prev,
         ), first_seen)
 
     # W2: a pool that watch items broke (an exception, or a pool that fails the
@@ -962,7 +991,12 @@ def main(argv=None):
     write_bodies(bodies_out.get("bodies", {}), out.parent / "bodies")
     # F6: only ever written from a pool that already passed validate() above, so a
     # bad run can never hand the next run bad state either.
-    write_state(pool, args.state_path, embed_run["budget"])
+    write_state(pool, args.state_path, embed_run["budget"], select_out.get("dropped"))
+    # J24: the trial's report beside the pool (behind Access with the site); the log
+    # gets counts only.
+    if select_out.get("doc"):
+        (out.parent / "select.json").write_text(dumps(select_out["doc"]), encoding="utf-8")
+        print(keep_rule.log_line(select_out["doc"]))
     if dump_path is not None:
         dump = dumps(candidates_out["dump"]).encode("utf-8")
         dump_path.parent.mkdir(parents=True, exist_ok=True)
