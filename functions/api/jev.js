@@ -125,7 +125,9 @@ async function runJev(env, input, deps) {
   });
   const call = which === "openrouter"
     ? openRouter(env, input, deps, controller.signal)
-    : Promise.resolve().then(() => (deps.ai || env.AI).run(env.JEV_MODEL || JEV_MODEL, input))
+    // J14: Workers AI refused the list form with 7003 (User Input Error), as OpenRouter
+    // did with a 400: the same record form goes to both.
+    : Promise.resolve().then(() => (deps.ai || env.AI).run(env.JEV_MODEL || JEV_MODEL, { state: input.state, questions: toWire(input.questions) }))
       .catch((error) => { throw new JevCallError(`workers_ai: ${cleanMessage(error)}`); });
   try {
     return await Promise.race([call, timeout]);
