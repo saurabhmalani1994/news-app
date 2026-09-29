@@ -365,6 +365,13 @@ def render_jev(doc):
     for cell, heading in (("jev_only", "Found by Jev only"), ("rules_only", "Tagged by rules only")):
         for ex in ai["examples"].get(cell, [])[:3]:
             body.append(LEDGER_ROW.format(label=_esc(ex["title"]), value=_esc(heading)))
+    card = doc.get("scorecard") or {}
+    word = {"pass": "Pass", "fail": "Needs work", "not_enough_data": "Not enough data"}
+    for c in card.get("checks", []):
+        body.append(LEDGER_ROW.format(label=_esc(f"Check: {c['label']}"), value=_esc(word.get(c["status"], ""))))
+    ready = {"ready": "Ready", "not_ready": "Not ready", "not_enough_data": "Not enough data yet"}
+    for feature, state in (card.get("features") or {}).items():
+        body.append(LEDGER_ROW.format(label=_esc(f"Feature: {feature}"), value=_esc(ready.get(state, ""))))
     hint = ("Jev answers questions about new articles here, and nothing it says changes your feed. "
             "A feed's bucket is a rough answer key, so these are agreement rates, not accuracy.")
     if doc.get("mock"):

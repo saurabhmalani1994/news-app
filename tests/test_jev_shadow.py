@@ -229,3 +229,35 @@ def test_openrouter_errors_are_counted_without_the_key(tmp_path):
     doc = js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=api.post)
     assert doc["run"]["state"] == "api_errors"
     assert OR_KEY not in json.dumps(doc) + js.log_line(doc)
+
+
+def test_the_scorecard_passes_fails_and_waits_for_enough_data(tmp_path, monkeypatch):
+    monkeypatch.setattr(js, "load_buckets", lambda path="sources.json": BUCKETS)
+    api = FakeOpenRouter(good_answers)
+    doc = js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=api.post)
+    card = doc["scorecard"]
+    by_key = {c["key"]: c for c in card["checks"]}
+    assert set(by_key) == {c[0] for c in js.CHECKS}
+    assert by_key["same_event"]["status"] == "not_enough_data", "one syndicated pair is below the minimum of 5"
+    assert by_key["latency"]["n"] == doc["run"]["asked"]
+    assert card["features"]["Versions and other side"] == "not_enough_data"
+    assert card["mock"] is False
+    text = js.scorecard_text(card)
+    assert "Jev scorecard" in text and "MOCK" not in text and OR_KEY not in text
+
+
+def test_a_failed_check_makes_its_feature_not_ready():
+    doc = {"mock": False, "run": {"asked": 0, "latency_ms": {"n": 0}}, "report": {
+        "same_event_known": {"syndicated_pairs": 10, "syndicated_read_same": 5, "unrelated_pairs": 20, "unrelated_read_different": 20},
+        "confidence": {}, "section_vs_bucket": {"by_bucket": {}}, "region_vs_bucket": {"by_bucket": {}},
+        "clinical_and_industrial_both_likely": 0, "articles_answered": 0}}
+    card = js.scorecard(doc)
+    assert {c["key"]: c["status"] for c in card["checks"]}["same_event"] == "fail"
+    assert card["features"]["Versions and other side"] == "not_ready"
+
+
+def test_known_pairs_are_asked_before_articles(tmp_path):
+    api = FakeOpenRouter(good_answers)
+    js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=api.post)
+    kinds = ["pair" if "same_event" in c[2]["questions"] else "article" for c in api.calls]
+    assert kinds[0] == "pair" and kinds.index("article") > kinds.index("pair")
