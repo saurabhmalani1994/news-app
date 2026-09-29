@@ -19,6 +19,7 @@ late run is not stale, a pool that has not moved in three cycles is.
 """
 import html as _html
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -323,31 +324,42 @@ JEV_SECTION = """<section class="settings-section" aria-labelledby="jev-label" i
 </section>"""
 
 
+LEDGER_ROW_STACKED = ('<div class="setting-row setting-row--stack jev-row-long"><div class="setting-row-text">'
+                      '<span class="setting-label">{label}</span>'
+                      '<span class="setting-sublabel">{value}</span></div></div>')
+
+
 def _of(part, whole):
     pct = f" ({round(100 * part / whole)}%)" if whole else ""
     return f"{part} of {whole}{pct}"
 
 
-# J8: every article Jev read, newest first: the rules' own tags beside Jev's answers,
-# each answer with the decision rules' word for how sure Jev was (the bands of
-# app/static/js/jev/decide.js). Headlines and outlet names are feed text, escaped (R26);
-# a link only for an http(s) url. The first JEV_ARTICLES_SHOWN are listed, the rest one
-# tap away, the page's own static markup (no script).
-JEV_ARTICLES_SHOWN = 30
-JEV_ARTICLES = """<section class="settings-section" aria-labelledby="jev-articles-label" id="jev-articles">
-<h2 class="settings-label" id="jev-articles-label">Articles Jev read</h2>
+# J8, J10: every article Jev read, in its own accordion (closed until tapped), grouped:
+# where Jev and the rules disagree about AI first, then every article, newest first.
+# Each headline opens the story inside Almanac (/#story-<id>: Home, scrolled to its card),
+# never the publisher's page; a story with several versions also links to them
+# (/#bundle-<id>). Each shows the rules' own tags beside Jev's answers, with how sure
+# Jev was (the bands of app/static/js/jev/decide.js). Headlines and outlet names are
+# feed text, escaped (R26). Static markup only, no script.
+JEV_ARTICLES = """<details class="settings-section jev-accordion" id="jev-articles">
+<summary class="settings-label jev-accordion-head">Articles Jev read ({count})</summary>
 <p class="settings-hint">{hint}</p>
-{rows}{more}
-</section>"""
+{groups}
+</details>"""
+JEV_GROUP = """<details class="jev-group"{open}>
+<summary class="settings-hint jev-group-head">{title} ({count})</summary>
+{rows}
+</details>"""
 JEV_ARTICLE_ROW = ('<div class="setting-row setting-row--stack jev-article" data-article="{id}">'
                    '<div class="setting-row-text">{title}'
                    '<span class="setting-sublabel">{meta}</span>'
-                   '<span class="setting-sublabel jev-article-answers">{answers}</span>{about}'
+                   '<span class="setting-sublabel jev-article-answers">{answers}</span>{about}{versions}'
                    '</div></div>')
 ABOUT_LABELS = (("ai", "AI"), ("hard_news", "hard news"), ("clinical", "clinical medicine"),
                 ("industrial_biotech", "industrial biotech"))
 SENTIMENT_SHOWN = {"Good news": "Good news", "Bad news": "Bad news", "Both good and bad news": "Mixed",
                    "Neither good nor bad news": "Neutral"}
+_SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,80}$")
 
 
 def _sure_word(answer):
@@ -370,46 +382,67 @@ def _choice_text(name, answer, shown=None):
     return f"{name} {pick}" + (f" ({detail})" if detail else "")
 
 
-def _link(url, text):
-    safe = isinstance(url, str) and url.lower().startswith(("https://", "http://"))
-    if not safe:
+def _almanac_link(sid, text):
+    """The headline as a link into Almanac's own front page, or plain text for an id
+    the address rule would refuse."""
+    if not _SAFE_ID.match(sid or ""):
         return f'<span class="setting-label">{_esc(text)}</span>'
-    return (f'<a class="setting-label jev-article-title" href="{_html.escape(url, quote=True)}" '
-            f'target="_blank" rel="noopener noreferrer">{_esc(text)}</a>')
+    return f'<a class="setting-label jev-article-title" href="/#story-{sid}">{_esc(text)}</a>'
+
+
+def _jev_likely(ans, key):
+    a = ans.get(key)
+    return isinstance(a, dict) and a.get("t") == "noul" and a["v"] >= 0.7
 
 
 def render_jev_articles(doc, pool, now=None):
-    """The list of articles Jev read, or '' when there are none."""
+    """The "Articles Jev read" accordion, or '' when there are none."""
     answers = (doc or {}).get("answers") if isinstance(doc, dict) else None
     if not isinstance(answers, dict) or not answers:
         return ""
     names = source_names(pool)
     by_id = {a["id"]: a for a in pool.get("articles", [])}
+    story_of, size = {}, {}
+    for c in pool.get("clusters", []):
+        for i in c.get("article_ids", []):
+            story_of[i] = c["id"]
+        size[c["id"]] = len(c.get("article_ids", []))
     read = sorted((by_id[i] for i in answers if i in by_id), key=lambda a: (a.get("published_at", ""), a["id"]), reverse=True)
     now = now or _parse_time(pool.get("generated_at", ""))
-    rows = []
-    for a in read:
+
+    def row(a):
         ans = answers[a["id"]]
+        sid = story_of.get(a["id"], a["id"])
         published = _parse_time(a.get("published_at", ""))
         age = _relative_age((now - published).total_seconds()) if now and published else ""
         rules = ", ".join(a.get("topics") or []) or "none"
         meta = " · ".join(x for x in (names.get(a.get("source_id"), a.get("source_id", "")), age, f"rules: {rules}") if x)
         parts = [_choice_text("Section", ans.get("section")), _choice_text("Region", ans.get("region")),
                  _choice_text("", ans.get("sentiment"), SENTIMENT_SHOWN).strip()]
-        likely = [f"{label} {round(100 * ans[key]['v'])}%" for key, label in ABOUT_LABELS
-                  if isinstance(ans.get(key), dict) and ans[key].get("t") == "noul" and ans[key]["v"] >= 0.7]
+        likely = [f"{label} {round(100 * ans[key]['v'])}%" for key, label in ABOUT_LABELS if _jev_likely(ans, key)]
         about = f'<span class="setting-sublabel">Likely about: {_esc(", ".join(likely))}</span>' if likely else ""
-        rows.append(JEV_ARTICLE_ROW.format(
-            id=_html.escape(a["id"], quote=True), title=_link(a.get("url"), a.get("title", "")),
-            meta=_esc(meta), answers=_esc(" · ".join(x for x in parts if x) or "No usable answers"), about=about))
-    shown, rest = rows[:JEV_ARTICLES_SHOWN], rows[JEV_ARTICLES_SHOWN:]
-    more = (f'\n<details class="jev-more"><summary class="settings-hint">Show {len(rest)} more</summary>\n'
-            + "\n".join(rest) + "\n</details>") if rest else ""
-    hint = (f"{len(read)} articles in today's pool, newest first. Each shows the rules' own tags, then Jev's answers "
-            "with how sure it was (sure, leaning, split when its top two were close, unsure).")
+        versions = (f'<a class="setting-sublabel jev-article-versions" href="/#bundle-{sid}">'
+                    f'All {size[sid]} versions in Almanac</a>') if size.get(sid, 1) > 1 and _SAFE_ID.match(sid) else ""
+        return JEV_ARTICLE_ROW.format(
+            id=_html.escape(a["id"], quote=True), title=_almanac_link(sid, a.get("title", "")),
+            meta=_esc(meta), answers=_esc(" · ".join(x for x in parts if x) or "No usable answers"),
+            about=about, versions=versions)
+
+    jev_only = [a for a in read if _jev_likely(answers[a["id"]], "ai") and "ai" not in (a.get("topics") or [])]
+    rules_only = [a for a in read if "ai" in (a.get("topics") or []) and "ai" in answers[a["id"]]
+                  and not _jev_likely(answers[a["id"]], "ai")]
+    groups = []
+    for title, items, is_open in (("Jev found AI the rules missed", jev_only, False),
+                                  ("Rules tagged AI, Jev disagrees", rules_only, False),
+                                  ("All articles, newest first", read, False)):
+        if items:
+            groups.append(JEV_GROUP.format(title=_esc(title), count=len(items), open=" open" if is_open else "",
+                                           rows="\n".join(row(a) for a in items)))
+    hint = ("Tap a headline to open the story in Almanac. Each shows the rules' own tags, then Jev's answers "
+            "with how sure it was: sure, leaning, split (its top two were close) or unsure.")
     if (doc or {}).get("mock"):
         hint += " These answers come from the local stand-in, not the real Jev."
-    return JEV_ARTICLES.format(hint=_esc(hint), rows="\n".join(shown), more=more)
+    return JEV_ARTICLES.format(count=len(read), hint=_esc(hint), groups="\n".join(groups))
 
 
 def _budget_row(run):
@@ -429,7 +462,9 @@ def render_jev(doc):
     ai = r["ai_rules_vs_jev"]
     ai_total = ai["both"] + ai["rules_only"] + ai["jev_only"] + ai["neither"]
     conf = r.get("confidence") or {}
-    conf_text = ", ".join(f"{k} {v}" for k, v in sorted(conf.items(), key=lambda kv: -kv[1])) or "none yet"
+    words = {"sure": "sure", "lean": "leaning", "ambiguous": "split", "unsure": "unsure", "unrated": "no confidence",
+             "conflict": "self-contradicting", "missing": "unanswered"}
+    conf_text = " · ".join(f"{v} {words.get(k, k)}" for k, v in sorted(conf.items(), key=lambda kv: -kv[1])) or "none yet"
     rows = [
         ("Model", "Local stand-in (mock)" if doc.get("mock") else doc.get("model", "")),
         ("Last run", f"{run.get('state', '')}: {run.get('asked', 0)} asked, {run.get('cached', 0)} cached"
@@ -446,10 +481,10 @@ def render_jev(doc):
         ("How sure Jev was", conf_text),
         _budget_row(run),
     ]
-    body = [LEDGER_ROW.format(label=_esc(label), value=_esc(value)) for label, value in rows]
-    for cell, heading in (("jev_only", "Found by Jev only"), ("rules_only", "Tagged by rules only")):
-        for ex in ai["examples"].get(cell, [])[:3]:
-            body.append(LEDGER_ROW.format(label=_esc(ex["title"]), value=_esc(heading)))
+    # C4: a long value (the confidence counts, a run with its first error) wraps under its
+    # label instead of running off a phone's screen.
+    body = [(LEDGER_ROW_STACKED if len(value) > 28 else LEDGER_ROW).format(label=_esc(label), value=_esc(value))
+            for label, value in rows]
     card = doc.get("scorecard") or {}
     word = {"pass": "Pass", "fail": "Needs work", "not_enough_data": "Not enough data"}
     for c in card.get("checks", []):

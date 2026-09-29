@@ -134,4 +134,44 @@ export function analysisCache(storage) {
   };
 }
 
+/** J11: one of the hourly run's compact answers ({t, v, c?, p?}, fetcher/jev_shadow.py)
+ * in the shape the sheet reads (normalizeAnswers'), or null when it does not fit. */
+export function fromCompact(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const c = typeof entry.c === "number" ? entry.c : null;
+  if (entry.t === "noul" && typeof entry.v === "number") {
+    return { type: "noul", value: entry.v, label: null, confidence: c, probabilities: null };
+  }
+  if (entry.t === "choice" && typeof entry.v === "string") {
+    const p = entry.p && typeof entry.p === "object" ? entry.p : null;
+    return { type: "choice", value: entry.v, label: entry.v, confidence: c, probabilities: p };
+  }
+  return null;
+}
+
+/** J11: the hourly run's answers for a story: the first of `articleIds` (the row's own
+ * article first, then the rest of its cluster) that the run answered, in the sheet's
+ * shape, with only the keys that fit a question the sheet shows. {answers, id} or null. */
+export function hourlyAnswers(doc, articleIds) {
+  const all = doc && typeof doc.answers === "object" ? doc.answers : null;
+  if (!all) return null;
+  const shown = new Set(STORY_LABELS.map(([key]) => key).concat("sentiment"));
+  for (const id of articleIds) {
+    const entry = all[id];
+    if (!entry || typeof entry !== "object") continue;
+    const answers = {};
+    for (const [key, value] of Object.entries(entry)) {
+      const read = shown.has(key) ? fromCompact(value) : null;
+      if (read) answers[key] = read;
+    }
+    if (Object.keys(answers).length) return { answers, id };
+  }
+  return null;
+}
+
+/** J11: the questions the hourly run did not answer, still to ask Jev live. */
+export function questionsLeft(answers) {
+  return Object.fromEntries(Object.entries(STORY_QUESTIONS).filter(([key]) => !answers[key]));
+}
+
 export { STORY_QUESTIONS };

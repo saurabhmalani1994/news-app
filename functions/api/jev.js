@@ -83,22 +83,35 @@ async function upstreamMessage(response) {
 
 /** One OpenRouter call. Throws a JevCallError on a non-2xx answer or a failed fetch. */
 async function openRouter(env, input, deps, signal) {
+  // J9: Workers refuses a fetch called detached from the global ("Illegal invocation"),
+  // so the real one is always called as fetch(...), never pulled out into a value.
+  const doFetch = deps.fetch || ((url, init) => fetch(url, init));
   let response;
   try {
-    response = await (deps.fetch || fetch)(env.JEV_OPENROUTER_URL || OPENROUTER_URL, {
+    response = await doFetch(env.JEV_OPENROUTER_URL || OPENROUTER_URL, {
       method: "POST",
       headers: { authorization: `Bearer ${openRouterKey(env)}`, "content-type": "application/json" },
       body: JSON.stringify({ model: env.JEV_MODEL || OPENROUTER_MODEL, state: input.state, questions: toWire(input.questions) }),
       signal,
     });
   } catch (error) {
-    throw new JevCallError(error?.name === "AbortError" ? "timeout" : "network");
+    throw new JevCallError(error?.name === "AbortError" ? "timeout" : `network: ${cleanMessage(error)}`);
   }
   if (!response.ok) {
     const message = await upstreamMessage(response);
     throw new JevCallError(`openrouter_${response.status}${message ? `: ${message}` : ""}`, response.status);
   }
-  return response.json();
+  try {
+    return await response.json();
+  } catch {
+    throw new JevCallError("openrouter_unreadable_reply");
+  }
+}
+
+/** J9: an unexpected error's name and message, clipped, with anything key-like removed. */
+function cleanMessage(error) {
+  const text = `${error?.name || "Error"}: ${error?.message || ""}`;
+  return text.replace(KEYISH, "[hidden]").replace(/\s+/g, " ").trim().slice(0, 140);
 }
 
 /** The model call, or the local mock. Throws on a timeout or a model error. */
@@ -112,7 +125,8 @@ async function runJev(env, input, deps) {
   });
   const call = which === "openrouter"
     ? openRouter(env, input, deps, controller.signal)
-    : (deps.ai || env.AI).run(env.JEV_MODEL || JEV_MODEL, input);
+    : Promise.resolve().then(() => (deps.ai || env.AI).run(env.JEV_MODEL || JEV_MODEL, input))
+      .catch((error) => { throw new JevCallError(`workers_ai: ${cleanMessage(error)}`); });
   try {
     return await Promise.race([call, timeout]);
   } finally {
@@ -156,7 +170,7 @@ export async function handle(request, env = {}, deps = {}) {
   try {
     raw = await runJev(env, { state: data.state, questions: data.questions }, deps);
   } catch (error) {
-    const reason = error instanceof JevCallError ? error.reason : "model_error";
+    const reason = error instanceof JevCallError ? error.reason : `model_error: ${cleanMessage(error)}`;
     return reply(502, { error: "Jev did not answer", reason });
   }
   const { answers, missing } = normalizeAnswers(data.questions, raw);

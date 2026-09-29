@@ -54,3 +54,8 @@ test("a cross-origin request that is not an image is bypassed, never cached", ()
 test("pool.json still routes to POOL even where an image destination would otherwise win, since it is checked first", () => {
   assert.equal(strategyFor(req(ORIGIN + "/pool.json", "image"), ORIGIN), STRATEGY.POOL);
 });
+
+test("J11: jev.json, the hourly Jev answers, is network-first like the pool", () => {
+  assert.equal(strategyFor(req(ORIGIN + "/jev.json"), ORIGIN), STRATEGY.POOL);
+  assert.equal(strategyFor(req(ORIGIN + "/notjev.json"), ORIGIN), STRATEGY.SHELL);
+});

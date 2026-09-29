@@ -377,11 +377,35 @@ function buildFollowing() {
   box.dataset.ready = "true";
 }
 
+// J10: a #story-<id> address (the Health screen's "Articles Jev read" links) opens Home on
+// Today and brings that story's card into view with a brief highlight, opening "Show
+// more headlines" when the card is inside it. After the device's re-rank, so the card
+// is where it will stay. The address is then dropped, so a later hash change does not
+// scroll again; a story no longer on the page simply leaves Home as it is.
+const STORY_HASH = /^story-([a-z0-9][a-z0-9_-]{0,80})$/;
+function showStory(sid) {
+  const tabs = visibleTabs();
+  const today = tabs.findIndex((t) => t.dataset.section === "today");
+  if (today >= 0 && currentIndex() !== today) select(today, true);
+  const panel = document.getElementById("section-today");
+  const li = panel?.querySelector(`li.story[data-sid="${CSS.escape(sid)}"]`);
+  history.replaceState(null, "", location.pathname + location.search);
+  if (!li) return;
+  const rest = li.closest("details");
+  if (rest && !rest.open) rest.open = true;
+  const top = li.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop - 96;
+  panel.scrollTo({ top: Math.max(0, top), behavior: reduced.matches ? "instant" : "smooth" });
+  li.classList.add("is-found");
+  setTimeout(() => li.classList.remove("is-found"), 2400);
+}
+
 // Bottom nav: #following and #saved raise their layer over Home; anything else is Home.
 // Tapping Home while on Home takes the current section back to its top, as NYT does.
 const screens = [...document.querySelectorAll(".screen")];
 function route() {
   const want = location.hash.slice(1);
+  const story = STORY_HASH.exec(want);
+  if (story) whenRanked(() => showStory(story[1]));
   const name = screens.some((s) => s.dataset.screen === want) ? want : "home";
   if (name === "following") whenRanked(buildFollowing);
   for (const screen of screens) {

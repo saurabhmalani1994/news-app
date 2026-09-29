@@ -171,7 +171,8 @@ def test_the_health_section_escapes_feed_titles(tmp_path, monkeypatch):
     p["articles"][3]["topics"] = []
     api = FakeApi(answers=good_answers)
     doc = js.run(p, NOW, env=ENV, cache_path=tmp_path / "j.json", post=api.post, get=api.get)
-    html = render_jev(doc)
+    from app.health import render_jev_articles
+    html = render_jev(doc) + render_jev_articles(doc, p)
     assert "Jev, shadow mode" in html and "&lt;b&gt;AI&lt;/b&gt; chips &amp; more" in html and "<b>" not in html
     assert render_jev(None) == ""
     mock = js.run(pool(), NOW, env={"JEV_MOCK": "1"}, cache_path=tmp_path / "m.json")
@@ -284,16 +285,34 @@ def test_health_lists_each_article_jev_read_beside_the_rules(tmp_path, monkeypat
     from app.health import render_jev_articles
     monkeypatch.setattr(js, "load_buckets", lambda path="sources.json": BUCKETS)
     p = pool()
-    p["articles"][0]["url"] = "https://example.org/hdb"
-    p["articles"][1]["url"] = "javascript:alert(1)"
     p["articles"][1]["title"] = "<i>Wire</i>: Ceasefire talks resume in Doha"
+    p["articles"][4]["topics"] = ["ai"]  # rules call the Texas flood story AI; Jev does not
     api = FakeOpenRouter(good_answers)
     doc = js.run(p, NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=api.post)
     html = render_jev_articles(doc, p)
-    assert html.count('class="setting-row setting-row--stack jev-article"') == 5
-    assert html.index('data-article="a1"') < html.index('data-article="a4"'), "newest first"
-    assert 'href="https://example.org/hdb"' in html and "javascript:" not in html
+    assert html.startswith('<details class="settings-section jev-accordion"'), "its own accordion, closed"
+    assert "Articles Jev read (5)" in html
+    groups = html.split('<details class="jev-group"')[1:]
+    assert [g[g.index(">") + 1:].split("(")[0].strip().split("\n")[-1] for g in groups] == [
+        '<summary class="settings-hint jev-group-head">Rules tagged AI, Jev disagrees',
+        '<summary class="settings-hint jev-group-head">All articles, newest first']
+    all_rows = groups[-1]
+    assert all_rows.count('class="setting-row setting-row--stack jev-article"') == 5
+    assert all_rows.index('data-article="a1"') < all_rows.index('data-article="a4"'), "newest first"
+    assert 'href="/#story-a1"' in html, "an unclustered article opens as its own story"
+    assert 'href="/#story-c1"' in html and 'href="/#bundle-c1"' in html, "a clustered one opens its story and versions"
+    assert "http" not in html, "never the publisher's page"
     assert "&lt;i&gt;Wire&lt;/i&gt;" in html and "<i>" not in html
     assert "rules: singapore" in html and "Section Singapore (sure, 80%)" in html
     assert "Likely about: AI 90%" in html
     assert render_jev_articles(None, p) == ""
+
+
+def test_a_long_report_value_wraps_under_its_label(tmp_path, monkeypatch):
+    monkeypatch.setattr(js, "load_buckets", lambda path="sources.json": BUCKETS)
+    doc = js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=FakeOpenRouter(good_answers).post)
+    doc["report"]["confidence"] = {"sure": 971, "lean": 110, "ambiguous": 89, "unsure": 17, "conflict": 3}
+    html = render_jev(doc)
+    assert "971 sure · 110 leaning · 89 split · 17 unsure · 3 self-contradicting" in html
+    row = html[html.index("How sure Jev was") - 200:html.index("How sure Jev was")]
+    assert "jev-row-long" in row

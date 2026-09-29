@@ -50,8 +50,8 @@ import { pageInput } from "./page-input.js";
 // J1: "Analyse with Jev", a typed read of the story (js/jev/*): answers are the app's own
 // labels only, cached per story on this phone, and change nothing in the profile.
 import { askJev } from "./jev/client.js";
-import { storyState, analysisCache, STORY_QUESTIONS } from "./jev/story.js";
-import { renderAnalysis } from "./jev/story-view.js";
+import { storyState, analysisCache, hourlyAnswers, questionsLeft } from "./jev/story.js";
+import { renderAnalysis, readWithJev } from "./jev/story-view.js";
 
 function currentHistoryTerms() {
   return [seenPenaltyTerm(summaryToHistory(readSummary(window.localStorage)))];
@@ -173,7 +173,7 @@ async function openStoryMenu(li) {
   items.push(menuItem({ action: "boost-topic", icon: ICONS.boost, text: "Boost topic" }));
   items.push(menuItem({ action: "follow", icon: ICONS.follow, text: "Follow this story" }));
   items.push(menuItem({ action: "why", icon: ICONS.why, text: "Why this", hidden: !WHY_THIS_ENABLED }));
-  items.push(menuItem({ action: "jev", icon: ICONS.jev, text: "Analyse with Jev" }));
+  items.push(menuItem({ action: "jev", icon: ICONS.jev, text: "Jev's read" }));
 
   const menu = document.createElement("div");
   menu.className = "sheet-menu";
@@ -284,42 +284,103 @@ async function bodyText(li) {
   }
 }
 
-async function doJev({ li, sid, facts }) {
+// J11: the hourly run's answers (dist/jev.json), fetched once per page and reused, so a
+// story Jev already read shows its answers at once without a call.
+let hourlyPromise = null;
+function hourlyDoc() {
+  if (!hourlyPromise) {
+    hourlyPromise = fetch("jev.json", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+  }
+  return hourlyPromise;
+}
+
+/** The row's own article first, then the rest of its story's members. */
+function storyArticleIds(sid, attrs) {
+  const cluster = (getInput().pool?.clusters || []).find((c) => c.id === sid);
+  const ids = cluster ? cluster.article_ids : [sid];
+  return [...new Set([attrs.article_id, ...ids].filter(Boolean))];
+}
+
+// J12: two steps. "Jev's read" first shows what the hourly run already answered, at once
+// and with no call; only the sheet's own button asks Jev live, reading the full article
+// when Almanac has it, for what the hourly run does not ask. A story read live before
+// opens with its full result.
+async function doJev({ li, sid, attrs, facts }) {
   const opener = li.querySelector(".story-overflow");
-  const item = document.querySelector('#sheet-body .sheet-item[data-action="jev"]');
-  const label = item?.querySelector(".sheet-item-text");
-  let result = jevCache.get(sid);
-  const cached = Boolean(result);
-  if (!result) {
-    if (item?.getAttribute("aria-busy") === "true") return;
-    item?.setAttribute("aria-busy", "true");
-    if (label) label.textContent = "Analysing…";
-    try {
-      const articleText = facts.has_body ? await bodyText(li) : "";
-      const { answers, missing, model } = await askJev(storyState(getInput(), sid, facts.title, articleText), STORY_QUESTIONS);
-      result = { answers, missing, model, full_text: Boolean(articleText), at: nowIso() };
-      // The local stand-in's answers are never kept, so switching to the real Jev
-      // never shows a mock answer from the cache.
-      if (Object.keys(answers).length && model !== "mock-jev") jevCache.put(sid, result);
-    } catch (error) {
-      item?.removeAttribute("aria-busy");
-      if (label) label.textContent = "Analyse with Jev";
+  const full = jevCache.get(sid);
+  closeSheet();
+  if (full) {
+    await sheetClosed();
+    openSheet({ title: "Jev's read", content: analysisContent(full, facts, true), opener });
+    return;
+  }
+  const hourly = hourlyAnswers(await hourlyDoc(), storyArticleIds(sid, attrs));
+  const content = [];
+  if (hourly) {
+    content.push(...renderAnalysis({ answers: hourly.answers, headline: facts.title, hourly: Object.keys(hourly.answers).length, live: false }));
+  } else {
+    const h = document.createElement("p");
+    h.className = "why-headline";
+    h.textContent = facts.title;
+    content.push(h);
+  }
+  content.push(readWithJev({
+    hasBody: facts.has_body,
+    hourly: Boolean(hourly),
+    onClick: (button) => readLive({ li, sid, facts, hourly, button, opener }),
+  }));
+  await sheetClosed();
+  openSheet({ title: "Jev's read", content, opener });
+}
+
+function analysisContent(result, facts, cached) {
+  return renderAnalysis({
+    answers: result.answers, missing: result.missing, headline: facts.title, cached,
+    fullText: Boolean(result.full_text), model: result.model || "", hourly: result.hourly || 0, liveFailed: result.live_failed || "",
+  });
+}
+
+/** The live step: the questions the hourly run left, with the article's text when the
+ * reader has it; the sheet then reopens with everything Jev said. */
+async function readLive({ li, sid, facts, hourly, button, opener }) {
+  if (button.getAttribute("aria-busy") === "true") return;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = "Jev is reading…";
+  const answers = { ...(hourly?.answers || {}) };
+  const left = questionsLeft(answers);
+  let missing = [];
+  let model = "";
+  let liveFailed = "";
+  let fullText = false;
+  try {
+    const articleText = facts.has_body ? await bodyText(li) : "";
+    fullText = Boolean(articleText);
+    const live = await askJev(storyState(getInput(), sid, facts.title, articleText), left);
+    Object.assign(answers, live.answers);
+    missing = live.missing;
+    model = live.model;
+  } catch (error) {
+    if (!hourly) {
       closeSheet();
       showToast(error.message);
       return;
     }
+    liveFailed = error.reason || error.kind || "no answer";
+    missing = Object.keys(left);
   }
+  const result = { answers, missing, model, full_text: fullText, hourly: hourly ? Object.keys(hourly.answers).length : 0,
+    live_failed: liveFailed, at: nowIso() };
+  // Kept only when complete and real: a partial answer is asked again next time.
+  if (Object.keys(answers).length && model !== "mock-jev" && !liveFailed) jevCache.put(sid, result);
   closeSheet();
-  if (!Object.keys(result.answers).length) {
+  if (!Object.keys(answers).length) {
     showToast("Jev couldn't read this story.");
     return;
   }
-  const content = renderAnalysis({
-    answers: result.answers, missing: result.missing, headline: facts.title, cached,
-    fullText: Boolean(result.full_text), model: result.model || "",
-  });
   await sheetClosed();
-  openSheet({ title: "Jev's read", content, opener });
+  openSheet({ title: "Jev's read", content: analysisContent(result, facts, false), opener });
 }
 
 async function doSave({ sid, attrs, facts }) {

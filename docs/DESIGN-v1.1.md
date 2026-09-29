@@ -48,6 +48,8 @@ Two interaction signals feed the seen penalty, weighted differently: **opened** 
 
 Three call shapes and one deterministic rejection gate, unchanged from v1: one-off filter, config diff, retune proposal. Every numeric delta is capped, every path is whitelisted, every rejection is counted. Article text is untrusted input, so the gate, not the prompt, is what makes a hostile headline harmless.
 
+**R13 amended by the owner, 2026-09-29: AI may point at the publisher's text, never write it.** "Read with Jev" in the reader (J13) labels paragraphs with the app's own fixed words and highlights the publisher's own sentences; no model-written text reaches the page. The rest of R13 stands as written below.
+
 **No AI written summaries anywhere in the reading path (R13).** A headline-only item has no text to summarize, and a multi-outlet cluster is better served by the coverage view's real headlines side by side than by a model framing the news, which is the thing this app exists to avoid.
 
 **The weekly retune is deterministic, not AI-driven (R20).** Counts over the week produce capped, owner-approved deltas without a model call; AI is needed only for free-text requests and an optional plain-language explanation. This supersedes DESIGN-v1 section 5 item 3, which named the weekly proposal as an AI call shape; the ruling wins, and the weekly review now works with AI off.
@@ -107,7 +109,7 @@ Carried from v1: every drop carries a reason code, the ledger invariant fails th
 | R10 | Trust is device-owned, lean is repo-owned | 2 Architecture |
 | R11 | PBS NewsHour RSS stands in for AP | 2 Architecture |
 | R12 | Body text lives outside pool.json, fetched lazily | 3 Data contract |
-| R13 | No AI written summaries in the reading path | 5 AI layer |
+| R13 | No AI written summaries in the reading path (amended 2026-09-29: AI may point at the text, never write it) | 5 AI layer |
 | R14 | Primary viewport is 360dp, measured | 1 What it is |
 | R15 | Emulator test is a release gate | 7 UI surfaces |
 | R16 | Must-know eligibility needs hard news and lean spread | 6 Standing stories |

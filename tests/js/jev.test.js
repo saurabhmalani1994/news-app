@@ -17,8 +17,9 @@ import { mockJev } from "../../app/static/js/jev/mock.js";
 import { STORY_QUESTIONS, askQuestions, askTargets, NONE } from "../../app/static/js/jev/questions.js";
 import { proposalFromAsk, askState, cleanRequest, strengthStep, confidenceLine } from "../../app/static/js/jev/ask.js";
 import { readChoice, readNoul, expectedPosition, RULES } from "../../app/static/js/jev/decide.js";
-import { storyState, analysisView, analysisCache, CACHE_CAP } from "../../app/static/js/jev/story.js";
+import { storyState, analysisView, analysisCache, CACHE_CAP, hourlyAnswers, questionsLeft, fromCompact } from "../../app/static/js/jev/story.js";
 import { askJev, JevError } from "../../app/static/js/jev/client.js";
+import { splitSentences, readingBlocks, readingQuestions, readingView, readCache, ROLE_CHOICES, MAX_PARAGRAPHS } from "../../app/static/js/jev/read.js";
 import { gateProposal } from "../../app/static/js/ai/gate.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { MemoryStorage } from "../../app/static/js/profile/store.js";
@@ -269,6 +270,7 @@ test("analysisView leads with the verdict and reads rows in label order", () => 
   assert.equal(view.verdict.label, "Negative");
   assert.equal(view.verdict.bars.length, 4);
   assert.deepEqual(view.rows.map((r) => r.key), ["section", "region", "story_type", "significance", "tone", "hard_news", "clinical", "industrial_biotech"]);
+  assert.equal(STORY_QUESTIONS.ai, undefined, "About AI comes only from the hourly run");
 });
 
 test("a yes/no answer shows p as asked, never 1 - p, and never becomes Yes or No", () => {
@@ -467,7 +469,7 @@ test("a refused call says why, without the key", async () => {
   assert.ok(!JSON.stringify(body).includes("sk-or-v1-abcdef123"));
   const broken = { impl: async () => { throw new TypeError("fetch failed"); } };
   const net = await (await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), { ...DEV_ENV, OPENROUTER_API_KEY: "k" }, { fetch: broken.impl })).json();
-  assert.equal(net.reason, "network");
+  assert.equal(net.reason, "network: TypeError: fetch failed");
 });
 
 test("the phone shows the reason after its message", async () => {
@@ -485,4 +487,132 @@ test("GET /api/jev reports the route and whether the key is set, never the key",
   const none = await (await handle(new Request(`${LOCAL}/api/jev`, { method: "GET" }), DEV_ENV)).json();
   assert.equal(none.route, "not_set_up");
   assert.equal((await handle(new Request("https://almanac-dt5.pages.dev/api/jev", { method: "GET" }), env)).status, 401, "Access still required");
+});
+
+
+// --- J9: the real fetch is called bound; every failure names itself ---
+
+test("with no stand-in, the global fetch is called as fetch(), not detached", async () => {
+  const real = globalThis.fetch;
+  let self = "unset";
+  globalThis.fetch = function (url, init) { self = this; return Promise.resolve({ ok: true, status: 200, json: async () => ({ answers: {} }) }); };
+  try {
+    const res = await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), { ...DEV_ENV, OPENROUTER_API_KEY: "k" });
+    assert.equal(res.status, 200);
+    assert.ok(self === undefined || self === globalThis, "called as a plain function call on the global");
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+test("a Workers AI failure and an unreadable reply each name themselves", async () => {
+  const broken = { run: async () => { throw new Error("5007: No such model typesafe/jev"); } };
+  const w = await (await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), DEV_ENV, { ai: broken })).json();
+  assert.match(w.reason, /^workers_ai: Error: 5007: No such model/);
+  const garbled = { impl: async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected token <"); } }) };
+  const g = await (await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), { ...DEV_ENV, OPENROUTER_API_KEY: "k" }, { fetch: garbled.impl })).json();
+  assert.equal(g.reason, "openrouter_unreadable_reply");
+});
+
+
+// --- J11: the hourly run's answers show in the sheet, and only the rest is asked live ---
+
+const HOURLY = { answers: {
+  a2: { section: { t: "choice", v: "World", c: 0.9, p: { World: 0.9, Asia: 0.1 } }, ai: { t: "noul", v: 0.05 },
+    sentiment: { t: "choice", v: "Bad news", c: 0.8 }, region: { t: "choice", v: "Africa", c: 0.95 },
+    hard_news: { t: "noul", v: 0.9 }, clinical: { t: "noul", v: 0.02 }, industrial_biotech: { t: "noul", v: 0.01 },
+    stray: { t: "choice", v: "x" } },
+} };
+
+test("hourly answers for a story come from its first answered member, in the sheet's shape", () => {
+  const got = hourlyAnswers(HOURLY, ["a1", "a2"]);
+  assert.equal(got.id, "a2");
+  assert.deepEqual(got.answers.section, { type: "choice", value: "World", label: "World", confidence: 0.9, probabilities: { World: 0.9, Asia: 0.1 } });
+  assert.deepEqual(got.answers.ai, { type: "noul", value: 0.05, label: null, confidence: null, probabilities: null });
+  assert.equal(got.answers.stray, undefined, "a key the sheet does not show is dropped");
+  assert.equal(hourlyAnswers(HOURLY, ["zz"]), null);
+  assert.equal(hourlyAnswers(null, ["a2"]), null);
+  assert.equal(fromCompact({ t: "choice", v: 3 }), null);
+});
+
+test("only the questions the hourly run left are asked live", () => {
+  const { answers } = hourlyAnswers(HOURLY, ["a2"]);
+  assert.deepEqual(Object.keys(questionsLeft(answers)).sort(), ["significance", "story_type", "tone"]);
+  const view = analysisView(answers);
+  assert.equal(view.verdict.label, "Negative");
+  assert.ok(view.rows.some((r) => r.key === "ai" && r.value === "Unlikely 5%"));
+});
+
+
+// --- J13: reading with Jev ---
+
+const ARTICLE = [
+  "Five people arrested over a plot targeting an airbase were released on bail on Monday. Police are still investigating.",
+  "The base hosts American bombers. It has been the site of protests before.",
+  "Officers searched 11 addresses in three cities, police said.",
+  "\u201cWe have no connection to them,\u201d a ministry spokesperson said.",
+];
+
+test("sentences split at their ends, keeping quotes and numbers", () => {
+  assert.deepEqual(splitSentences("One here. Two there! 3 more? \u201cQuoted.\u201d Last"), ["One here.", "Two there!", "3 more?", "\u201cQuoted.\u201d", "Last"]);
+  assert.deepEqual(splitSentences("  "), []);
+  assert.deepEqual(splitSentences("Mr. Smith said so. Done."), ["Mr. Smith said so.", "Done."]);
+  assert.deepEqual(splitSentences("U.S. Ambassador Perdue spoke on Sept. 28. China replied."),
+    ["U.S. Ambassador Perdue spoke on Sept. 28.", "China replied."], "initials and months never end a sentence");
+  assert.deepEqual(splitSentences("The U.N. met. Talks ended."), ["The U.N. met.", "Talks ended."]);
+  assert.deepEqual(splitSentences("Talks were held in the U.S. Officials said so."), ["Talks were held in the U.S. Officials said so."],
+    "a known limit: initials ending a real sentence join the next");
+});
+
+test("the article is numbered for Jev, kept to its limits, and asked in calls of at most 12", () => {
+  const blocks = readingBlocks(ARTICLE, { headline: "Suspects bailed", outlet: "BBC" });
+  assert.deepEqual(blocks.paragraphs.map((p) => p.id), ["P1", "P2", "P3", "P4"]);
+  assert.equal(blocks.state.paragraphs.P1, "[S1] Five people arrested over a plot targeting an airbase were released on bail on Monday. [S2] Police are still investigating.");
+  assert.equal(validateState(blocks.state).ok, true);
+  const calls = readingQuestions(blocks);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(Object.keys(calls[0]), ["key", "p1", "p2", "p3", "p4"]);
+  assert.deepEqual(calls[0].key.criteria, ["S1", "S2", "S3", "S4", "S5", "S6"]);
+  assert.equal(validateQuestions(calls[0]).ok, true);
+  const long = readingBlocks(Array.from({ length: 40 }, (_, i) => `Paragraph ${i} says something. It ends here.`));
+  assert.equal(long.paragraphs.length, MAX_PARAGRAPHS);
+  const many = readingQuestions(long);
+  assert.equal(many.length, 2);
+  assert.ok(many.every((q) => Object.keys(q).length <= 12 && validateQuestions(q).ok));
+});
+
+test("the view labels only sure paragraphs, highlights the key sentences and skims the rest", () => {
+  const blocks = readingBlocks(ARTICLE);
+  const role = (asked, confidence, probabilities = null) => ({ type: "choice", value: asked, label: asked, confidence, probabilities });
+  const answers = {
+    key: { type: "choice", value: "S1", label: "S1", confidence: 0.7, probabilities: { S1: 0.7, S5: 0.26, S2: 0.04 } },
+    p1: role("Reports the main news", 0.9),
+    p2: role("Gives background or context", 0.8),
+    p3: role("Gives a key number or figure", 0.45),
+    p4: role("Quotes someone directly", 0.2),
+  };
+  const view = readingView(answers, blocks);
+  assert.deepEqual(view.roles, {
+    P1: { label: "Main news", status: "sure", confidence: 0.9 },
+    P2: { label: "Background", status: "sure", confidence: 0.8 },
+    P3: { label: "Key number", status: "lean", confidence: 0.45 },
+  }, "an unsure paragraph gets no label");
+  assert.deepEqual(view.keys, ["S1", "S5"]);
+  assert.deepEqual([...view.skim], ["P1", "P3", "P4"], "background folds; an unlabelled paragraph is never hidden");
+  const unsure = readingView({ key: { type: "choice", value: "S3", label: "S3", confidence: 0.2, probabilities: null } }, blocks);
+  assert.deepEqual(unsure.keys, [], "no highlight when Jev is unsure");
+  assert.equal(ROLE_CHOICES.length, 7);
+});
+
+test("every reading question is one positive claim", () => {
+  for (const q of Object.values(readingQuestions(readingBlocks(ARTICLE))[0])) {
+    assert.doesNotMatch(q.instructions, /rather than|\bnot\b|n't\b|\bnever\b|\bneither\b/i);
+  }
+});
+
+test("the read cache keeps the newest reads", () => {
+  const c = readCache(new MemoryStorage(), 2);
+  c.put("a", { answers: {} }); c.put("b", { answers: {} }); c.put("c", { answers: {} });
+  assert.equal(c.get("a"), null);
+  assert.ok(c.get("c"));
 });

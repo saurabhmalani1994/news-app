@@ -16,7 +16,8 @@
 
 export const JEV_TYPES = Object.freeze(["noul", "choice", "score"]);
 export const MAX_QUESTIONS = 12;
-export const MAX_CRITERIA = 24;
+export const MAX_CRITERIA = 120; // a choice: J13 asks which of an article's numbered sentences
+export const MAX_LEVELS = 10; // a score: Jev takes 2 to 10 ordered levels
 export const MAX_CRITERION = 60;
 export const MAX_INSTRUCTIONS = 400;
 export const MAX_STATE_CHARS = 8000;
@@ -43,7 +44,7 @@ export function validateQuestions(questions) {
     }
     if (!JEV_TYPES.includes(q.type)) return { ok: false, error: `question ${key} has an unknown type` };
     if (!text(q.instructions, MAX_INSTRUCTIONS)) return { ok: false, error: `question ${key} needs instructions of 1 to ${MAX_INSTRUCTIONS} characters` };
-    const [low, high] = q.type === "noul" ? [0, 8] : [2, MAX_CRITERIA];
+    const [low, high] = q.type === "noul" ? [0, 8] : q.type === "score" ? [2, MAX_LEVELS] : [2, MAX_CRITERIA];
     const criteria = q.criteria ?? [];
     if (!Array.isArray(criteria) || criteria.length < low || criteria.length > high
       || !criteria.every((c) => text(c, MAX_CRITERION)) || new Set(criteria).size !== criteria.length) {
