@@ -178,7 +178,7 @@ def test_the_health_section_escapes_feed_titles(tmp_path, monkeypatch):
     doc = js.run(p, NOW, env=ENV, cache_path=tmp_path / "j.json", post=api.post, get=api.get)
     from app.health import render_jev_articles
     html = render_jev(doc) + render_jev_articles(doc, p)
-    assert "Jev today" in html and "How Jev is doing" in html and "&lt;b&gt;AI&lt;/b&gt; chips &amp; more" in html and "<b>" not in html
+    assert "Jev today" in html and "Jev scoreboard" in html and "&lt;b&gt;AI&lt;/b&gt; chips &amp; more" in html and "<b>" not in html
     assert render_jev(None) == ""
     mock = js.run(pool(), NOW, env={"JEV_MOCK": "1"}, cache_path=tmp_path / "m.json")
     assert "local stand-in" in render_jev(mock)
@@ -320,8 +320,8 @@ def test_a_long_report_value_wraps_under_its_label(tmp_path, monkeypatch):
     doc["report"]["confidence"] = {"sure": 971, "lean": 110, "ambiguous": 89, "unsure": 17, "conflict": 3}
     html = render_jev(doc)
     assert "971 sure · 110 leaning · 89 split · 17 unsure · 3 self-contradicting" in html
-    row = html[html.index("How sure Jev was") - 200:html.index("How sure Jev was")]
-    assert "jev-row-long" in row
+    # J23: the fact is short (the share Jev was sure of); the breakdown is the evidence.
+    assert "Answers Jev was sure of</span></span><span class=\"setting-value\">82%" in html
 
 
 
@@ -429,10 +429,13 @@ def test_health_groups_each_check_under_its_feature(tmp_path):
     doc = js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=FakeOpenRouter(good_answers).post)
     doc["scorecard"] = js.scorecard(doc)
     html = render_jev(doc)
-    assert html.index("Jev today") < html.index("How Jev is doing") < html.index("More Jev numbers")
+    assert html.index("Jev today") < html.index("Jev scoreboard") < html.index("More Jev numbers")
     feature = html.index("Grouping versions and the other side")
     assert feature < html.index("Keeps copies of one story together") < html.index("Sorting articles into sections")
-    assert "Aim: 90% or more." in html and "Aim: 1.5 seconds or less." in html
+    assert "Aim 90% or more" in html and "Aim 1.5 s or less." in html
+    # J23: facts first, evidence one tap down: each check is a fold with its evidence.
+    assert html.count('<details class="jev-fold jev-check">') == len(doc["scorecard"]["checks"])
+    assert "Nothing needs your review." in html or 'id="jev-review"' in html
     assert "syndicated" not in html.lower() and "bucket" not in html.lower(), "no insider words (J22)"
     assert "Check: " not in html and "Feature: " not in html
     assert "nothing it says changes your feed" not in html
