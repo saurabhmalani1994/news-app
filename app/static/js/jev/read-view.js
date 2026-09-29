@@ -10,6 +10,7 @@ import { askJev } from "./client.js";
 import { readingBlocks, readingQuestions, readingView, readCache } from "./read.js";
 
 const HIGHLIGHT = "jev-key";
+const PHRASE = "jev-phrase"; // J16: the few key phrases, painted stronger than a sentence
 const cache = readCache(window.localStorage);
 
 function el(tag, className, text) {
@@ -24,10 +25,11 @@ function paragraphsOf(body) {
   return [...body.querySelectorAll("p, li")].filter((node) => !node.closest(".jev-read-bar") && node.textContent.trim());
 }
 
-/** A Range over `needle` inside `node`'s text, spaces matched loosely, or null. */
-function rangeFor(node, needle) {
+/** A Range over `needle` inside `node`'s text, spaces matched loosely, or null. With
+ * `whole`, the match must start and end on a word boundary (a phrase, not part of one). */
+function rangeFor(node, needle, whole = false) {
   const pattern = needle.trim().split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
-  const match = new RegExp(pattern).exec(node.textContent);
+  const match = new RegExp(whole ? `(?<![\\w$£€])${pattern}(?![\\w])` : pattern).exec(node.textContent);
   if (!match) return null;
   const start = match.index;
   const end = start + match[0].length;
@@ -46,27 +48,29 @@ function rangeFor(node, needle) {
 
 /** Removes every mark this module made in `body` (labels, classes, highlights). */
 export function clearReading(body = document.querySelector(".reader-body")) {
-  if (typeof CSS !== "undefined" && CSS.highlights) CSS.highlights.delete(HIGHLIGHT);
+  if (typeof CSS !== "undefined" && CSS.highlights) {
+    CSS.highlights.delete(HIGHLIGHT);
+    CSS.highlights.delete(PHRASE);
+  }
   if (!body) return;
   body.classList.remove("jev-skim", "jev-marked");
-  body.querySelectorAll(".jev-role").forEach((n) => n.remove());
+  body.querySelectorAll(".jev-role, .jev-facts").forEach((n) => n.remove());
   body.querySelectorAll(".jev-minor, .jev-key-para").forEach((n) => n.classList.remove("jev-minor", "jev-key-para"));
 }
 
 /** Draws a reading: a label before each paragraph Jev was sure about, the key sentences
  * highlighted, and the paragraphs Skim folds marked. */
-function applyReading(body, elements, blocks, view) {
+function applyReading(body, elements, blocks, view, bar) {
   clearReading(body);
   const ranges = [];
   for (const p of blocks.paragraphs) {
     const node = elements[p.index];
     if (!node) continue;
-    const role = view.roles[p.id];
-    if (role) {
-      const label = el("div", "jev-role", role.label);
-      label.dataset.role = role.label;
-      node.before(label);
-      if (!view.skim.has(p.id)) label.classList.add("jev-minor");
+    const label = view.labels[p.id];
+    if (label) {
+      const tag = el("div", "jev-role", label);
+      tag.dataset.role = label;
+      node.before(tag);
     }
     if (!view.skim.has(p.id)) node.classList.add("jev-minor");
     for (const s of p.sentences) {
@@ -81,7 +85,34 @@ function applyReading(body, elements, blocks, view) {
   } else {
     for (const r of ranges) r.commonAncestorContainer.parentElement?.closest("p, li")?.classList.add("jev-key-para");
   }
+  // J16: each key phrase at its first appearance in the article, whole words only, and
+  // the Key facts line quoting them, each a tap that scrolls to it.
+  const found = [];
+  for (const phrase of view.phrases) {
+    for (const node of elements) {
+      const range = rangeFor(node, phrase.text, true);
+      if (range) { found.push({ phrase, range }); break; }
+    }
+  }
+  if (found.length) {
+    if (typeof Highlight !== "undefined" && CSS.highlights) CSS.highlights.set(PHRASE, new Highlight(...found.map((f) => f.range)));
+    const facts = el("div", "jev-facts");
+    facts.setAttribute("aria-label", "Key facts");
+    for (const { phrase, range } of found) {
+      const chip = el("button", "jev-fact");
+      chip.type = "button";
+      chip.append(el("span", "jev-fact-kind", phrase.kind), el("span", "jev-fact-text", phrase.text));
+      chip.addEventListener("click", () => {
+        const scroller = body.closest(".reader-scroll") || document.scrollingElement;
+        const top = range.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 120;
+        scroller.scrollTo({ top: Math.max(0, top), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+      });
+      facts.append(chip);
+    }
+    bar.after(facts);
+  }
   body.classList.add("jev-marked");
+  return found.length;
 }
 
 /** The bar at the top of a full-text article: "Read with Jev", then Skim and Hide marks. */
@@ -89,7 +120,7 @@ export function readBar({ id, body, headline, outlet }) {
   const bar = el("div", "jev-read-bar");
   const read = el("button", "jev-read-go", "Read with Jev");
   read.type = "button";
-  const note = el("p", "jev-read-note", "Jev marks the key sentences and says what each paragraph does. The words stay the publisher's.");
+  const note = el("p", "jev-read-note", "Jev marks the key phrases and the paragraphs that carry the news. The words stay the publisher's.");
   const skim = el("button", "jev-read-toggle", "Skim");
   skim.type = "button";
   skim.setAttribute("aria-pressed", "false");
@@ -102,10 +133,13 @@ export function readBar({ id, body, headline, outlet }) {
   const show = (answers) => {
     const elements = paragraphsOf(body);
     const blocks = readingBlocks(elements.map((n) => n.textContent), { headline, outlet });
-    const view = readingView(answers, blocks);
-    applyReading(body, elements, blocks, view);
-    const labelled = Object.keys(view.roles).length;
-    note.textContent = `Jev labelled ${labelled} of ${blocks.paragraphs.length} paragraphs and marked ${view.keys.length} key sentence${view.keys.length === 1 ? "" : "s"}. The words are the publisher's.`;
+    const view = readingView(answers, blocks, headline);
+    const phrases = applyReading(body, elements, blocks, view, bar);
+    const labels = Object.keys(view.labels).length;
+    const marked = phrases
+      ? `${phrases} key phrase${phrases === 1 ? "" : "s"}`
+      : view.keys.length ? `${view.keys.length} key sentence${view.keys.length === 1 ? "" : "s"}` : "nothing it was sure of";
+    note.textContent = `Jev marked ${marked}${labels ? ` and labelled ${labels} paragraph${labels === 1 ? "" : "s"}` : ""}. The words are the publisher's.`;
     read.hidden = true;
     skim.hidden = false;
     hide.hidden = false;
@@ -120,7 +154,7 @@ export function readBar({ id, body, headline, outlet }) {
     const elements = paragraphsOf(body);
     const blocks = readingBlocks(elements.map((n) => n.textContent), { headline, outlet });
     try {
-      const calls = readingQuestions(blocks);
+      const calls = readingQuestions(blocks, headline);
       const results = await Promise.all(calls.map((questions) => askJev(blocks.state, questions)));
       const answers = Object.assign({}, ...results.map((r) => r.answers));
       if (!results.some((r) => r.model === "mock-jev")) cache.put(id, { answers, at: new Date().toISOString() });
@@ -144,7 +178,7 @@ export function readBar({ id, body, headline, outlet }) {
     skim.setAttribute("aria-pressed", "false");
     read.hidden = false;
     read.textContent = "Read with Jev";
-    note.textContent = "Jev marks the key sentences and says what each paragraph does. The words stay the publisher's.";
+    note.textContent = "Jev marks the key phrases and the paragraphs that carry the news. The words stay the publisher's.";
   });
   return bar;
 }

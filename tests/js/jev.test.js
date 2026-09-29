@@ -19,7 +19,7 @@ import { proposalFromAsk, askState, cleanRequest, strengthStep, confidenceLine }
 import { readChoice, readNoul, expectedPosition, RULES } from "../../app/static/js/jev/decide.js";
 import { storyState, analysisView, analysisCache, CACHE_CAP, hourlyAnswers, questionsLeft, fromCompact } from "../../app/static/js/jev/story.js";
 import { askJev, JevError } from "../../app/static/js/jev/client.js";
-import { splitSentences, readingBlocks, readingQuestions, readingView, readCache, ROLE_CHOICES, MAX_PARAGRAPHS } from "../../app/static/js/jev/read.js";
+import { splitSentences, readingBlocks, readingQuestions, readingView, readCache, ROLE_CHOICES, MAX_PARAGRAPHS, phraseCandidates, nameCandidates, numberCandidates, whenCandidates, actionCandidates, NONE as READ_NONE } from "../../app/static/js/jev/read.js";
 import { gateProposal } from "../../app/static/js/ai/gate.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { MemoryStorage } from "../../app/static/js/profile/store.js";
@@ -573,39 +573,72 @@ test("the article is numbered for Jev, kept to its limits, and asked in calls of
   assert.deepEqual(blocks.paragraphs.map((p) => p.id), ["P1", "P2", "P3", "P4"]);
   assert.equal(blocks.state.paragraphs.P1, "[S1] Five people arrested over a plot targeting an airbase were released on bail on Monday. [S2] Police are still investigating.");
   assert.equal(validateState(blocks.state).ok, true);
-  const calls = readingQuestions(blocks);
+  const calls = readingQuestions(blocks, "Suspects bailed");
   assert.equal(calls.length, 1);
-  assert.deepEqual(Object.keys(calls[0]), ["key", "p1", "p2", "p3", "p4"]);
+  assert.deepEqual(Object.keys(calls[0]), ["who", "what", "number", "where", "when", "key", "p1", "p2", "p3", "p4"]);
   assert.deepEqual(calls[0].key.criteria, ["S1", "S2", "S3", "S4", "S5", "S6"]);
   assert.equal(validateQuestions(calls[0]).ok, true);
   const long = readingBlocks(Array.from({ length: 40 }, (_, i) => `Paragraph ${i} says something. It ends here.`));
   assert.equal(long.paragraphs.length, MAX_PARAGRAPHS);
   const many = readingQuestions(long);
-  assert.equal(many.length, 2);
+  assert.ok(many.length >= 2);
   assert.ok(many.every((q) => Object.keys(q).length <= 12 && validateQuestions(q).ok));
 });
 
-test("the view labels only sure paragraphs, highlights the key sentences and skims the rest", () => {
-  const blocks = readingBlocks(ARTICLE);
-  const role = (asked, confidence, probabilities = null) => ({ type: "choice", value: asked, label: asked, confidence, probabilities });
+test("J16: labels only where Jev is sure, only useful roles, each once, at most three", () => {
+  const blocks = readingBlocks([...ARTICLE, "More main news here. It continues.", "A second key number: 12 people."]);
+  const role = (asked, confidence) => ({ type: "choice", value: asked, label: asked, confidence, probabilities: null });
   const answers = {
-    key: { type: "choice", value: "S1", label: "S1", confidence: 0.7, probabilities: { S1: 0.7, S5: 0.26, S2: 0.04 } },
     p1: role("Reports the main news", 0.9),
-    p2: role("Gives background or context", 0.8),
+    p2: role("Gives background or context", 0.95),
     p3: role("Gives a key number or figure", 0.45),
-    p4: role("Quotes someone directly", 0.2),
+    p4: role("Quotes someone directly", 0.8),
+    p5: role("Reports the main news", 0.9),
+    p6: role("Gives a key number or figure", 0.9),
   };
   const view = readingView(answers, blocks);
-  assert.deepEqual(view.roles, {
-    P1: { label: "Main news", status: "sure", confidence: 0.9 },
-    P2: { label: "Background", status: "sure", confidence: 0.8 },
-    P3: { label: "Key number", status: "lean", confidence: 0.45 },
-  }, "an unsure paragraph gets no label");
-  assert.deepEqual(view.keys, ["S1", "S5"]);
-  assert.deepEqual([...view.skim], ["P1", "P3", "P4"], "background folds; an unlabelled paragraph is never hidden");
-  const unsure = readingView({ key: { type: "choice", value: "S3", label: "S3", confidence: 0.2, probabilities: null } }, blocks);
+  assert.deepEqual(view.labels, { P1: "Main news", P4: "Quote", P6: "Key number" },
+    "background gets no label, a leaning pick gets none, Main news only once");
+  assert.equal(view.roles.P3.label, "Key number", "a leaning role still guides Skim");
+  assert.deepEqual([...view.skim], ["P1", "P3", "P4", "P5", "P6"], "background folds; an unlabelled paragraph is never hidden");
+});
+
+test("J16: the sentence tint is only the fallback when no phrase qualifies", () => {
+  const blocks = readingBlocks(ARTICLE);
+  const key = { type: "choice", value: "S1", label: "S1", confidence: 0.7, probabilities: { S1: 0.7, S5: 0.26, S2: 0.04 } };
+  assert.deepEqual(readingView({ key }, blocks).keys, ["S1", "S5"], "no phrase picked: the key sentences are tinted");
+  const who = { type: "choice", value: "Police", label: "Police", confidence: 0.8, probabilities: null };
+  const withPhrase = readingView({ key, who }, blocks);
+  assert.deepEqual(withPhrase.keys, [], "a phrase picked: no sentence tint");
+  assert.deepEqual(withPhrase.phrases, [{ kind: "Who", text: "Police", confidence: 0.8 }]);
+  const unsure = readingView({ key: { ...key, confidence: 0.2, probabilities: null } }, blocks);
   assert.deepEqual(unsure.keys, [], "no highlight when Jev is unsure");
   assert.equal(ROLE_CHOICES.length, 7);
+});
+
+test("J16: candidates come from the article's own words", () => {
+  const t = "Northfield Semiconductor said on Monday it would delay its processor. Shares fell 8% in early trading, wiping $2 billion off. The council approved a $40 million barrier on Sept. 28 in Washington, and searched 11 addresses in 2019.";
+  assert.deepEqual(nameCandidates(t).filter((n) => n !== "Shares"), ["Northfield Semiconductor", "Washington"]);
+  assert.deepEqual(numberCandidates(t), ["8%", "$2 billion", "$40 million", "11 addresses"], "a bare year is left out");
+  assert.deepEqual(whenCandidates(t), ["Monday", "Sept. 28"]);
+  const actions = actionCandidates(t, "Council approves flood barrier");
+  assert.equal(actions[0], "approved", "the headline's own verb ranks first");
+  assert.ok(actions.includes("delay") && actions.includes("fell"));
+});
+
+test("J16: one phrase per kind, only when Jev is sure or leaning, and never 'None of these'", () => {
+  const blocks = readingBlocks(["The city council approved a $40 million flood barrier on Tuesday in Springfield. It passed 7 to 2."]);
+  const c = phraseCandidates(blocks, "Council approves $40 million barrier");
+  assert.ok(c.names.includes("Springfield") && c.numbers.includes("$40 million") && c.whens.includes("Tuesday"));
+  const pick = (label, confidence) => ({ type: "choice", value: label, label, confidence, probabilities: null });
+  const view = readingView({
+    who: pick("Springfield", 0.3),
+    what: pick("approved", 0.9),
+    number: pick("$40 million", 0.85),
+    where: pick("Springfield", 0.7),
+    when: pick(READ_NONE, 0.9),
+  }, blocks, "Council approves $40 million barrier");
+  assert.deepEqual(view.phrases.map((x) => `${x.kind}:${x.text}`), ["What:approved", "Number:$40 million", "Where:Springfield"]);
 });
 
 test("every reading question is one positive claim", () => {

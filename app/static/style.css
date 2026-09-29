@@ -3888,3 +3888,56 @@ body {
     animation: none;
   }
 }
+
+/* J16: the few key phrases, painted stronger than a sentence tint, and the Key facts
+   line under the Read with Jev bar: each fact the publisher's own words, a tap away. */
+::highlight(jev-phrase) {
+  background-color: rgba(255, 196, 64, 0.5);
+  color: inherit;
+}
+
+.jev-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -6px 0 20px;
+}
+
+.jev-fact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 10px;
+  background: transparent;
+  border: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-headline);
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.jev-fact:active {
+  background: var(--color-pressed);
+}
+
+.jev-fact:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.jev-fact-kind {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-meta);
+}
+
+@media (prefers-color-scheme: light) {
+  ::highlight(jev-phrase) {
+    background-color: rgba(255, 196, 0, 0.45);
+  }
+}
