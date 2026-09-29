@@ -68,9 +68,9 @@ def test_story_coverage_button_renders_for_the_cluster_and_never_for_a_single_so
     row = re.search(r'<li class="story[^"]*" data-sid="c1">(.*?)</li>', page, re.S).group(1)
     # The card's own link closes before the coverage button opens: never nested, the
     # same rule STORY_OVERFLOW and the other-side link already hold to.
-    before_button = row.split('<button class="story-coverage"', 1)[0]
+    before_button = row.split('<button class="story-act story-coverage"', 1)[0]
     assert before_button.count("<a ") == before_button.count("</a>") == 1
-    button = re.search(r'<button class="story-coverage"[^>]*>', row).group(0)
+    button = re.search(r'<button class="story-act story-coverage"[^>]*>', row).group(0)
     assert 'data-sid="c1"' in button
     # V1: the trigger opens the versions carousel, whose footer opens the coverage view.
     assert 'aria-label="Compare versions: 3 outlets, 3 independent, across 3 leans"' in button

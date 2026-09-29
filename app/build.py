@@ -75,6 +75,7 @@ PAGE = """<!doctype html>
 <script type="module" src="js/breadth-banner.js"></script>
 <script type="module" src="js/live-actions.js"></script>
 <script type="module" src="js/saved-screen.js"></script>
+<script type="module" src="js/jev/ask-bar.js"></script>
 <script src="js/sw-register.js" defer></script>
 </head>
 <body class="app">
@@ -91,6 +92,7 @@ PAGE = """<!doctype html>
 <header class="masthead masthead--nameplate">
 <h1 class="wordmark">Almanac</h1>
 </header>
+{ask_bar}
 <p class="offline-line" id="offline-line" data-generated-at="{generated_at}" hidden></p>
 <script src="js/offline.js"></script>
 {notices}
@@ -191,6 +193,14 @@ VERSIONS = """<div class="bv" id="bv" role="dialog" aria-modal="true" aria-label
 <a class="bv-primary" id="bv-primary" target="_blank" rel="noopener noreferrer" aria-label="Primary source: the post, on trumpstruth.org, a third-party archive not run by Truth Social" hidden><span>Primary source</span><svg class="bv-icon bv-action-icon--out" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"></path></svg></a>
 </footer>
 </div>"""
+
+# J1: the Ask bar (js/jev/ask-bar.js), static chrome at the top of Today: one field and
+# a send button. Always laid out, so wiring it up never moves the page; Jev's suggestion
+# opens in the sheet, over the page, never inline.
+ASK_BAR = """<form class="ask-bar" id="ask-bar" role="search" aria-label="Ask Jev about your feed" autocomplete="off">
+<input class="ask-input" id="ask-input" type="text" name="q" maxlength="200" placeholder="Ask Jev: less of this, more of that" aria-label="Ask Jev about your feed" enterkeyhint="send">
+<button class="ask-send" type="submit" aria-label="Ask Jev"><svg class="ask-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3.4 20.4 21 12 3.4 3.6 3.4 10.1 15 12 3.4 13.9z"></path></svg></button>
+</form>"""
 
 # S24: the reusable bottom sheet (js/sheet.js), an NYT-style overflow/share sheet.
 # Static chrome only, empty and hidden until a caller opens it: this slice's own
@@ -523,33 +533,56 @@ OVERFLOW_SYMBOL = (
     '<svg class="icon-sprite" width="0" height="0" aria-hidden="true" focusable="false">'
     '<symbol id="i-more" viewBox="0 0 24 24">'
     '<path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"></path>'
+    "</symbol>"
+    # C3: the card's action row (STORY_ACTS): an open book (read in Almanac), stacked
+    # sheets (the versions), an arrow out of a box (the publisher's own site).
+    '<symbol id="i-read" viewBox="0 0 24 24">'
+    '<path d="M21 5c-1.1-.35-2.3-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z"></path>'
+    "</symbol>"
+    '<symbol id="i-versions" viewBox="0 0 24 24">'
+    '<path d="M12 2.8 22 8l-10 5.2L2 8zm-7.9 9.1L12 16l7.9-4.1 2.1 1.1-10 5.2L2 13zm0 5L12 21l7.9-4.1 2.1 1.1-10 5.2L2 18z"></path>'
+    "</symbol>"
+    '<symbol id="i-out" viewBox="0 0 24 24">'
+    '<path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3zM19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z"></path>'
     "</symbol></svg>"
 )
+ACT_ICON = '<svg class="story-act-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#{icon}"></use></svg>'
+
 STORY_OVERFLOW = (
     '<button class="story-overflow" type="button" aria-label="Story actions" aria-haspopup="dialog">'
     '<svg class="story-overflow-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-more"></use></svg></button>'
 )
 # S14: the coverage view trigger; V1: it opens the versions carousel (js/versions-view.js),
-# whose footer opens the coverage view. It never changes what the meta line shows (still
-# reads as quiet meta, R34): it is an invisible sibling button laid over the meta
-# line's own rendered position with a negative top margin sized to the tier's own fixed
-# padding-bottom plus the meta line-height (both design tokens, never content-length
-# dependent), so it lines up under "N sources" without moving anything and without ever
-# nesting a button inside the row's own <a> (same rule as STORY_OVERFLOW above: a tap on
-# it must never also navigate). min-height brings the target to 48dp; style.css raises
-# it a little further into the row's own whitespace above the meta line to get there
-# without pushing the next row down (the design bar's steady rhythm, R34). Built only
-# for clusters of 2 or more independent sources, the same floor DESIGN-v1 sets for the
-# coverage view itself.
-STORY_COVERAGE = ('<button class="story-coverage" type="button" data-sid="{sid}" '
-                   'aria-haspopup="dialog" aria-label="Compare versions: {label}"></button>')
+# whose footer opens the coverage view. C3: a visible, labelled button in the card's
+# action row (STORY_ACTS), holding the row's own "N sources" count (the .meta-count
+# span js/tiers.js placeSourceCount rewrites for the stored profile's mutes), never
+# nested inside the row's own <a> (a tap on it must never also navigate). Built only for
+# clusters of 2 or more versions, the same floor DESIGN-v1 sets for the coverage view.
+# __COUNT__ is filled per row with the count the build's own mute-free profile shows.
+STORY_COVERAGE = ('<button class="story-act story-coverage" type="button" data-sid="{sid}" '
+                   'aria-haspopup="dialog" aria-label="Compare versions: {label}">'
+                   + ACT_ICON.format(icon="i-versions")
+                   + '<span class="meta-count">__COUNT__ sources</span></button>')
+# C3: the row's first action names where the card itself goes, so the label always
+# matches the tap: "Read here" when the card opens in Almanac's reader (the row's link
+# carries data-body), "Open site" with the out-arrow when it opens the publisher's
+# page. Both labels are in the markup and style.css shows the one that fits the link as
+# it is now (a device re-pick of data-body, tiers.js placeReadChoice, changes nothing
+# here). The "Read here" half keeps U1's .meta-read span, and R43's .meta-read-source
+# for another outlet's full text, so placeReadChoice still finds and rewrites them.
+# story-actions.js hands a tap on it to the row's own link, so the reader, history and
+# the new tab behave exactly as a tap on the card does.
+STORY_OPEN = ('<button class="story-act story-act--open" type="button">'
+              '<span class="act-read">' + ACT_ICON.format(icon="i-read") + '{read}</span>'
+              '<span class="act-site">Open site' + ACT_ICON.format(icon="i-out") + '</span></button>')
+STORY_ACTS = '<div class="story-acts">{open_act}{coverage}' + STORY_OVERFLOW + '</div>'
 # One row shape for every tier; the tier only changes classes, whether a dek shows and
 # whether a photo shows. The photo goes first inside .story-body; its box is sized by
 # width, height and aspect-ratio before a byte arrives (style.css), so text never moves.
 STORY = (
     '<li class="story story--{tier}" data-sid="{sid}">{open}'
     '<span class="story-body">{media}<span class="headline{headline_mod}">{title}</span>{dek}'
-    '<span class="meta">{meta}</span></span>{close}{lean_hit}' + STORY_OVERFLOW + "{coverage}{other}</li>"
+    '<span class="meta">{meta}</span></span>{close}{lean_hit}{acts}{other}</li>'
 )
 # S13 other-side slot: one attached link under a many-outlet card, to the same story as
 # an outlet of the lean least seen on this page tells it (app/static/js/passes.js says
@@ -563,7 +596,9 @@ OTHER_SIDE_MIN_SOURCES = 3  # passes.js OTHER_SIDE_MIN_SOURCES
 OTHER = ('<{tag} class="other-side" data-aid="{aid}"{href}>'
          '<span class="other-side-label"><span class="other-side-kicker">Other side {dot} </span>'
          '<span class="other-side-source">{source}</span>{marker}</span>'
-         '<span class="other-side-title">{title}</span></{tag}>{hit}')
+         '<span class="other-side-title">{title}</span>{go}</{tag}>{hit}')
+# C3: the other side always opens the publisher's page in a new tab, so it says so.
+OTHER_GO = ('<span class="other-side-go">Opens {host}' + ACT_ICON.format(icon="i-out") + '</span>')
 OTHER_HREF = ' href="{url}" target="_blank" rel="noopener noreferrer"'
 # S39 photos (app.images decides which). The url is an attribute value, escaped; alt is
 # empty because the headline beside it carries the meaning. Only the hero loads eagerly.
@@ -626,8 +661,11 @@ def _safe_url(url):
 META_SEP = f'<span class="meta-sep"> {MIDDOT} </span>'
 
 
-def _meta(story, source_names, now, read_from=None, lean=None, country=None, visible_sources=None):
-    """U3 (R45): the meta as two lines, the second shown only when it has something.
+def _meta(story, source_names, now, lean=None, country=None):
+    """C3: the count and "Read here" this docstring names below now live in the card's
+    action row (_acts); line 2 keeps only its data-age.
+
+    U3 (R45): the meta as two lines, the second shown only when it has something.
     Line 1 is who and when: the source, its marker (L1, U3), the age. Line 2 is what the
     row offers: the quiet 'N sources' of a multi-outlet cluster (S14's coverage trigger
     lies over it), then (U1) 'Read here' when the row opens in the reader, and (R43) the
@@ -656,14 +694,9 @@ def _meta(story, source_names, now, read_from=None, lean=None, country=None, vis
         if source:
             first.append(META_SEP)
         first.append(f'<span class="meta-age">{escape(age)}</span>')
+    # C3: "N sources" and "Read here" moved into the card's action row (STORY_ACTS), as
+    # real buttons; line 2 now only ever carries the age for a row beside a thumbnail.
     second = []
-    shown = story.independent_sources if visible_sources is None else visible_sources
-    if shown > 1:
-        second.append(META_SEP + f'<span class="meta-count">{shown} sources</span>')
-    if read_from is not None:
-        second.append(META_SEP + f'<span class="meta-read"><span class="meta-read-label">{READ_HERE}</span></span>')
-        if read_from:
-            second.append(f'<span class="meta-read-source">{escape(read_from)}</span>')
     data_age = f' data-age="{escape(age, quote=True)}"' if age else ""
     return (f'<span class="meta-line">{"".join(first)}</span>'
             f'<span class="meta-line meta-line--2"{data_age}>{"".join(second)}</span>')
@@ -718,7 +751,31 @@ def _other_side(record, links, source_names, leans, countries=None):
         tag="a" if url else "span", aid=escape(record["article_id"], quote=True),
         href=OTHER_HREF.format(url=escape(url, quote=True)) if url else "", dot=MIDDOT,
         source=escape(source_names.get(sid, sid), quote=False), marker=lean_marker_html(lean, country),
-        title=escape(title, quote=False), hit=lean_hit_html(sid, lean, country, "lean-hit--other"))
+        title=escape(title, quote=False), go=OTHER_GO.format(host=escape(site_host(url), quote=False)) if url else "",
+        hit=lean_hit_html(sid, lean, country, "lean-hit--other"))
+
+
+def site_host(url):
+    """C3: the host a link opens, as a reader would say it: "jpost.com", "www." dropped.
+    js/tiers.js siteHost is the same rule for an other-side link the device draws."""
+    host = (urlsplit(url).hostname or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def _acts(url, read_from, coverage, visible_sources):
+    """C3: the card's action row. The open button only for a row with a web link (it
+    hands the tap to that link); its "Read here" half only for a row the reader opens
+    (read_from is not None), naming another outlet (R43) when read_from is a name."""
+    open_act = ""
+    if url is not None:
+        read = ""
+        if read_from is not None:
+            read = f'<span class="meta-read"><span class="meta-read-label">{READ_HERE}</span></span>'
+            if read_from:
+                read += f'<span class="meta-read-source">{escape(read_from)}</span>'
+        open_act = STORY_OPEN.format(read=read)
+    count = visible_sources if visible_sources is not None else 1
+    return STORY_ACTS.format(open_act=open_act, coverage=coverage.replace("__COUNT__", str(count)) if coverage else "")
 
 
 def _render_story(story, tier, source_names, now, by_id, other="", coverage="", chars=None, leans=None,
@@ -750,9 +807,8 @@ def _render_story(story, tier, source_names, now, by_id, other="", coverage="", 
         close = "</a>"
     return STORY.format(
         tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
-        title=title, dek=dek, meta=_meta(story, source_names, now, read_from=read_from, lean=lean, country=country,
-                                          visible_sources=visible_sources),
-        other=other, coverage=coverage,
+        title=title, dek=dek, meta=_meta(story, source_names, now, lean=lean, country=country),
+        other=other, acts=_acts(url, read_from, coverage, visible_sources),
         lean_hit=lean_hit_html(source_id, lean, country) if source_names.get(source_id) else "",
         media=_media(tier, hero_media(_members(story, by_id), article, source_names) if tier == "hero" else None,
                      article.get("image")),
@@ -903,6 +959,7 @@ def render(pool, ranking=None, chars=None):
         versions=VERSIONS,
         reader=READER,
         sheet=SHEET,
+        ask_bar=ASK_BAR,
         toast=TOAST,
         rank_key=escape(ranking["key"], quote=True),
         notices=render_notices(ranking.get("notices", [])),
@@ -943,7 +1000,13 @@ def main(argv=None):
     _copy_static(out)
     # S17: the Health screen, off the You tab, built the same way as the front page
     # (the pool's own ledger and source_health, embedded once, at build time).
-    (out / "health.html").write_text(render_health(pool), encoding="utf-8")
+    # J3: the Jev shadow report, when the pipeline's shadow step wrote one beside the pool.
+    jev_path = pool_path.parent / "jev.json"
+    try:
+        jev = json.loads(jev_path.read_text(encoding="utf-8")) if jev_path.exists() else None
+    except (OSError, ValueError):
+        jev = None
+    (out / "health.html").write_text(render_health(pool, jev=jev), encoding="utf-8")
     # U2: the You page's source picker reads names, groups, leans and health from here.
     write_source_catalog(pool, out)
     # S37: the CSP and other security headers, for the pages just written (app.csp).

@@ -129,8 +129,42 @@ export async function verifyAccessJwt(token, { teamDomain, aud, getKeys, nowMs }
   return claims;
 }
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * J1: who sent `request`, shared by every /api function (this one and /api/jev).
+ * {ok: true, email} for a verified Access identity, or {ok: false, status, error}.
+ *
+ * Local testing (`wrangler pages dev`) has no Access in front of it. ACCESS_DEV_EMAIL,
+ * set only in the untracked .dev.vars, stands in for the login there, and only while
+ * the request's own host is this machine: on Cloudflare the host is the site's, so the
+ * variable can never open the deployed site even if it were set there by mistake.
+ */
+export async function accessIdentity(request, env = {}, deps = {}) {
+  if (env.ACCESS_DEV_EMAIL && LOCAL_HOSTS.has(new URL(request.url).hostname)) {
+    return { ok: true, email: String(env.ACCESS_DEV_EMAIL).trim().toLowerCase() };
+  }
+  const token = request.headers.get("cf-access-jwt-assertion");
+  if (!token) return { ok: false, status: 401, error: "no Access token" };
+  const nowMs = (deps.now || Date.now)();
+  const teamDomain = env.ACCESS_TEAM_DOMAIN || ACCESS_TEAM_DOMAIN;
+  const aud = env.ACCESS_AUD || ACCESS_AUD;
+  const getKeys = deps.getKeys || ((force) => teamKeys(teamDomain, deps.fetch || fetch, nowMs, force));
+  let claims = null;
+  try {
+    claims = await verifyAccessJwt(token, { teamDomain, aud, getKeys, nowMs });
+  } catch {
+    claims = null;
+  }
+  if (!claims) return { ok: false, status: 403, error: "Access token refused" };
+  const verified = claims.email.trim().toLowerCase();
+  const email = String(request.headers.get("cf-access-authenticated-user-email") || verified).trim().toLowerCase();
+  if (email !== verified) return { ok: false, status: 403, error: "Access identity refused" };
+  return { ok: true, email };
+}
+
 /** A request body as text, or null once it passes `limit` bytes. */
-async function readLimited(request, limit) {
+export async function readLimited(request, limit) {
   if (!request.body) return "";
   const reader = request.body.getReader();
   const chunks = [];
@@ -233,22 +267,9 @@ export function storedValue(previousText, value) {
 export async function handle(request, env = {}, deps = {}) {
   const method = request.method;
   if (method !== "GET" && method !== "PUT") return reply(405, { error: "GET or PUT only" }, { allow: "GET, PUT" });
-  const token = request.headers.get("cf-access-jwt-assertion");
-  if (!token) return reply(401, { error: "no Access token" });
-  const nowMs = (deps.now || Date.now)();
-  const teamDomain = env.ACCESS_TEAM_DOMAIN || ACCESS_TEAM_DOMAIN;
-  const aud = env.ACCESS_AUD || ACCESS_AUD;
-  const getKeys = deps.getKeys || ((force) => teamKeys(teamDomain, deps.fetch || fetch, nowMs, force));
-  let claims = null;
-  try {
-    claims = await verifyAccessJwt(token, { teamDomain, aud, getKeys, nowMs });
-  } catch {
-    claims = null;
-  }
-  if (!claims) return reply(403, { error: "Access token refused" });
-  const verified = claims.email.trim().toLowerCase();
-  const email = String(request.headers.get("cf-access-authenticated-user-email") || verified).trim().toLowerCase();
-  if (email !== verified) return reply(403, { error: "Access identity refused" });
+  const who = await accessIdentity(request, env, deps);
+  if (!who.ok) return reply(who.status, { error: who.error });
+  const { email } = who;
   const kv = env.INTERESTS;
   if (!kv) return reply(503, { error: "storage is not bound yet" });
   const key = await userKey(email);

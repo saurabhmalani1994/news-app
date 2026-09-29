@@ -230,6 +230,7 @@ def test_hostile_image_url_is_an_escaped_attribute_value():
         '<script type="module" src="js/breadth-banner.js">',
         '<script type="module" src="js/live-actions.js">',
         '<script type="module" src="js/saved-screen.js">',
+        '<script type="module" src="js/jev/ask-bar.js">',
         '<script src="js/sw-register.js" defer>', '<script src="js/offline.js">',
     ]  # S11/S18 gates, S27 tabs, S25 reader, S24 story-actions, S14 coverage-view, V1 versions-view, S15 history, S16 breadth-banner, S33 live-actions, S26 saved-screen, S18 offline+sw, L1 lean-view
 

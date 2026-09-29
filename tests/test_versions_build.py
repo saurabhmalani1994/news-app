@@ -87,7 +87,7 @@ def test_the_trigger_renders_only_where_the_row_shows_n_sources():
     page = render(pool())
     c1 = _row(page, "c1")
     assert '<span class="meta-count">3 sources</span>' in c1
-    assert '<button class="story-coverage" type="button" data-sid="c1"' in c1
+    assert '<button class="story-act story-coverage" type="button" data-sid="c1"' in c1
     wire = _row(page, "w")
     assert "meta-count" not in wire and "story-coverage" not in wire
     assert "story-coverage" not in _row(page, "solo")
@@ -147,6 +147,6 @@ def test_a_cluster_whose_row_shows_n_sources_gets_the_trigger_and_carousel_data(
     page = render(p)
     row = _row(page, "t")
     assert '<span class="meta-count">2 sources</span>' in row
-    assert '<button class="story-coverage" type="button" data-sid="t"' in row
+    assert '<button class="story-act story-coverage" type="button" data-sid="t"' in row
     data = _rank_input(page)
     assert {"t1", "t2"} <= set(data["coverage"]) and {"t1", "t2"} <= set(data["vdeks"])
