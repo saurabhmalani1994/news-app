@@ -23,7 +23,7 @@
 // account and no key.
 
 import { accessIdentity, readLimited } from "./interests.js";
-import { validateQuestions, validateState, normalizeAnswers } from "../../app/static/js/jev/contract.js";
+import { validateQuestions, validateState, normalizeAnswers, toWire } from "../../app/static/js/jev/contract.js";
 import { mockJev } from "../../app/static/js/jev/mock.js";
 
 export const JEV_MODEL = "typesafe/jev";
@@ -58,7 +58,7 @@ async function openRouter(env, input, deps, signal) {
   const response = await (deps.fetch || fetch)(env.JEV_OPENROUTER_URL || OPENROUTER_URL, {
     method: "POST",
     headers: { authorization: `Bearer ${env.OPENROUTER_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({ model: env.JEV_MODEL || OPENROUTER_MODEL, ...input }),
+    body: JSON.stringify({ model: env.JEV_MODEL || OPENROUTER_MODEL, state: input.state, questions: toWire(input.questions) }),
     signal,
   });
   if (!response.ok) throw new Error(`openrouter ${response.status}`);

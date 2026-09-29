@@ -75,7 +75,15 @@ export function mockJev({ state, questions }) {
     }
     const confidence = 0.72;
     if (q.type === "choice") answers[key] = { type: "choice", choice: pick, confidence, probabilities: spread(criteria, pick, confidence) };
-    else answers[key] = { type: "score", score: criteria.indexOf(pick) + 1, confidence, probabilities: spread(criteria, pick, confidence) };
+    else {
+      // J6: the real shape, a 0-based position with a legend and index-keyed probabilities.
+      const byName = spread(criteria, pick, confidence);
+      answers[key] = {
+        type: "score", score: criteria.indexOf(pick), confidence,
+        legend: Object.fromEntries(criteria.map((c, i) => [String(i), c])),
+        probabilities: Object.fromEntries(criteria.map((c, i) => [String(i), byName[c]])),
+      };
+    }
   }
   return { model: "mock-jev", answers, usage: { input_tokens: Math.ceil(text.length / 4), output_tokens: 0 } };
 }

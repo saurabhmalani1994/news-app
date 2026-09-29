@@ -206,6 +206,9 @@ def test_openrouter_is_used_first_with_the_pinned_model_and_a_dollar_budget(tmp_
     assert cf.calls == [], "Workers AI is not called while OpenRouter is set"
     assert {c[0] for c in api.calls} == {js.OPENROUTER_URL} and {c[1] for c in api.calls} == {OR_KEY}
     assert all(c[2]["model"] == "typesafe/jev-1.13" and set(c[2]) == {"model", "state", "questions"} for c in api.calls)
+    wire = next(c[2]["questions"] for c in api.calls if "section" in c[2]["questions"])
+    assert wire["section"]["criteria"] == {c: c for c in js.SECTIONS}, "J6: a choice's criteria go as a record"
+    assert "criteria" not in wire["ai"], "J6: a yes/no question with no criteria goes bare"
     run = doc["run"]
     assert run["unit"] == "usd" and run["budget_day"] == js.DAILY_USD_BUDGET
     assert abs(run["spent"] - 0.00002 * run["asked"]) < 1e-9, "OpenRouter's own reported cost is what is charged"

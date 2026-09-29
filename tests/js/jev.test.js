@@ -154,12 +154,37 @@ test("normalizeAnswers drops what does not fit the question", () => {
   assert.deepEqual(normalizeAnswers(QUESTIONS, null).missing, ["mood", "big", "hard"]);
 });
 
-test("scoreIndex reads probabilities first, else a 0..1 position or a 1..n rank", () => {
+test("scoreIndex reads probabilities first, else Jev's 0-based position", () => {
   const c = ["a", "b", "c", "d", "e"];
   assert.equal(scoreIndex(0.1, c, { a: 0.1, d: 0.6 }), 3);
-  assert.equal(scoreIndex(0.5, c), 2);
-  assert.equal(scoreIndex(4, c), 3);
+  assert.equal(scoreIndex(2.4, c), 2);
+  assert.equal(scoreIndex(3.6, c), 4);
   assert.equal(scoreIndex(9, c), null);
+});
+
+test("J6: a real score answer (0-based score, legend, index-keyed probabilities) reads as its top level", () => {
+  const questions = { size: { type: "score", instructions: "How significant?", criteria: ["Minor", "Notable", "Important", "Major"] } };
+  const real = { answers: { size: { type: "score", score: 2.68, legend: { 0: "Minor", 1: "Notable", 2: "Important", 3: "Major" },
+    probabilities: { 0: 0, 1: 0.01, 2: 0.31, 3: 0.6799999999999999 }, confidence: 0.68 } } };
+  const { answers } = normalizeAnswers(questions, real);
+  assert.equal(answers.size.label, "Major", "Jev's top level, not the 1-based misreading 'Important'");
+  assert.deepEqual(answers.size.probabilities, { Minor: 0, Notable: 0.01, Important: 0.31, Major: 0.6799999999999999 });
+  assert.equal(answers.size.confidence, 0.68);
+});
+
+test("J6: a real choice and yes/no answer read as they came", () => {
+  const questions = {
+    mood: { type: "choice", instructions: "x", criteria: ["Good news", "Bad news", "Both good and bad news", "Neither good nor bad news"] },
+    hard: { type: "noul", instructions: "y", criteria: [] },
+  };
+  const real = { model: "typesafe/jev-1.13-20260917", answers: {
+    mood: { type: "choice", choice: "Bad news", probabilities: { "Bad news": 1, "Good news": 0, "Neither good nor bad news": 0, "Both good and bad news": 0 }, confidence: 0.99 },
+    hard: { type: "noul", noul: 0.99 } } };
+  const { answers, missing } = normalizeAnswers(questions, real);
+  assert.deepEqual(missing, []);
+  assert.equal(answers.mood.label, "Bad news");
+  assert.equal(readChoice(answers.mood, questions.mood.criteria).status, "sure");
+  assert.equal(readNoul(answers.hard).band, "likely");
 });
 
 // --- the Ask bar ---
@@ -394,7 +419,15 @@ test("OpenRouter answers first when its key is set, with the pinned model and a 
   assert.equal(ai.calls.length, 0, "the Workers AI binding is not used while OpenRouter is set");
   assert.equal(or.calls[0].url, OPENROUTER_URL);
   assert.equal(or.calls[0].init.headers.authorization, "Bearer sk-or-test");
-  assert.deepEqual(JSON.parse(or.calls[0].init.body), { model: OPENROUTER_MODEL, state: STATE, questions: QUESTIONS });
+  assert.deepEqual(JSON.parse(or.calls[0].init.body), {
+    model: OPENROUTER_MODEL,
+    state: STATE,
+    questions: {
+      mood: { type: "choice", instructions: "Good or bad news?", criteria: { Positive: "Positive", Negative: "Negative" } },
+      big: { type: "score", instructions: "How big?", criteria: ["Small", "Medium", "Large"] },
+      hard: { type: "noul", instructions: "Is it hard news?" },
+    },
+  }, "J6: choice criteria as a record, a bare yes/no question, score levels as a list");
   const body = await res.json();
   assert.equal(body.model, "typesafe/jev-1.13-20260917");
   assert.equal(body.answers.mood.label, "Negative");
