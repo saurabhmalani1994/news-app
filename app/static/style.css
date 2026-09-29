@@ -3370,7 +3370,8 @@ body {
   animation: jev-pulse 1s ease-in-out infinite alternate;
 }
 
-.sheet-item[aria-busy="true"] {
+.sheet-item[aria-busy="true"],
+.jev-read[aria-busy="true"] {
   animation: jev-pulse 1s ease-in-out infinite alternate;
 }
 
@@ -3381,7 +3382,8 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .ask-bar[aria-busy="true"] .ask-send,
-  .sheet-item[aria-busy="true"] {
+  .sheet-item[aria-busy="true"],
+  .jev-read[aria-busy="true"] {
     animation: none;
   }
 }

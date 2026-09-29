@@ -33,8 +33,23 @@ function verdictBlock(verdict) {
   return box;
 }
 
+/** J12: the button that asks Jev live, under the hourly answers (or alone when the hourly
+ * run has not read the story yet). The words say what it costs in time: a read of the
+ * full article when Almanac has it, else three more questions about the story. */
+export function readWithJev({ hasBody, hourly, onClick }) {
+  const box = el("div", "sheet-form jev-actions");
+  if (!hourly) box.append(el("p", "why-scale-note jev-note", "Jev hasn't read this story in its hourly run yet."));
+  const button = el("button", "sheet-submit jev-read", hasBody ? "Read the full article with Jev" : "Ask Jev about this story");
+  button.type = "button";
+  button.addEventListener("click", () => onClick(button));
+  box.append(button, el("p", "why-scale-note jev-note",
+    hasBody ? "Jev reads the article and adds the kind of story, its significance and the headline's tone."
+      : "Jev reads the headlines and summary and adds the kind of story, its significance and the headline's tone."));
+  return box;
+}
+
 /** The sheet body for one story's analysis. */
-export function renderAnalysis({ answers, missing = [], headline = "", cached = false, fullText = false, model = "", hourly = 0, liveFailed = "" }) {
+export function renderAnalysis({ answers, missing = [], headline = "", cached = false, fullText = false, model = "", hourly = 0, liveFailed = "", live = true }) {
   const view = analysisView(answers, missing);
   const nodes = [];
   if (headline) nodes.push(el("p", "why-headline", headline));
@@ -54,11 +69,12 @@ export function renderAnalysis({ answers, missing = [], headline = "", cached = 
   nodes.push(list);
   const notes = [];
   if (view.missing) notes.push(`Jev left ${view.missing} question${view.missing === 1 ? "" : "s"} unanswered.`);
-  notes.push(fullText
+  if (!live) notes.push("From Jev's hourly run, which reads each article's headline and summary.");
+  else notes.push(fullText
     ? "Jev read the full article, the other outlets' headlines and the summary."
     : "Jev read the headlines, outlets and summary only: this outlet doesn't publish its full text.");
   notes.push("A percentage beside an answer is Jev's confidence in it; \u201clikely\u201d means Jev leaned that way, and \u201cA or B\u201d means its top two were too close to call. For an \u201cAbout\u2026\u201d row, the percentage is Jev's probability that the story is about that.");
-  if (hourly) notes.push(`${hourly} answer${hourly === 1 ? "" : "s"} from the hourly Jev run.`);
+  if (hourly && live) notes.push(`${hourly} answer${hourly === 1 ? "" : "s"} from the hourly Jev run.`);
   if (liveFailed) notes.push(`Jev couldn't answer the rest just now (${liveFailed}).`);
   if (model === "mock-jev") notes.push("Local test answers from the stand-in, not the real Jev.");
   if (cached) notes.push("Saved from an earlier analysis on this phone.");
