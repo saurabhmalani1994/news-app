@@ -19,8 +19,9 @@ import { proposalFromAsk, askState, cleanRequest, strengthStep, confidenceLine }
 import { readChoice, readNoul, expectedPosition, RULES } from "../../app/static/js/jev/decide.js";
 import { storyState, analysisView, analysisCache, CACHE_CAP, hourlyAnswers, questionsLeft, fromCompact } from "../../app/static/js/jev/story.js";
 import { askJev, JevError } from "../../app/static/js/jev/client.js";
-import { splitSentences, readingBlocks, readingQuestions, readingView, readCache, MAX_PARAGRAPHS, TAKEAWAYS, NONE as READ_NONE } from "../../app/static/js/jev/read.js";
+import { splitSentences, readingBlocks, readingQuestions, readingView, readingDensity, readingSections, readCache, TAKEAWAYS, NONE as READ_NONE } from "../../app/static/js/jev/read.js";
 import { gateProposal } from "../../app/static/js/ai/gate.js";
+import { recordRead, recordEvent, readingSummary, STATS_KEY, MIN_READS, RECENT_CAP } from "../../app/static/js/jev/read-stats.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { MemoryStorage } from "../../app/static/js/profile/store.js";
 
@@ -141,7 +142,8 @@ test("validateQuestions and validateState limits", () => {
   const many = Object.fromEntries(Array.from({ length: MAX_QUESTIONS + 1 }, (_, i) => [`q${i}`, QUESTIONS.hard]));
   assert.equal(validateQuestions(many).ok, false);
   assert.equal(validateQuestions({ q: { ...QUESTIONS.hard, instructions: "bad\u0001" } }).ok, false);
-  assert.equal(validateState({ a: "x".repeat(9000) }).ok, false);
+  assert.equal(validateState({ a: "x".repeat(40000) }).ok, true, "J18: a whole article fits");
+  assert.equal(validateState({ a: "x".repeat(50000) }).ok, false);
   assert.equal(validateState([]).ok, false);
 });
 
@@ -581,25 +583,67 @@ test("the article is numbered for Jev and the five takeaways go in one call", ()
   const wire = toWire(calls[0]);
   assert.deepEqual(Object.keys(wire.news.criteria).slice(0, 2), ["S1", "S2"], "sent to Jev as a record of sentence numbers");
   const long = readingBlocks(Array.from({ length: 40 }, (_, i) => `Paragraph ${i} says something. It ends here.`));
-  assert.equal(long.paragraphs.length, MAX_PARAGRAPHS);
-  assert.ok(validateQuestions(readingQuestions(long)[0]).ok);
+  assert.equal(long.paragraphs.length, 40, "J18: the whole article, not its top");
+  assert.ok(readingQuestions(long).every((q) => validateQuestions(q).ok && Object.keys(q).length <= 12));
   assert.deepEqual(readingQuestions(readingBlocks(["Only one sentence."])), []);
 });
 
+// A 12-paragraph article: sections P1-P5, P6-P10, P11-P12; sentence Sn is paragraph n.
+const TWELVE = Array.from({ length: 12 }, (_, i) => `Paragraph ${i + 1} makes its point clearly.`);
+const pick = (id, confidence = 0.9, probabilities = null) => ({ type: "choice", value: id, label: id, confidence, probabilities });
+
 test("takeaways come from Jev's sentence numbers, in article order, each sentence once", () => {
-  const blocks = readingBlocks(ARTICLE);
-  const pick = (id, confidence, probabilities = null) => ({ type: "choice", value: id, label: id, confidence, probabilities });
+  const blocks = readingBlocks(TWELVE);
   const view = readingView({
-    next: pick("S5", 0.8),
-    news: pick("S1", 0.9),
+    next: pick("S11", 0.8),
+    news: pick("S1"),
     why: pick("S3", 0.55),
     evidence: pick("S1", 0.7),
-    other: pick(READ_NONE, 0.9),
+    other: pick(READ_NONE),
   }, blocks);
-  assert.deepEqual(view.takeaways.map((t) => `${t.name}:${t.id}`), ["The news:S1", "Why it matters:S3", "What's next:S5"],
+  assert.deepEqual(view.takeaways.map((t) => `${t.name}:${t.id}`), ["The news:S1", "Why it matters:S3", "What's next:S11"],
     "article order; the evidence pick repeats S1 so it is dropped; None of these leaves the other side out");
-  assert.equal(view.takeaways[0].text, "The city council approved a $40 million flood barrier on Tuesday.");
-  assert.deepEqual([...view.skim], ["P1", "P2", "P4"]);
+  assert.equal(view.takeaways[0].text, "Paragraph 1 makes its point clearly.");
+});
+
+test("J18: a short article gets at most one takeaway per three paragraphs", () => {
+  const four = readingBlocks(ARTICLE);
+  const view = readingView({ news: pick("S1"), why: pick("S3"), next: pick("S5") }, four);
+  assert.deepEqual(view.takeaways.map((t) => t.key), ["news"], "4 paragraphs: 1, kept in priority order");
+  assert.deepEqual(view.points, [], "a single section has no key point question");
+});
+
+test("J18: long articles get a key point per section, spread and never crowded", () => {
+  const blocks = readingBlocks(TWELVE);
+  const sections = readingSections(blocks);
+  assert.deepEqual(sections.map((x) => `${x.key}:${x.from}-${x.to}`), ["k1:P1-P5", "k2:P6-P10", "k3:P11-P12"]);
+  const calls = readingQuestions(blocks);
+  assert.deepEqual(Object.keys(calls[0]), ["news", "why", "evidence", "other", "next", "k1", "k2", "k3"]);
+  assert.equal(calls[0].k2.instructions, "Which sentence in paragraphs P6 to P10 carries that part's main point? Sentences are marked [S1], [S2] and so on.");
+  assert.deepEqual(calls[0].k2.criteria, ["S6", "S7", "S8", "S9", "S10", READ_NONE]);
+  const view = readingView({
+    news: pick("S2"),
+    k1: pick("S4"), // section 1 already holds a named takeaway: no point
+    k2: pick("S8"),
+    k3: pick("S9", 0.5), // not its own section's sentence? S9 is in section 2: still a valid number, taken once
+  }, blocks);
+  assert.deepEqual(view.points.map((x) => x.id), ["S8"], "S9 sits next to S8 and Jev only leaned, so it is left out");
+  assert.deepEqual([...view.skim], ["P2", "P8"]);
+  const d = readingDensity(view, blocks);
+  assert.deepEqual(d, { marked: 2, paragraphs: 12, share: 2 / 12, longestGap: 5 });
+  const sure = readingView({ news: pick("S2"), k2: pick("S8"), k3: pick("S11") }, blocks);
+  assert.deepEqual(sure.points.map((x) => x.id), ["S8", "S11"]);
+});
+
+test("J18: the longest article in the pool is read whole, in calls of at most 12", () => {
+  const huge = readingBlocks(Array.from({ length: 164 }, (_, i) => `Paragraph ${i + 1} has a sentence. It has a second one too.`));
+  assert.equal(huge.paragraphs.length, 164);
+  const calls = readingQuestions(huge);
+  const keys = calls.flatMap((q) => Object.keys(q));
+  assert.equal(keys.filter((k) => /^k\d+$/.test(k)).length, 33, "one key point question per five paragraphs");
+  assert.ok(calls.every((q) => Object.keys(q).length <= 12 && validateQuestions(q).ok));
+  assert.equal(calls[0].news.criteria.length, 251, "named questions: the first 250 sentences and None of these");
+  assert.ok(validateState(huge.state).ok);
 });
 
 test("a split or unsure pick is left out, and with no takeaway nothing is skimmed", () => {
@@ -626,4 +670,36 @@ test("the read cache keeps the newest reads", () => {
   c.put("c", { answers: {} });
   assert.equal(c.get("a"), null);
   assert.ok(c.get("c"));
+});
+
+
+// --- J19: your reading with Jev ---
+
+test("reads and Skim/Hide use are recorded, and the checks wait for enough reads", () => {
+  const store = new MemoryStorage();
+  recordRead(store, { marked: 4, paragraphs: 20, share: 0.2, longestGap: 6 }, "2026-09-29T00:00:00Z");
+  recordEvent(store, "skim");
+  let s = readingSummary(store);
+  assert.equal(s.reads, 1);
+  assert.equal(s.skimRate, 1);
+  assert.ok(s.checks.every((c) => c.status === "not_enough_data"));
+  for (let i = 0; i < MIN_READS; i += 1) recordRead(store, { marked: 3, paragraphs: 30, share: 0.1, longestGap: 12 });
+  recordRead(store, { marked: 0, paragraphs: 8, share: 0, longestGap: 8 });
+  recordEvent(store, "hide");
+  recordEvent(store, "error");
+  s = readingSummary(store);
+  assert.equal(s.reads, MIN_READS + 2);
+  assert.equal(s.errors, 1);
+  const status = Object.fromEntries(s.checks.map((c) => [c.key, c.status]));
+  assert.deepEqual(status, { share_low: "fail", share_high: "pass", gap: "fail", hide: "pass", empty: "pass" },
+    "a 0.1 share is too thin and a 12-paragraph gap too long; the empty read is excluded from the averages");
+  assert.ok(Math.abs(s.avgShare - (0.2 + 0.1 * MIN_READS) / (MIN_READS + 1)) < 1e-9);
+});
+
+test("the record keeps only recent reads and survives a corrupt value", () => {
+  const store = new MemoryStorage();
+  for (let i = 0; i < RECENT_CAP + 5; i += 1) recordRead(store, { marked: 1, paragraphs: 5, share: 0.2, longestGap: 2 });
+  assert.equal(JSON.parse(store.getItem(STATS_KEY)).recent.length, RECENT_CAP);
+  store.setItem(STATS_KEY, "{broken");
+  assert.equal(readingSummary(store).reads, 0);
 });

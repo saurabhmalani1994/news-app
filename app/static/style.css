@@ -3846,8 +3846,18 @@ body {
 }
 
 ::highlight(jev-key) {
-  background-color: rgba(255, 205, 96, 0.28);
+  background-color: rgba(255, 205, 96, 0.34);
   color: inherit;
+}
+
+/* J18: key points through the article, a lighter tint than the named takeaways. */
+::highlight(jev-point) {
+  background-color: rgba(255, 205, 96, 0.14);
+  color: inherit;
+}
+
+.jev-point-para {
+  background-color: rgba(255, 205, 96, 0.08);
 }
 
 .jev-key-para {
@@ -3860,7 +3870,11 @@ body {
 
 @media (prefers-color-scheme: light) {
   ::highlight(jev-key) {
-    background-color: rgba(255, 196, 0, 0.3);
+    background-color: rgba(255, 196, 0, 0.34);
+  }
+
+  ::highlight(jev-point) {
+    background-color: rgba(255, 196, 0, 0.14);
   }
 }
 
