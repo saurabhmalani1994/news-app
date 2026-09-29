@@ -61,7 +61,13 @@ export function mockJev({ state, questions }) {
       continue;
     }
     let pick;
-    if (key === "sentiment") {
+    const sentences = criteria.filter((c) => /^S\d+$/.test(c));
+    if (sentences.length) {
+      // J17: a sentence-number question; a stand-in spread over the article, and "None
+      // of these" for the fourth kind so the empty case shows too.
+      const slot = ["news", "why", "evidence", "other", "next"].indexOf(key);
+      pick = slot === 3 ? criteria.at(-1) : sentences[Math.min(sentences.length - 1, Math.max(0, slot) * 3)];
+    } else if (key === "sentiment") {
       const asked = { positive: "Good news", negative: "Bad news", mixed: "Both good and bad news", neutral: "Neither good nor bad news" }[mood];
       pick = criteria.includes(asked) ? asked : criteria[0];
     } else if (request && /\b(less|fewer)\b/i.test(request) && key === "lower") {
