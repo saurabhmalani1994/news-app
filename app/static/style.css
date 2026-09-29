@@ -886,14 +886,6 @@ body {
   transition: background-color var(--motion-duration) var(--motion-ease);
 }
 
-.other-side:active {
-  background: var(--color-pressed);
-}
-
-.other-side:focus-visible {
-  outline: 2px solid var(--color-headline);
-  outline-offset: -2px;
-}
 
 .other-side-label {
   display: flex;
@@ -3342,6 +3334,111 @@ body {
   border-bottom-color: var(--color-headline);
 }
 
+/* J22: Today's order. The pressed look follows the order-* class rank-gate.js puts on
+   <html> before first paint, so a stored choice never flashes For you first. */
+.today-order {
+  display: flex;
+  gap: 8px;
+  margin: 12px var(--space-gutter) 0;
+}
+
+.today-order-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 8px;
+  background: transparent;
+  border: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--color-meta);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.today-order-btn:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: 2px;
+}
+
+:root:not(.order-latest):not(.order-urgent) .today-order-btn[data-order="for_you"],
+.order-latest .today-order-btn[data-order="latest"],
+.order-urgent .today-order-btn[data-order="urgent"] {
+  background: var(--color-pressed);
+  color: var(--color-headline);
+}
+
+.today-order-note {
+  margin: 8px var(--space-gutter) 0;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-meta);
+}
+
+.today-order-why {
+  display: none;
+}
+
+:root:not(.order-latest):not(.order-urgent) .today-order-why[data-order="for_you"],
+.order-latest .today-order-why[data-order="latest"],
+.order-urgent .today-order-why[data-order="urgent"] {
+  display: inline;
+}
+
+/* J21: what Jev can do, under the bar while it has focus. */
+.ask-help {
+  margin: 0 var(--space-gutter);
+  padding: 10px 0 14px;
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.ask-help-text {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-meta);
+}
+
+.ask-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.ask-suggest:empty {
+  display: none;
+}
+
+.ask-suggestion {
+  min-height: 44px;
+  max-width: 100%;
+  padding: 0 12px;
+  background: transparent;
+  border: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--color-headline);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ask-suggestion:active {
+  background: var(--color-pressed);
+}
+
+.ask-suggestion:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: 2px;
+}
+
 .ask-send {
   display: flex;
   align-items: center;
@@ -3723,20 +3820,61 @@ body {
   margin-top: 4px;
 }
 
-.other-side-go {
+/* J21: the other side opens only from its own buttons, drawn as the card's are. */
+.other-side-acts {
   display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.other-side-act {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 7px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  background: transparent;
+  border: var(--divider-weight) solid var(--color-divider);
   font-family: var(--font-sans);
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--color-meta);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--color-headline);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-duration) var(--motion-ease);
+}
+
+.other-side-act:active {
+  background: var(--color-pressed);
+}
+
+.other-side-act:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: 2px;
+}
+
+.other-side-act .story-act-icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
 }
 
 .other-side-go .story-act-icon {
-  width: 13px;
-  height: 13px;
+  color: var(--color-meta);
+}
+
+/* J21: on a card with its own open button, only the buttons open anything: the
+   headline, photo and meta are read, not tapped. The link stays for the open button
+   (story-actions.js hands its tap to it) and for the reader's history. */
+.story:has(.story-act--open) > .story-link {
+  pointer-events: none;
 }
 
 .lean-hit--other {
@@ -3948,4 +4086,19 @@ body {
   .jev-takeaway-name {
     color: #8A5A00;
   }
+}
+
+/* J22: when the card's article was written and when Almanac pulled the story, one
+   quiet line under the meta at a fixed height, filled on the phone (js/story-times.js). */
+.story-times {
+  display: block;
+  height: 16px;
+  margin-top: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-meta);
 }

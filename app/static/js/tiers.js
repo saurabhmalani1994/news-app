@@ -142,6 +142,12 @@ export function placeFace(li, faceId, buildFace, input) {
   }
   const age = line.querySelector(".meta-age");
   if (age) age.textContent = front.a;
+  // J22: the times line follows the face's own written time (js/story-times.js).
+  const times = li.querySelector(".story-times");
+  if (times && article.published_at) {
+    times.setAttribute("data-written", article.published_at);
+    globalThis.window?.almanacFillTimes?.(li);
+  }
   const second = li.querySelector(".meta-line--2");
   if (second && front.a) second.setAttribute("data-age", front.a);
   li.querySelectorAll(":scope > .lean-hit:not(.lean-hit--other)").forEach((el) => el.remove());
@@ -260,16 +266,12 @@ export function placeOtherSide(li, record, input) {
   li.querySelector(".lean-hit--other")?.remove();
   const link = record && (input.links || {})[record.article_id];
   if (!link) return;
-  const [url, title] = link;
+  const [url, title, readable] = link;
   const web = WEB.test(url || "");
-  const node = document.createElement(web ? "a" : "span");
+  // J21: a block, never a link: only its own buttons open anything (app/build.py OTHER).
+  const node = document.createElement("div");
   node.className = "other-side";
   node.dataset.aid = record.article_id;
-  if (web) {
-    node.setAttribute("href", url);
-    node.setAttribute("target", "_blank");
-    node.setAttribute("rel", "noopener noreferrer");
-  }
   const label = document.createElement("span");
   label.className = "other-side-label";
   const kicker = document.createElement("span");
@@ -287,14 +289,28 @@ export function placeOtherSide(li, record, input) {
   headline.className = "other-side-title";
   headline.textContent = title;
   node.append(label, headline);
-  // C3: where the other side opens, as app/build.py OTHER_GO writes it.
-  if (web) {
-    const go = document.createElement("span");
-    go.className = "other-side-go";
-    go.textContent = `Opens ${siteHost(url)}`;
-    go.append(actIcon("i-out"));
-    node.append(go);
+  // C3, J21: "Read here" when the reader holds its text, "Open <host>" for the site.
+  const acts = document.createElement("span");
+  acts.className = "other-side-acts";
+  if (readable === 1) {
+    const read = document.createElement("button");
+    read.className = "other-side-act other-side-read";
+    read.dataset.body = record.article_id;
+    read.setAttribute("type", "button");
+    read.append(actIcon("i-read"), "Read here");
+    acts.append(read);
   }
+  if (web) {
+    const go = document.createElement("a");
+    go.className = "other-side-act other-side-go";
+    go.setAttribute("href", url);
+    go.setAttribute("target", "_blank");
+    go.setAttribute("rel", "noopener noreferrer");
+    go.textContent = `Open ${siteHost(url)}`;
+    go.append(actIcon("i-out"));
+    acts.append(go);
+  }
+  if (readable === 1 || web) node.append(acts);
   li.append(node);
   const hit = leanHit(record.source_id, lean, document, country, "lean-hit--other");
   if (hit) li.append(hit);

@@ -35,6 +35,15 @@ Answers are cached by article, question-set version and model in .cache/jev.json
 only new articles cost anything. JEV_MOCK=1 answers from a keyword stand-in for local
 testing and marks the report as mock.
 
+J20: the same step also asks, for every story group (cluster), whether each member
+reports the same event as the group's anchor (the member whose headline shares most
+with the others) and how it frames it. With --apply it then rewrites the pool before
+the build: a member Jev reads as a different event (same-event below SPLIT_BELOW) is
+split out of its group to stand as its own story, and every answered member carries
+`jev: {same, framing}` for the other-side pick (app/static/js/passes.js). The new pool
+must pass contract.validate before it replaces the old one, written atomically, so this
+step can never break a publish.
+
 Nothing here prints or logs a key, the token or the account id.
 """
 import argparse
@@ -55,7 +64,7 @@ OPENROUTER_MODEL = "typesafe/jev-1.13"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/systemone"
 OPENROUTER_ENV = "OPENROUTER_API_KEY"
 USD_PER_M_TOKENS = 0.042 * 2  # OpenRouter's listed input price, doubled to err high
-DAILY_USD_BUDGET = 0.10
+DAILY_USD_BUDGET = 0.30  # owner, 2026-09-30
 QUESTIONS_VERSION = "shadow-v1"
 CACHE_PATH = ".cache/jev.json"
 CACHE_SCHEMA = 1
@@ -66,7 +75,7 @@ CACHE_KEEP_HOURS = 96
 NEURONS_PER_M_TOKENS = 7600
 DAILY_NEURON_BUDGET = 1500
 SHARED_CEILING = 8000  # fetcher/embed.py DAILY_NEURON_BUDGET: the account's own cap
-MAX_ARTICLES = 150  # new articles asked per run, newest first
+MAX_ARTICLES = 250  # new articles asked per run, newest first
 MAX_PAIRS = 20  # known pairs asked per run, positives and negatives each
 MAX_SECONDS = 60
 TIMEOUT = 20
@@ -102,6 +111,22 @@ ARTICLE_QUESTIONS = {
 PAIR_QUESTIONS = {
     "same_event": {"type": "noul", "instructions": (
         "Do these two headlines report the same news event?"), "criteria": []},
+}
+
+# J20: a group member against its anchor: the same event, and how it frames it.
+SPLIT_BELOW = 0.3
+FRAMING_CHOICES = (
+    ("Reports the same facts in the same way", "same"),
+    ("Reports the same facts with a different emphasis", "emphasis"),
+    ("Adds a fact the first headline leaves out", "adds"),
+    ("Leaves out a fact the first headline has", "omits"),
+    ("Reports a different event", "different"),
+)
+FRAMING_CODE = dict(FRAMING_CHOICES)
+CLUSTER_PAIR_QUESTIONS = {
+    "same_event": PAIR_QUESTIONS["same_event"],
+    "framing": {"type": "choice", "instructions": "Compared with the first headline, what does the second headline do?",
+                "criteria": [asked for asked, _ in FRAMING_CHOICES]},
 }
 
 # Each source bucket's expected answers: a rough key, reported as agreement. A bucket
@@ -236,6 +261,36 @@ def known_pairs(pool, rng, limit=MAX_PAIRS):
             continue
         negatives.add(tuple(sorted((a["id"], b["id"]))))
     return sorted(positives)[:limit], sorted(negatives)[:limit]
+
+
+_STOP = {"the", "and", "for", "with", "from", "that", "this", "after", "over", "says", "said", "into", "about", "its"}
+
+
+def _title_words(article):
+    return set(re.findall(r"[a-z0-9]{3,}", (article.get("title") or "").lower())) - _STOP
+
+
+def cluster_anchor(cluster, by_id):
+    """The member whose headline shares most words with the others' (ties: lowest id)."""
+    members = [by_id[i] for i in cluster["article_ids"] if i in by_id]
+    words = {a["id"]: _title_words(a) for a in members}
+
+    def score(a):
+        mine = words[a["id"]]
+        return sum(len(mine & words[b["id"]]) / max(1, len(mine | words[b["id"]])) for b in members if b is not a)
+    return max(members, key=lambda a: (score(a), [-ord(ch) for ch in a["id"]]))["id"]
+
+
+def cluster_pairs(pool):
+    """[(cache key, anchor id, member id)] for every non-anchor member of every group."""
+    by_id = {a["id"]: a for a in pool.get("articles", [])}
+    out = []
+    for c in pool.get("clusters", []):
+        anchor = cluster_anchor(c, by_id)
+        for m in c["article_ids"]:
+            if m != anchor and m in by_id:
+                out.append((f"c:{anchor}|{m}", anchor, m))
+    return out
 
 
 # Calling Jev ------------------------------------------------------------------------------
@@ -392,7 +447,7 @@ def spent_today(path, day, unit):
 # The run ----------------------------------------------------------------------------------
 
 def ask_all(pool, client, cache, now, used, budget, ceiling_left, pairs, cost=neurons, max_seconds=MAX_SECONDS,
-            max_articles=MAX_ARTICLES):
+            max_articles=MAX_ARTICLES, groups=()):
     """Asks the new articles (newest first) and the known pairs, within the budget and the
     time cap. `cost(tokens)` estimates a call in the route's unit (neurons or dollars);
     a call's own reported cost wins over the estimate. Returns stats; answers land in
@@ -401,8 +456,16 @@ def ask_all(pool, client, cache, now, used, budget, ceiling_left, pairs, cost=ne
     names = {s["id"]: s.get("name", s["id"]) for s in pool.get("sources", [])}
     by_id = {a["id"]: a for a in pool.get("articles", [])}
     stats = {"state": "ok", "asked": 0, "cached": 0, "errors": 0, "spent": 0.0, "tokens": 0}
-    # Known pairs first: few, and they carry the report's surest answer keys.
+    # J20: group members against their anchor first (they change what the page shows),
+    # then the known pairs (the report's surest answer keys), then new articles.
     todo = []
+    for key, anchor, member in groups:
+        hit = cache["pairs"].get(key)
+        if hit:
+            hit[1] = hour
+            stats["cached"] += 1
+        else:
+            todo.append(("pairs", key, pair_state(by_id[anchor], by_id[member]), CLUSTER_PAIR_QUESTIONS))
     positives, negatives = pairs
     for pair in positives + negatives:
         key = "|".join(pair)
@@ -477,20 +540,34 @@ def report(pool, cache, pairs, buckets=None):
     by_id = {a["id"]: a for a in pool.get("articles", [])}
     answered = {i: cache["articles"][i][0] for i in by_id if i in cache["articles"]}
 
+    names = {s["id"]: s.get("name", "") for s in pool.get("sources", [])}
+
+    def article_ref(i):
+        a = by_id[i]
+        return {"id": i, "title": a.get("title", "")[:140], "source": names.get(a["source_id"], a["source_id"])}
+
     def agreement(expected_map, key):
-        per = {}
-        for i, ans in answered.items():
+        """J22: also one article it matched and one it missed per bucket, so Health can
+        show a real example beside each number."""
+        per, ex = {}, {}
+        for i in sorted(answered):
+            ans = answered[i]
             bucket = buckets.get(by_id[i]["source_id"])
             want = expected_map.get(bucket)
             a = ans.get(key)
             if not want or choice_status(a) not in ("sure", "lean", "unrated"):
                 continue
             row = per.setdefault(bucket, [0, 0])
-            row[0] += a["v"] in want
+            hit = a["v"] in want
+            row[0] += hit
             row[1] += 1
+            slot = ex.setdefault(bucket, {})
+            if ("hit" if hit else "miss") not in slot:
+                slot["hit" if hit else "miss"] = {**article_ref(i), "expected": sorted(want)[0], "got": a["v"]}
         total = [sum(r[0] for r in per.values()), sum(r[1] for r in per.values())]
         return {"agree": total[0], "scored": total[1],
-                "by_bucket": {b: {"agree": r[0], "scored": r[1]} for b, r in sorted(per.items())}}
+                "by_bucket": {b: {"agree": r[0], "scored": r[1], **({"examples": ex[b]} if b in ex else {})}
+                              for b, r in sorted(per.items())}}
 
     statuses = {}
     for ans in answered.values():
@@ -514,6 +591,20 @@ def report(pool, cache, pairs, buckets=None):
             examples[cell].append({"id": i, "title": by_id[i].get("title", "")[:140]})
 
     positives, negatives = pairs
+    def pair_examples(pairs_list, good):
+        """J22: one pair Jev read as expected and one it did not, as titles."""
+        out = {}
+        for p in pairs_list:
+            a = cache["pairs"].get("|".join(p), [{}])[0].get("same_event")
+            if not a or not all(x in by_id for x in p):
+                continue
+            slot = "hit" if band(a) == good else "miss"
+            if slot not in out:
+                out[slot] = {"a": article_ref(p[0]), "b": article_ref(p[1]), "p": a["v"]}
+            if len(out) == 2:
+                break
+        return out
+
     pos = [cache["pairs"].get("|".join(p), [{}])[0].get("same_event") for p in positives]
     neg = [cache["pairs"].get("|".join(p), [{}])[0].get("same_event") for p in negatives]
     pos = [a for a in pos if a]
@@ -530,6 +621,7 @@ def report(pool, cache, pairs, buckets=None):
         "same_event_known": {
             "syndicated_pairs": len(pos), "syndicated_read_same": sum(band(a) == "likely" for a in pos),
             "unrelated_pairs": len(neg), "unrelated_read_different": sum(band(a) == "unlikely" for a in neg),
+            "examples": {"same": pair_examples(positives, "likely"), "different": pair_examples(negatives, "unlikely")},
         },
     }
 
@@ -570,7 +662,7 @@ def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=e
                  "latency_ms": {"n": 0}}
     else:
         stats = ask_all(pool, client, cache, now, used, budget, ceiling_left, pairs, cost=cost, max_seconds=max_seconds,
-                        max_articles=max_articles)
+                        max_articles=max_articles, groups=cluster_pairs(pool))
     budget_state = {"day": day, "unit": unit, "spent": round(used + stats["spent"], 6)}
     cache_bytes = save_cache(cache, int(now.timestamp() // 3600), budget_state, cache_path, model) if client else 0
     ids = {a["id"] for a in pool.get("articles", [])}
@@ -587,7 +679,102 @@ def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=e
         "answers": {i: cache["articles"][i][0] for i in sorted(ids) if i in cache["articles"]},
     }
     doc["scorecard"] = scorecard(doc)
+    doc["_cache"] = cache  # for apply_to_pool; dropped before jev.json is written
     return doc
+
+
+# J20: applying the group answers to the pool --------------------------------------------
+
+def load_source_facts(path="sources.json"):
+    """{source id: (lean, syndication group)} from the repo's sources.json."""
+    try:
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    rows = doc.get("sources", doc) if isinstance(doc, dict) else doc
+    return {r["id"]: (r.get("lean"), r.get("syndication_group") or r["id"]) for r in rows if isinstance(r, dict) and "id" in r}
+
+
+def apply_to_pool(pool, cache, facts=None):
+    """(new pool, summary): members Jev reads as a different event split out of their
+    group (a group left with one member dissolves, unless a Live event holds it), and
+    every answered member annotated with jev {same, framing}. The input is not changed."""
+    from contract.validate import _cluster_method
+    facts = facts if facts is not None else load_source_facts()
+    new = json.loads(json.dumps(pool))
+    by_id = {a["id"]: a for a in new["articles"]}
+    in_events = {cid for e in new.get("events", []) for cid in e.get("cluster_ids", [])}
+    splits, dissolved, annotated = [], [], 0
+    kept = []
+    for c in new["clusters"]:
+        anchor = cluster_anchor(c, by_id)
+        drop, notes = [], {}
+        for m in c["article_ids"]:
+            if m == anchor:
+                continue
+            ans = (cache["pairs"].get(f"c:{anchor}|{m}") or [{}])[0]
+            same, framing = ans.get("same_event"), ans.get("framing")
+            if same and same["v"] < SPLIT_BELOW:
+                drop.append(m)
+                continue
+            rec = {}
+            if same:
+                rec["same"] = same["v"]
+            if framing and FRAMING_CODE.get(framing["v"]):
+                rec["framing"] = FRAMING_CODE[framing["v"]]
+            if rec:
+                notes[m] = rec
+        keep = [m for m in c["article_ids"] if m not in drop]
+        if drop and len(keep) < 2 and c["id"] in in_events:
+            keep, drop = list(c["article_ids"]), []  # a Live event's group stays whole
+        for m in drop:
+            splits.append({"cluster": c["id"], "anchor": anchor, "article": m,
+                           "same": cache["pairs"][f"c:{anchor}|{m}"][0]["same_event"]["v"]})
+        if len(keep) < 2:
+            dissolved.append(c["id"])
+            continue
+        for m, rec in notes.items():
+            if m in keep:
+                by_id[m]["jev"] = rec
+                annotated += 1
+        if drop:
+            c["article_ids"] = keep
+            c["near_duplicates"] = [g for g in ([i for i in grp if i in keep] for grp in c["near_duplicates"]) if len(g) > 1]
+            srcs = {by_id[i]["source_id"] for i in keep}
+            c["independent_sources"] = len({facts.get(sid, (None, sid))[1] for sid in srcs})
+            c["lean_buckets"] = sorted({facts[sid][0] for sid in srcs if sid in facts and facts[sid][0]})
+            in_dups = {i for g in c["near_duplicates"] for i in g}
+            units = len(c["near_duplicates"]) + len(set(keep) - in_dups)
+            base = _cluster_method(units, bool(c["near_duplicates"]))
+            c["method"] = base + "+embedding" if c["method"].endswith("+embedding") and units > 1 else base
+        kept.append(c)
+    new["clusters"] = kept
+    # J22: every answered article carries Jev's hard-news probability (jev.hard, the
+    # yes/no answer as asked), for Today's Urgent order (app/static/js/today-order.js).
+    for aid, a in by_id.items():
+        hard = ((cache["articles"].get(aid) or [{}])[0] or {}).get("hard_news")
+        if isinstance(hard, dict) and hard.get("t") == "noul" and isinstance(hard.get("v"), (int, float)):
+            a.setdefault("jev", {})["hard"] = round(min(1.0, max(0.0, float(hard["v"]))), 3)
+    return new, {"splits": splits, "dissolved": dissolved, "annotated": annotated}
+
+
+def apply_and_write(pool_path, pool, cache, facts=None):
+    """Applies the group answers and replaces the pool file, only if the new pool passes
+    contract.validate; written to a temporary file, then renamed. Returns the summary
+    with "applied": True, or "applied": False and the reason."""
+    from contract.validate import validate
+    try:
+        new, summary = apply_to_pool(pool, cache, facts)
+        errors = validate(new)
+    except Exception as exc:  # never lose the report, never touch the pool
+        return {"splits": [], "dissolved": [], "annotated": 0, "applied": False,
+                "reason": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    if errors:
+        return {**summary, "applied": False, "reason": errors[0][:200]}
+    tmp = Path(str(pool_path) + ".jev-tmp")
+    tmp.write_text(json.dumps(new, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    os.replace(tmp, pool_path)
+    return {**summary, "applied": True}
 
 
 # The scorecard ----------------------------------------------------------------------------
@@ -639,6 +826,21 @@ def scorecard(doc):
         "latency": (latency.get("p90"), latency.get("n", 0)),
         "cost": ((run.get("spent", 0) / asked * 1000) if cost_known else None, asked if cost_known else 0),
     }
+    def bucket_examples(by_bucket, names):
+        """J22: the first article matched and the first missed across `names`."""
+        out = {}
+        for b in names:
+            for slot, ex in ((by_bucket.get(b) or {}).get("examples") or {}).items():
+                out.setdefault(slot, {**ex, "bucket": b})
+        return out
+
+    pair_ex = same.get("examples") or {}
+    examples = {
+        "same_event": pair_ex.get("same") or {},
+        "different_event": pair_ex.get("different") or {},
+        "section": bucket_examples(rep["section_vs_bucket"]["by_bucket"], STRONG_SECTION_BUCKETS),
+        "region": bucket_examples(rep["region_vs_bucket"]["by_bucket"], REGIONAL_BUCKETS),
+    }
     checks = []
     for key, label, feature, direction, target, minimum in CHECKS:
         part, n = values[key]
@@ -651,8 +853,11 @@ def scorecard(doc):
         else:
             ok = value >= target if direction == ">=" else value <= target
             status = "pass" if ok else "fail"
-        checks.append({"key": key, "label": label, "feature": feature, "value": value, "target": target,
-                       "direction": direction, "n": n, "status": status})
+        check = {"key": key, "label": label, "feature": feature, "value": value, "target": target,
+                 "direction": direction, "n": n, "status": status}
+        if examples.get(key):
+            check["examples"] = examples[key]
+        checks.append(check)
     features = {}
     for c in checks:
         now = features.get(c["feature"], "ready")
@@ -718,12 +923,26 @@ def main(argv=None):
     ap.add_argument("--daily-usd", type=float, default=None, help="OpenRouter dollar cap for today")
     ap.add_argument("--max-seconds", type=int, default=MAX_SECONDS)
     ap.add_argument("--scorecard", action="store_true", help="print the scorecard after the run")
+    ap.add_argument("--apply", action="store_true", help="J20: split off-story group members and annotate the pool")
     args = ap.parse_args(argv)
     pool = json.loads(Path(args.pool).read_text(encoding="utf-8"))
     doc = run(pool, datetime.now(timezone.utc), cache_path=args.cache, max_seconds=args.max_seconds,
               max_articles=args.max_articles, daily_usd=args.daily_usd)
+    cache = doc.pop("_cache")
+    if args.apply:
+        applied = apply_and_write(args.pool, pool, cache)
+        by_id = {a["id"]: a for a in pool["articles"]}
+        doc["report"]["groups"] = {
+            "applied": applied["applied"], "reason": applied.get("reason"), "annotated": applied["annotated"],
+            "split": len(applied["splits"]), "dissolved": len(applied["dissolved"]),
+            "examples": [{"title": by_id[x["article"]].get("title", "")[:140], "anchor": by_id[x["anchor"]].get("title", "")[:140],
+                          "same": x["same"]} for x in applied["splits"][:8]],
+        }
     Path(args.out).write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(log_line(doc))
+    if "groups" in doc["report"]:
+        g = doc["report"]["groups"]
+        print(f"jev groups applied={g['applied']} annotated={g['annotated']} split={g['split']} dissolved={g['dissolved']}")
     if args.scorecard:
         print(scorecard_text(doc["scorecard"]))
     return 0

@@ -3,6 +3,7 @@
 // per answered question with Jev's own confidence. Every string is the app's own label
 // or a criterion from js/jev/questions.js, set as text, never markup (R13, R26).
 
+import { sortedBy } from "./sorted-by.js";
 import { analysisView, confidenceText } from "./story.js";
 
 function el(tag, className, text) {
@@ -49,7 +50,7 @@ export function readWithJev({ hasBody, hourly, onClick }) {
 }
 
 /** The sheet body for one story's analysis. */
-export function renderAnalysis({ answers, missing = [], headline = "", cached = false, fullText = false, model = "", hourly = 0, liveFailed = "", live = true }) {
+export function renderAnalysis({ answers, missing = [], headline = "", cached = false, fullText = false, model = "", hourly = 0, liveFailed = "", live = true, ruleTopics = null }) {
   const view = analysisView(answers, missing);
   const nodes = [];
   if (headline) nodes.push(el("p", "why-headline", headline));
@@ -67,6 +68,14 @@ export function renderAnalysis({ answers, missing = [], headline = "", cached = 
     list.append(row);
   }
   nodes.push(list);
+  // J22: whether the section comes from the rules, Jev, or both agree.
+  if (ruleTopics) {
+    const by = sortedBy(ruleTopics, answers?.section);
+    const box = el("p", "why-scale-note jev-sorted-note");
+    box.dataset.kind = by.kind;
+    box.append(el("span", "jev-sorted", `Section: ${by.label}. `), by.sentence);
+    nodes.push(box);
+  }
   const notes = [];
   if (view.missing) notes.push(`Jev left ${view.missing} question${view.missing === 1 ? "" : "s"} unanswered.`);
   if (!live) notes.push("From Jev's hourly run, which reads each article's headline and summary.");

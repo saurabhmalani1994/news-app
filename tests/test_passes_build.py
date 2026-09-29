@@ -88,8 +88,9 @@ def test_other_side_link_renders_beside_its_card_as_text_only():
     assert "Fox News Politics (right)" in text and "least represented" in text and "(0 of 6)" in text
     page = render(p, ranking)
     row = re.search(r'<li class="story[^"]*" data-sid="c1">(.*?)</li>', page, re.S).group(1)
-    # The card's own link closes before the other-side link opens: never nested.
-    card, other = row.split('<a class="other-side"', 1)
+    # The card's own link closes before the other side opens: never nested. J21: the
+    # other side is a block that opens only from its own buttons.
+    card, other = row.split('<div class="other-side"', 1)
     assert card.count("<a ") == card.count("</a>") == 1
     assert 'href="https://example.org/c1b"' in other and 'rel="noopener noreferrer"' in other
     # U3: the outlet, then the marker its rows show, never the lean in words; the
@@ -97,7 +98,8 @@ def test_other_side_link_renders_beside_its_card_as_text_only():
     assert ('<span class="other-side-label"><span class="other-side-kicker">Other side · </span>'
             '<span class="other-side-source">Fox News Politics</span>' + marker_html("right") + "</span>") in other
     assert "Other side · right" not in other
-    link, hit = other.split("</a>", 1)
+    link, hit = other.split("</div>", 1)
+    assert 'class="other-side-act other-side-go"' in link and "Open example.org" in link
     assert hit.startswith(hit_html("fox_politics", "right", "US", "lean-hit--other"))
     assert "&lt;img src=x onerror=alert(1)&gt;" in other and "<img src=x" not in page
     # The device gets the same link data, as text, for clusters of 3 or more outlets.

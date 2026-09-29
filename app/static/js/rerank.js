@@ -21,6 +21,7 @@ import { buildDefaultProfile } from "./profile/default-profile.js";
 import { summaryToHistory } from "./history/summary.js";
 import { seenPenaltyTerm } from "./history/penalty.js";
 import { pageInput } from "./page-input.js";
+import { orderToday } from "./today-order.js";
 
 const root = document.documentElement;
 
@@ -52,7 +53,8 @@ function run() {
     if (root.classList.contains("rerank")) {
       const today = document.getElementById("section-today") || document;
       const rows = new Map([...today.querySelectorAll("li.story[data-sid]")].map((li) => [li.dataset.sid, li]));
-      const order = pages.today.map((s) => s.id);
+      // J22: the reader's Today order (rank-gate.js read it before first paint).
+      const order = orderToday(pages.today, window.almanacTodayOrder || "for_you", input.pool, Date.parse(input.now), pages.faces).map((s) => s.id);
       const onPage = new Set(order);
       for (const [sid, li] of rows) if (!onPage.has(sid)) li.remove();
       const lists = ["headlines", "more-list", "rest-list"].map((id) => document.getElementById(id));

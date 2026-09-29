@@ -47,6 +47,7 @@ import { suggestStanding } from "./story-keywords.js";
 import { standingForm, standingMessage } from "./standing-form.js";
 import { scheduleSync, startSync } from "./interests-sync.js";
 import { pageInput } from "./page-input.js";
+import { orderToday, readOrder } from "./today-order.js";
 // J1: "Analyse with Jev", a typed read of the story (js/jev/*): answers are the app's own
 // labels only, cached per story on this phone, and change nothing in the profile.
 import { askJev } from "./jev/client.js";
@@ -313,13 +314,14 @@ async function doJev({ li, sid, attrs, facts }) {
   closeSheet();
   if (full) {
     await sheetClosed();
-    openSheet({ title: "Jev's read", content: analysisContent(full, facts, true), opener });
+    openSheet({ title: "Jev's read", content: analysisContent(full, facts, true, ruleTopicsOf(attrs.article_id || sid)), opener });
     return;
   }
   const hourly = hourlyAnswers(await hourlyDoc(), storyArticleIds(sid, attrs));
   const content = [];
   if (hourly) {
-    content.push(...renderAnalysis({ answers: hourly.answers, headline: facts.title, hourly: Object.keys(hourly.answers).length, live: false }));
+    content.push(...renderAnalysis({ answers: hourly.answers, headline: facts.title, hourly: Object.keys(hourly.answers).length, live: false,
+      ruleTopics: ruleTopicsOf(attrs.article_id || sid) }));
   } else {
     const h = document.createElement("p");
     h.className = "why-headline";
@@ -335,8 +337,17 @@ async function doJev({ li, sid, attrs, facts }) {
   openSheet({ title: "Jev's read", content, opener });
 }
 
-function analysisContent(result, facts, cached) {
+/** J22: the rules' topics for an article, from the page's own ranking input. */
+function ruleTopicsOf(id) {
+  const pool = getInput().pool || {};
+  const lead = (pool.clusters || []).find((c) => c.id === id)?.lead || id;
+  const article = (pool.articles || []).find((a) => a.id === lead);
+  return article ? article.topics || [] : null;
+}
+
+function analysisContent(result, facts, cached, ruleTopics = null) {
   return renderAnalysis({
+    ruleTopics,
     answers: result.answers, missing: result.missing, headline: facts.title, cached,
     fullText: Boolean(result.full_text), model: result.model || "", hourly: result.hourly || 0, liveFailed: result.live_failed || "",
   });
@@ -380,7 +391,7 @@ async function readLive({ li, sid, facts, hourly, button, opener }) {
     return;
   }
   await sheetClosed();
-  openSheet({ title: "Jev's read", content: analysisContent(result, facts, false), opener });
+  openSheet({ title: "Jev's read", content: analysisContent(result, facts, false, ruleTopicsOf(sid)), opener });
 }
 
 async function doSave({ sid, attrs, facts }) {
@@ -459,7 +470,10 @@ export function rerenderAfterProfileChange(profile, sourcePanel) {
   const input = getInput();
   window.almanacProfile = profile;
   const pages = rankPages(input.pool, profile, input.now, pageOptions(input, { terms: currentHistoryTerms() }));
-  const storiesFor = (id) => (id === "today" ? pages.today : (pages.sections.find((s) => s.id === id)?.stories || []));
+  // J22: Today in the reader's chosen order (today-order.js); the tabs keep theirs.
+  const order = window.almanacTodayOrder || readOrder(window.localStorage);
+  const today = orderToday(pages.today, order, input.pool, Date.parse(input.now), pages.faces);
+  const storiesFor = (id) => (id === "today" ? today : (pages.sections.find((s) => s.id === id)?.stories || []));
   for (const panel of document.querySelectorAll(".panel")) {
     if (!panel.childElementCount) continue;
     const run = () => applyPanel(panel, storiesFor(panel.dataset.section), input, pages.faces, profile.trust || {});
@@ -579,6 +593,24 @@ document.addEventListener("click", (event) => {
   if (!open) return;
   event.preventDefault();
   open.closest("li.story")?.querySelector(".story-link")?.click();
+});
+
+// J21: the other side's "Read here" opens that version in Almanac's reader. A throwaway
+// a.story-link[data-body] is clicked inside this trusted tap, so reader.js's own
+// document listener opens it (coverage-view.js does the same), and history and the
+// opened record behave exactly as for a card.
+document.addEventListener("click", (event) => {
+  const read = event.target.closest(".other-side-read");
+  if (!read?.dataset.body) return;
+  event.preventDefault();
+  const a = document.createElement("a");
+  a.className = "story-link";
+  a.hidden = true;
+  a.href = read.closest(".other-side")?.querySelector(".other-side-go")?.getAttribute("href") || "#";
+  a.dataset.body = read.dataset.body;
+  read.closest("li.story")?.append(a);
+  a.click();
+  a.remove();
 });
 
 document.addEventListener("click", (event) => {

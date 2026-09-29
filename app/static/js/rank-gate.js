@@ -45,7 +45,19 @@
     }
     var hasHistory = !!(summary && ((summary.opened && Object.keys(summary.opened).length) || (summary.shown && Object.keys(summary.shown).length)));
 
-    if (sameProfile && !hasHistory) return;
+    // J22: Today's order (js/today-order.js ORDER_KEY). Any order but For you re-ranks
+    // before first paint, and the switch shows the stored choice from its first frame.
+    var todayOrder = "for_you";
+    try {
+      var o = localStorage.getItem("almanac.today.order.v1");
+      if (o === "latest" || o === "urgent") todayOrder = o;
+    } catch (e) {
+      todayOrder = "for_you";
+    }
+    if (todayOrder !== "for_you") root.classList.add("order-" + todayOrder);
+    window.almanacTodayOrder = todayOrder;
+
+    if (sameProfile && !hasHistory && todayOrder === "for_you") return;
     window.almanacProfile = p;
     window.almanacHistorySummary = summary;
     root.classList.add("rerank");

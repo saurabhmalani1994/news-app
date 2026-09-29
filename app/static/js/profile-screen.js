@@ -60,7 +60,7 @@ import { formatDiff } from "./profile/diff.js";
 import { showToast, hideToast } from "./toast.js";
 import {
   LEVELS, levelOf, levelWord, withTopicLevel, withTopicField, withTopicMuted, boostsForTopic,
-  withBoostAmount, withBoostRemoved, withStandingField, summariesMode, withSummaries,
+  withBoostAmount, withBoostRemoved, withStandingField, summariesMode, withSummaries, jevOtherSideOn, withJevOtherSide,
   leanMarkersOn, leanColorOn, withLeanMarkers, withLeanColor, SOURCE_STATES, sourceState, withSourceState, withSourceStates, sourceCounts, groupSources,
   matchesQuery, searchSources, sourceDetail, HEALTH_WORDS, commitEdit,
   availableInterests, withTopicAdded, withTopicRemoved,
@@ -942,6 +942,9 @@ function main(schema, catalog, proposalSchema) {
       switchRow("lean-color", "Color the markers", "Blue for left, red for right, grey for center",
         leanColorOn(profile),
         (on) => commit((p) => withLeanColor(p, on), on ? "Markers in color" : "Markers in grey"))]),
+      section("Jev", () => [switchRow("jev-other-side", "Jev picks the other side", "Only a version Jev reads as the same story, told differently",
+        jevOtherSideOn(profile),
+        (on) => commit((p) => withJevOtherSide(p, on), on ? "Jev picks the other side" : "Other side picked without Jev"))]),
       section("Health", [linkRow("/health", "Feed health", "Pool age, the last run, every source's status")]),
       section("Advanced", () => [linkRow("#advanced", "Profile data and versions", `Raw JSON, history and revert. Now v${store.history()[0].version}`)]),
       yourDataDetails(),

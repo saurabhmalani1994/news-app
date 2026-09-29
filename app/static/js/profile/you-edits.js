@@ -404,6 +404,18 @@ export function workByTier(profile) {
 
 // --- Display (U1 reads it): summaries on every story, or only on the lead stories. ---
 
+// J20: Jev narrows the other-side pick unless turned off (passes.js other_side.jev). An
+// absent field reads as on, so an older profile needs no migration.
+export function jevOtherSideOn(profile) {
+  return profile.passes?.other_side?.jev !== false;
+}
+
+export function withJevOtherSide(profile, on) {
+  if (jevOtherSideOn(profile) === Boolean(on)) return null;
+  const passes = profile.passes || {};
+  return { ...profile, passes: { ...passes, other_side: { ...(passes.other_side || {}), jev: Boolean(on) } } };
+}
+
 export function summariesMode(profile) {
   return profile.display?.summaries === "top" ? "top" : "all";
 }

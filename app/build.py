@@ -101,6 +101,7 @@ PAGE = """<!doctype html>
 {top}
 </ol>
 {more}
+<script src="js/story-times.js"></script>
 <footer class="colophon"><p class="colophon-text">{count} stories from {articles} articles. Updated <time datetime="{generated_at}">{updated}</time></p></footer>
 </section>
 {panels}
@@ -198,9 +199,22 @@ VERSIONS = """<div class="bv" id="bv" role="dialog" aria-modal="true" aria-label
 # a send button. Always laid out, so wiring it up never moves the page; Jev's suggestion
 # opens in the sheet, over the page, never inline.
 ASK_BAR = """<form class="ask-bar" id="ask-bar" role="search" aria-label="Ask Jev about your feed" autocomplete="off">
-<input class="ask-input" id="ask-input" type="text" name="q" maxlength="200" placeholder="Ask Jev: less of this, more of that" aria-label="Ask Jev about your feed" enterkeyhint="send">
+<input class="ask-input" id="ask-input" type="text" name="q" maxlength="200" placeholder="Tell Jev: more or less of a section" aria-label="Ask Jev about your feed" aria-describedby="ask-help-what" enterkeyhint="send">
 <button class="ask-send" type="submit" aria-label="Ask Jev"><svg class="ask-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3.4 20.4 21 12 3.4 3.6 3.4 10.1 15 12 3.4 13.9z"></path></svg></button>
-</form>"""
+</form>
+<div class="ask-help" id="ask-help" hidden>
+<p class="ask-help-text" id="ask-help-what">Jev changes how much of each of your sections you see. Name a section, say more or less, and add a size if you like: a little, a lot. Nothing changes until you tap Apply.</p>
+<div class="ask-suggest" id="ask-suggest" aria-label="Try one of these"></div>
+<p class="ask-help-text">About one story: tap the three dots on its card, then Jev's read. In an article: tap Read with Jev.</p>
+</div>
+<div class="today-order" id="today-order" role="group" aria-label="Order Today">
+<button class="today-order-btn" type="button" data-order="for_you" aria-pressed="true">For you</button>
+<button class="today-order-btn" type="button" data-order="latest" aria-pressed="false">Latest</button>
+<button class="today-order-btn" type="button" data-order="urgent" aria-pressed="false">Urgent</button>
+</div>
+<p class="today-order-note"><span class="today-order-why" data-order="for_you">Your interests, how recent each story is and how many outlets cover it.</span><span class="today-order-why" data-order="latest">Newest first.</span><span class="today-order-why" data-order="urgent">Must-know stories, and hard news that many outlets cover, from the last day first.</span></p>"""
+# J22: Today's order switch (js/today-order-ui.js, js/today-order.js). rank-gate.js sets
+# the order-* class on <html> before first paint, so the stored choice shows at once.
 
 # S24: the reusable bottom sheet (js/sheet.js), an NYT-style overflow/share sheet.
 # Static chrome only, empty and hidden until a caller opens it: this slice's own
@@ -582,8 +596,21 @@ STORY_ACTS = '<div class="story-acts">{open_act}{coverage}' + STORY_OVERFLOW + '
 STORY = (
     '<li class="story story--{tier}" data-sid="{sid}">{open}'
     '<span class="story-body">{media}<span class="headline{headline_mod}">{title}</span>{dek}'
-    '<span class="meta">{meta}</span></span>{close}{lean_hit}{acts}{other}</li>'
+    '<span class="meta">{meta}</span>{times}</span>{close}{lean_hit}{acts}{other}</li>'
 )
+# J22: when the card's article was written and when Almanac first pulled the story, as
+# ISO times the phone writes out in its own time zone (js/story-times.js, a classic
+# script right after the lists). The line's height is fixed, so filling it moves nothing.
+TIMES = '<span class="story-times" data-written="{written}" data-pulled="{pulled}"></span>'
+
+
+def _times(story, article, by_id):
+    """The TIMES line for a row, or '' when the article has no usable time."""
+    written = article.get("published_at")
+    if not _parse_time(written):
+        return ""
+    pulled = sorted(t for t in ((by_id.get(i) or {}).get("fetched_at") for i in story.article_ids) if _parse_time(t))
+    return TIMES.format(written=escape(written, quote=True), pulled=escape(pulled[0], quote=True) if pulled else "")
 # S13 other-side slot: one attached link under a many-outlet card, to the same story as
 # an outlet of the lean least seen on this page tells it (app/static/js/passes.js says
 # which and why). Its own link beside the card's, never inside it. tiers.js draws the
@@ -593,13 +620,18 @@ STORY = (
 # (app/lean.py), never the lean in words; the marker's tap target is a sibling after the
 # link (lean-hit--other), as a row's is after the row's link.
 OTHER_SIDE_MIN_SOURCES = 3  # passes.js OTHER_SIDE_MIN_SOURCES
-OTHER = ('<{tag} class="other-side" data-aid="{aid}"{href}>'
+OTHER = ('<div class="other-side" data-aid="{aid}">'
          '<span class="other-side-label"><span class="other-side-kicker">Other side {dot} </span>'
          '<span class="other-side-source">{source}</span>{marker}</span>'
-         '<span class="other-side-title">{title}</span>{go}</{tag}>{hit}')
-# C3: the other side always opens the publisher's page in a new tab, so it says so.
-OTHER_GO = ('<span class="other-side-go">Opens {host}' + ACT_ICON.format(icon="i-out") + '</span>')
-OTHER_HREF = ' href="{url}" target="_blank" rel="noopener noreferrer"'
+         '<span class="other-side-title">{title}</span>{acts}</div>{hit}')
+# C3, J21: the other side opens only from its own buttons, as the card does: "Read here"
+# when Almanac holds that version's full text, and "Open <host>" for the publisher's
+# page in a new tab. The row itself is not a link, so a stray tap opens nothing.
+OTHER_ACTS = '<span class="other-side-acts">{read}{site}</span>'
+OTHER_READ = ('<button class="other-side-act other-side-read" data-body="{aid}" type="button">'
+              + ACT_ICON.format(icon="i-read") + 'Read here</button>')
+OTHER_GO = ('<a class="other-side-act other-side-go" href="{url}" target="_blank" rel="noopener noreferrer">Open {host}'
+            + ACT_ICON.format(icon="i-out") + '</a>')
 # S39 photos (app.images decides which). The url is an attribute value, escaped; alt is
 # empty because the headline beside it carries the meaning. Only the hero loads eagerly.
 # D2: the hero box follows the photo's stated shape (app.images.hero_box), so the frame
@@ -736,6 +768,8 @@ def other_side_links(pool, stories):
         for aid in story.article_ids:
             article = by_id[aid]
             links[aid] = [_safe_url(article.get("url")) or "", smart_quotes(article.get("title", ""))]
+            if body_id(article):
+                links[aid].append(1)  # J21: the reader holds its full text
     return dict(sorted(links.items()))
 
 
@@ -743,15 +777,17 @@ def _other_side(record, links, source_names, leans, countries=None):
     """The attached other-side link for a row, or '' (see OTHER)."""
     if not record or record["article_id"] not in links:
         return ""
-    url, title = links[record["article_id"]]
+    url, title, *rest = links[record["article_id"]]
+    aid = escape(record["article_id"], quote=True)
     sid = record["source_id"]
     lean = record.get("lean") or leans.get(sid)
     country = (countries or {}).get(sid)
+    read = OTHER_READ.format(aid=aid) if rest[:1] == [1] else ""
+    site = OTHER_GO.format(url=escape(url, quote=True), host=escape(site_host(url), quote=False)) if url else ""
     return OTHER.format(
-        tag="a" if url else "span", aid=escape(record["article_id"], quote=True),
-        href=OTHER_HREF.format(url=escape(url, quote=True)) if url else "", dot=MIDDOT,
+        aid=aid, dot=MIDDOT,
         source=escape(source_names.get(sid, sid), quote=False), marker=lean_marker_html(lean, country),
-        title=escape(title, quote=False), go=OTHER_GO.format(host=escape(site_host(url), quote=False)) if url else "",
+        title=escape(title, quote=False), acts=OTHER_ACTS.format(read=read, site=site) if read or site else "",
         hit=lean_hit_html(sid, lean, country, "lean-hit--other"))
 
 
@@ -808,6 +844,7 @@ def _render_story(story, tier, source_names, now, by_id, other="", coverage="", 
     return STORY.format(
         tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
         title=title, dek=dek, meta=_meta(story, source_names, now, lean=lean, country=country),
+        times=_times(story, article, by_id),
         other=other, acts=_acts(url, read_from, coverage, visible_sources),
         lean_hit=lean_hit_html(source_id, lean, country) if source_names.get(source_id) else "",
         media=_media(tier, hero_media(_members(story, by_id), article, source_names) if tier == "hero" else None,

@@ -264,10 +264,10 @@ const big = survey.counts.filter((c) => c.n >= 3 && c.n <= 8).sort((a, b) => b.n
 await visit();
 let at = await toRow(big.sid);
 const hits = await evaluate(`(() => { const a = ${JSON.stringify(at)}; const on = (x, y) => document.elementFromPoint(x, y);
-  return { count: on(a.count.x, a.count.y)?.className, headline: on(a.headline.x, a.headline.y)?.closest("a")?.className || "",
+  return { count: on(a.count.x, a.count.y)?.closest(".story-coverage") ? "story-coverage" : on(a.count.x, a.count.y)?.className, headline: on(a.headline.x, a.headline.y)?.closest("a")?.className || "",
     name: on(a.name.left + 4, a.name.y)?.className }; })()`);
 check(hits.count === "story-coverage", `a tap on "N sources" reaches the carousel trigger (${hits.count})`);
-check(hits.headline === "story-link", `a tap on the headline beside it still opens the story (${hits.headline})`);
+check(hits.headline !== "story-link", `a tap on the headline beside it opens nothing: only the buttons open (J21, ${hits.headline || "no link"})`);
 console.log(`  a tap on the source name's first letters reaches: ${hits.name}`);
 await shot("v1-row-dark.png");
 const before = await shiftSum();
@@ -307,7 +307,8 @@ const closeFrom = await shiftSum();
 await back();
 s = await state();
 const scrollAfter = await evaluate(`document.getElementById("section-today").scrollTop`);
-const focusAfter = await evaluate(`document.activeElement?.className || ""`);
+// C3: the trigger's classes are "story-act story-coverage"; judge by the one that matters.
+const focusAfter = await evaluate(`document.activeElement?.classList.contains("story-coverage") ? "story-coverage" : document.activeElement?.className || ""`);
 const closeShift = (await shiftSum()) - closeFrom;
 check(!s.open && s.hash === "" && scrollAfter === scrollBefore && focusAfter === "story-coverage",
   `back closes it: the feed at the same scroll (${scrollBefore} -> ${scrollAfter}), focus on the trigger`);

@@ -109,7 +109,7 @@ def test_the_source_name_is_written_in_full_and_the_split_follows_content_only()
     for sid, row in rows.items():
         source = _source_of(page, sid)
         meta = re.search(r'<span class="meta"><span class="meta-line">(.*?)</span>'
-                         r'<span class="meta-line meta-line--2"([^>]*)>(.*?)</span></span></span></a>', row)
+                         r'<span class="meta-line meta-line--2"([^>]*)>(.*?)</span></span>(?:<span class="story-times"[^>]*></span>)?</span></a>', row)
         line1, attrs, line2 = meta.group(1, 2, 3)
         name = re.search(r'<span class="meta-source">([^<]*)</span>', line1).group(1)
         assert name == BY_ID[source]["name"].replace("&", "&amp;"), (sid, name)
@@ -172,15 +172,16 @@ class N {
     const data = Object.entries(this.dataset).map(([k, v]) => ["data-" + k, v]);
     const attrs = (this.className ? [["class", this.className]] : []).concat(data, this.attrs);
     return "<" + this.tag + attrs.map(([k, v]) => " " + k + '="' + esc(v) + '"').join("") + ">"
-      + text + this.kids.map((k) => k.html()).join("") + "</" + this.tag + ">";
+      + text + this.kids.map((k) => (typeof k === "string" ? k.replace(/&/g, "&amp;").replace(/</g, "&lt;") : k.html())).join("") + "</" + this.tag + ">";
   }
 }
 globalThis.document = { createElement: (t) => new N(t), createElementNS: (ns, t) => new N(t) };
 const out = [];
 for (const [sid, lean, country] of [["dawn_pk", "non-us", "PK"], ["fox_politics", "right", "US"], ["al_jazeera", "state", "QA"], ["x", "", ""]]) {
   const li = new N("li");
+  const readable = sid === "fox_politics" ? [1] : [];
   placeOtherSide(li, { article_id: "x1", source_id: sid, lean }, {
-    links: { x1: ["https://example.org/x1", "A <b>title</b>"] }, names: { [sid]: "Name & Co" }, countries: { [sid]: country } });
+    links: { x1: ["https://example.org/x1", "A <b>title</b>", ...readable] }, names: { [sid]: "Name & Co" }, countries: { [sid]: country } });
   out.push([sid, lean, country, li.kids.map((k) => k.html()).join("")]);
 }
 console.log(JSON.stringify(out));
@@ -191,8 +192,9 @@ console.log(JSON.stringify(out));
 def test_the_device_draws_the_other_side_line_byte_for_byte_as_the_build_does():
     done = subprocess.run([shutil.which("node"), "--input-type=module", "-e", NODE_OTHER], cwd=ROOT,
                           capture_output=True, text=True, check=True, encoding="utf-8")
-    links = {"x1": ["https://example.org/x1", "A <b>title</b>"]}
     for sid, lean, country, device in json.loads(done.stdout):
+        links = {"x1": ["https://example.org/x1", "A <b>title</b>"] + ([1] if sid == "fox_politics" else [])}
         record = {"article_id": "x1", "source_id": sid, "lean": lean}
         built = build._other_side(record, links, {sid: "Name & Co"}, {sid: lean}, {sid: country})
         assert built == device, sid
+        assert ("Read here" in built) == (sid == "fox_politics"), "Read here only when the reader holds the text"

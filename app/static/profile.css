@@ -941,3 +941,46 @@ input.switch:focus-visible {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* J21: a feature's checks sit under it, set in from the edge so they read as its parts. */
+.jev-check {
+  padding-left: calc(var(--space-gutter) * 2);
+}
+
+.jev-check .setting-sublabel {
+  white-space: normal;
+}
+
+.jev-check-result {
+  color: var(--color-headline);
+}
+
+/* J22: each check's verdict in words, set apart from the numbers, and its real
+   examples, each led by what happened. */
+.jev-verdict {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--color-headline);
+}
+
+.jev-verdict--pass {
+  font-weight: 600;
+  color: var(--color-meta);
+}
+
+.jev-example {
+  white-space: normal;
+}
+
+.jev-example-tag {
+  font-weight: 700;
+  color: var(--color-headline);
+}
+
+/* J22: where an article's section comes from, in the Articles Jev read list. */
+.jev-sorted {
+  font-weight: 700;
+  color: var(--color-headline);
+}

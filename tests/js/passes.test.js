@@ -207,6 +207,36 @@ test("other side alone: the attached link comes from the lean least represented 
   assert.equal(thin.today.find((s) => s.id === "c1").other_side, undefined);
 });
 
+test("J20: Jev narrows the other side within the same lean: same event only, a different framing first", () => {
+  const leans = { lead_l: "left", o_r1: "right", o_r2: "right", o_c: "center", s4: "left", s6: "center" };
+  const base = () => [
+    art("a1", "lead_l", 1, ["ai"]), art("a2", "o_r1", 2, ["ai"]), art("a4", "o_r2", 1.2, ["ai"]), art("a3", "o_c", 1.5, ["ai"]),
+    art("b1", "s4", 0.5, ["ai"]), art("b2", "s6", 0.7, ["ai"]),
+  ];
+  const run = (edit, prof = profile()) => {
+    const arts = base();
+    edit(Object.fromEntries(arts.map((a) => [a.id, a])));
+    const pool = poolOf(arts, [clu("c1", ["a1", "a2", "a4", "a3"], 4, ["center", "left", "right"], "a1")]);
+    return rankPages(pool, prof, NOW, { leans, names: { o_r1: "Right One", o_r2: "Right Two" } }).today.find((s) => s.id === "c1");
+  };
+  // Without Jev's answers the newest right version wins, as before.
+  assert.equal(run(() => {}).other_side.article_id, "a4");
+  // A version Jev reads as a different event is left out.
+  const off = run((a) => { a.a4.jev = { same: 0.2, framing: "different" }; });
+  assert.equal(off.other_side.article_id, "a2");
+  // A different framing comes first, over the newer version.
+  const framed = run((a) => { a.a2.jev = { same: 0.9, framing: "emphasis" }; a.a4.jev = { same: 0.95, framing: "same" }; });
+  assert.equal(framed.other_side.article_id, "a2");
+  assert.match(framed.passes[0].text, /; Jev reads it as the same facts with a different emphasis \(90% the same event\)$/);
+  // Both right versions off: no link, rather than a wrong one or another lean.
+  const none = run((a) => { a.a2.jev = { same: 0.1 }; a.a4.jev = { same: 0.5 }; });
+  assert.equal(none.other_side, undefined);
+  // Turned off on You: judged as before.
+  const offSwitch = profile((x) => { x.passes = { ...(x.passes || {}), other_side: { per_page: 1, jev: false } }; });
+  assert.deepEqual(validateProfile(offSwitch, SCHEMA), []);
+  assert.equal(run((a) => { a.a4.jev = { same: 0.2, framing: "different" }; }, offSwitch).other_side.article_id, "a4");
+});
+
 test("must-know alone: an R16-eligible story reaches the floor however low it scores", () => {
   // Hard news (conflict) from a left and a right outlet, 20h old: it scores last.
   const leansOf = { l: "left", r: "right" };
