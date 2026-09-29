@@ -166,7 +166,7 @@ def test_health_shows_facts_first_and_evidence_folded():
     assert "Keep rule trial" in html and "Trial only: your feed still uses today's rule" in html
     assert "Older than 36 hours" in html and "→" in html
     assert html.count('<details class="jev-fold">') == 5
-    assert "—" not in html.replace("—", "") or "—" not in html
+    assert "\u2014" not in html, "no em dashes in the page's own words"
     assert "could not run" in render_keep({"state": "error", "error": "RuntimeError"}, {})
     assert render_keep(None, {}) == ""
 
