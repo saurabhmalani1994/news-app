@@ -378,16 +378,8 @@ def ask_all(pool, client, cache, now, used, budget, ceiling_left, pairs, cost=ne
     names = {s["id"]: s.get("name", s["id"]) for s in pool.get("sources", [])}
     by_id = {a["id"]: a for a in pool.get("articles", [])}
     stats = {"state": "ok", "asked": 0, "cached": 0, "errors": 0, "spent": 0.0, "tokens": 0}
+    # Known pairs first: few, and they carry the report's surest answer keys.
     todo = []
-    for a in pool.get("articles", []):
-        hit = cache["articles"].get(a["id"])
-        if hit:
-            hit[1] = hour
-            stats["cached"] += 1
-        else:
-            todo.append(("articles", a["id"], article_state(a, names), ARTICLE_QUESTIONS))
-    todo.sort(key=lambda t: by_id[t[1]].get("published_at", ""), reverse=True)
-    todo = todo[:max_articles]
     positives, negatives = pairs
     for pair in positives + negatives:
         key = "|".join(pair)
@@ -397,7 +389,18 @@ def ask_all(pool, client, cache, now, used, budget, ceiling_left, pairs, cost=ne
             stats["cached"] += 1
         else:
             todo.append(("pairs", key, pair_state(by_id[pair[0]], by_id[pair[1]]), PAIR_QUESTIONS))
+    articles = []
+    for a in pool.get("articles", []):
+        hit = cache["articles"].get(a["id"])
+        if hit:
+            hit[1] = hour
+            stats["cached"] += 1
+        else:
+            articles.append(("articles", a["id"], article_state(a, names), ARTICLE_QUESTIONS))
+    articles.sort(key=lambda t: by_id[t[1]].get("published_at", ""), reverse=True)
+    todo += articles[:max_articles]
     start = time.monotonic()
+    latencies = []
     for kind, key, state, questions in todo:
         est = estimate_tokens(state, questions)
         if used + stats["spent"] + cost(est) > budget or stats["spent"] + cost(est) > ceiling_left:
@@ -406,8 +409,10 @@ def ask_all(pool, client, cache, now, used, budget, ceiling_left, pairs, cost=ne
         if time.monotonic() - start > max_seconds:
             stats["state"] = "time_cap"
             break
+        t0 = time.monotonic()
         try:
             raw, reported, charged = client.ask(state, questions)
+            latencies.append((time.monotonic() - t0) * 1000)
         except JevError:
             stats["errors"] += 1
             stats["spent"] += cost(est)  # a failed call may still be charged
@@ -419,7 +424,17 @@ def ask_all(pool, client, cache, now, used, budget, ceiling_left, pairs, cost=ne
         cache[kind][key] = [clean_answers(questions, raw), hour]
     if stats["errors"] and stats["state"] == "ok":
         stats["state"] = "api_errors"
+    stats["latency_ms"] = _percentiles(latencies)
     return stats
+
+
+def _percentiles(values):
+    """{"p50", "p90", "n"} in whole milliseconds, or {"n": 0}."""
+    if not values:
+        return {"n": 0}
+    ordered = sorted(values)
+    pick = lambda q: round(ordered[min(len(ordered) - 1, int(q * len(ordered)))])
+    return {"p50": pick(0.5), "p90": pick(0.9), "n": len(ordered)}
 
 
 def load_buckets(path="sources.json"):
@@ -496,7 +511,7 @@ def report(pool, cache, pairs, buckets=None):
 
 
 def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=embed._get_json,
-        max_seconds=MAX_SECONDS):
+        max_seconds=MAX_SECONDS, max_articles=MAX_ARTICLES, daily_usd=None):
     """The step's entry point: the jev.json document (report plus compact answers)."""
     env = os.environ if env is None else env
     pairs = known_pairs(pool, random.Random(pool.get("generated_at", "")))
@@ -509,7 +524,7 @@ def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=e
     elif env.get(OPENROUTER_ENV):
         route, model, unit, cost = "openrouter", env.get("JEV_MODEL") or OPENROUTER_MODEL, "usd", usd
         try:
-            budget = max(0.0, float(env.get("JEV_DAILY_USD") or DAILY_USD_BUDGET))
+            budget = max(0.0, float(daily_usd if daily_usd is not None else env.get("JEV_DAILY_USD") or DAILY_USD_BUDGET))
         except ValueError:
             budget = DAILY_USD_BUDGET
         client = OpenRouterJev(env[OPENROUTER_ENV], model=model, post=post)
@@ -527,13 +542,15 @@ def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=e
     cache, cache_status = load_cache(cache_path, model)
     used = spent_today(cache_path, day, unit) if cache_status == "hit" else 0.0
     if client is None:
-        stats = {"state": f"skipped_{plan}", "asked": 0, "cached": 0, "errors": 0, "spent": 0.0, "tokens": 0}
+        stats = {"state": f"skipped_{plan}", "asked": 0, "cached": 0, "errors": 0, "spent": 0.0, "tokens": 0,
+                 "latency_ms": {"n": 0}}
     else:
-        stats = ask_all(pool, client, cache, now, used, budget, ceiling_left, pairs, cost=cost, max_seconds=max_seconds)
+        stats = ask_all(pool, client, cache, now, used, budget, ceiling_left, pairs, cost=cost, max_seconds=max_seconds,
+                        max_articles=max_articles)
     budget_state = {"day": day, "unit": unit, "spent": round(used + stats["spent"], 6)}
     cache_bytes = save_cache(cache, int(now.timestamp() // 3600), budget_state, cache_path, model) if client else 0
     ids = {a["id"] for a in pool.get("articles", [])}
-    return {
+    doc = {
         "schema_version": 1,
         "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "model": model,
@@ -545,6 +562,112 @@ def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=e
         "report": report(pool, cache, pairs),
         "answers": {i: cache["articles"][i][0] for i in sorted(ids) if i in cache["articles"]},
     }
+    doc["scorecard"] = scorecard(doc)
+    return doc
+
+
+# The scorecard ----------------------------------------------------------------------------
+# Targets fixed before any real answers, so a result cannot move them. A check with fewer
+# than `min` items reads "not enough data" rather than pass or fail. Each check belongs
+# to the feature it would unlock; a feature is ready when every one of its checks passes.
+
+STRONG_SECTION_BUCKETS = ("singapore", "us_politics", "ai")
+REGIONAL_BUCKETS = ("singapore", "asia", "africa", "sudan", "middle_east", "israel_gaza", "europe", "latin_america")
+CHECKS = (
+    # key, label, feature, direction, target, minimum sample
+    ("same_event", "Syndicated copies read as the same event", "Versions and other side", ">=", 0.90, 5),
+    ("different_event", "Unrelated pairs read as different events", "Versions and other side", ">=", 0.95, 10),
+    ("section", "Section matches single-topic feeds (Singapore, US politics, AI)", "Tabs and tags", ">=", 0.80, 20),
+    ("region", "Region matches regional feeds", "Tabs and tags", ">=", 0.75, 20),
+    ("contradictions", "Clinical and industrial biotech both likely", "Analysis sheet", "<=", 0.02, 50),
+    ("sure", "Choice answers Jev was sure of", "Analysis sheet", ">=", 0.60, 50),
+    ("ambiguous", "Choice answers too close to call", "Analysis sheet", "<=", 0.15, 50),
+    ("latency", "Slowest 1 in 10 calls (ms)", "Ask bar", "<=", 1500, 20),
+    ("cost", "Cost per 1,000 articles (USD)", "Hourly shadow run", "<=", 0.50, 20),
+)
+
+
+def _sums(by_bucket, names):
+    rows = [by_bucket.get(b, {"agree": 0, "scored": 0}) for b in names]
+    return sum(r["agree"] for r in rows), sum(r["scored"] for r in rows)
+
+
+def scorecard(doc):
+    """{"checks": [{key, label, feature, value, target, direction, n, status}],
+    "features": {feature: ready | not_ready | not_enough_data}, "mock": bool}."""
+    rep, run = doc["report"], doc.get("run") or {}
+    same = rep["same_event_known"]
+    conf = rep.get("confidence") or {}
+    choice_n = sum(conf.values())
+    sec = _sums(rep["section_vs_bucket"]["by_bucket"], STRONG_SECTION_BUCKETS)
+    reg = _sums(rep["region_vs_bucket"]["by_bucket"], REGIONAL_BUCKETS)
+    latency = run.get("latency_ms") or {"n": 0}
+    asked = run.get("asked", 0)
+    cost_known = run.get("unit") == "usd" and asked
+    values = {
+        "same_event": (same["syndicated_read_same"], same["syndicated_pairs"]),
+        "different_event": (same["unrelated_read_different"], same["unrelated_pairs"]),
+        "section": sec,
+        "region": reg,
+        "contradictions": (rep["clinical_and_industrial_both_likely"], rep["articles_answered"]),
+        "sure": (conf.get("sure", 0), choice_n),
+        "ambiguous": (conf.get("ambiguous", 0), choice_n),
+        "latency": (latency.get("p90"), latency.get("n", 0)),
+        "cost": ((run.get("spent", 0) / asked * 1000) if cost_known else None, asked if cost_known else 0),
+    }
+    checks = []
+    for key, label, feature, direction, target, minimum in CHECKS:
+        part, n = values[key]
+        if key in ("latency", "cost"):
+            value = part
+        else:
+            value = part / n if n else None
+        if value is None or n < minimum:
+            status = "not_enough_data"
+        else:
+            ok = value >= target if direction == ">=" else value <= target
+            status = "pass" if ok else "fail"
+        checks.append({"key": key, "label": label, "feature": feature, "value": value, "target": target,
+                       "direction": direction, "n": n, "status": status})
+    features = {}
+    for c in checks:
+        now = features.get(c["feature"], "ready")
+        if c["status"] == "fail":
+            features[c["feature"]] = "not_ready"
+        elif c["status"] == "not_enough_data" and now != "not_ready":
+            features[c["feature"]] = "not_enough_data"
+        else:
+            features.setdefault(c["feature"], now)
+    return {"checks": checks, "features": features, "mock": bool(doc.get("mock"))}
+
+
+def scorecard_text(card):
+    """The scorecard as plain lines for a terminal."""
+    def fmt(c):
+        if c["value"] is None:
+            return "n/a"
+        if c["key"] == "latency":
+            return f"{c['value']:.0f}"
+        if c["key"] == "cost":
+            return f"${c['value']:.3f}"
+        return f"{100 * c['value']:.0f}%"
+
+    def tgt(c):
+        if c["key"] == "latency":
+            return f"{c['direction']} {c['target']}"
+        if c["key"] == "cost":
+            return f"{c['direction']} ${c['target']:.2f}"
+        return f"{c['direction']} {100 * c['target']:.0f}%"
+
+    word = {"pass": "PASS", "fail": "FAIL", "not_enough_data": "NOT ENOUGH DATA"}
+    lines = ["Jev scorecard" + (" (MOCK ANSWERS: plumbing only, not the real model)" if card["mock"] else "")]
+    for c in card["checks"]:
+        lines.append(f"  {word[c['status']]:<16} {c['label']}: {fmt(c)} (target {tgt(c)}, n={c['n']})")
+    lines.append("Features:")
+    ready = {"ready": "ready", "not_ready": "not ready", "not_enough_data": "not enough data yet"}
+    for feature, state in card["features"].items():
+        lines.append(f"  {feature}: {ready[state]}")
+    return "\n".join(lines)
 
 
 def log_line(doc):
@@ -566,11 +689,19 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="J3: Jev shadow run and report")
     ap.add_argument("--pool", default="dist/pool.json")
     ap.add_argument("--out", default="dist/jev.json")
+    ap.add_argument("--cache", default=CACHE_PATH, help="answers cache (a one-off evaluation can use its own)")
+    ap.add_argument("--max-articles", type=int, default=MAX_ARTICLES, help="new articles asked this run")
+    ap.add_argument("--daily-usd", type=float, default=None, help="OpenRouter dollar cap for today")
+    ap.add_argument("--max-seconds", type=int, default=MAX_SECONDS)
+    ap.add_argument("--scorecard", action="store_true", help="print the scorecard after the run")
     args = ap.parse_args(argv)
     pool = json.loads(Path(args.pool).read_text(encoding="utf-8"))
-    doc = run(pool, datetime.now(timezone.utc))
+    doc = run(pool, datetime.now(timezone.utc), cache_path=args.cache, max_seconds=args.max_seconds,
+              max_articles=args.max_articles, daily_usd=args.daily_usd)
     Path(args.out).write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(log_line(doc))
+    if args.scorecard:
+        print(scorecard_text(doc["scorecard"]))
     return 0
 
 
