@@ -102,7 +102,11 @@ test("calls the binding with exactly {state, questions} and returns cleaned answ
   });
   const res = await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), { ...DEV_ENV, JEV_MODEL: "typesafe/jev" }, { ai });
   assert.equal(res.status, 200);
-  assert.deepEqual(ai.calls, [{ model: "typesafe/jev", input: { state: STATE, questions: QUESTIONS } }]);
+  assert.deepEqual(ai.calls, [{ model: "typesafe/jev", input: { state: STATE, questions: {
+    mood: { type: "choice", instructions: "Good or bad news?", criteria: { Positive: "Positive", Negative: "Negative" } },
+    big: { type: "score", instructions: "How big?", criteria: ["Small", "Medium", "Large"] },
+    hard: { type: "noul", instructions: "Is it hard news?" },
+  } } }], "J14: Workers AI gets the same record form as OpenRouter");
   const body = await res.json();
   assert.equal(body.ok, true);
   assert.deepEqual(Object.keys(body.answers).sort(), ["big", "hard", "mood"]);
