@@ -19,6 +19,8 @@
 // it moves. Feed strings are set as text (R26); the body goes through S37's sanitizer,
 // which returns a DocumentFragment, and nothing here parses or serializes HTML.
 import { sanitizeBody } from "./sanitize.js";
+// J13: "Read with Jev", offered at the top of every full-text article, asked only on a tap.
+import { readBar, clearReading } from "./jev/read-view.js";
 import { bodyCache } from "./reader/cache.js";
 import {
   BODY_ID, EMOJI_IMAGE, NOTES, TRAILER, creditLine, formatPublished, imageStem, loadBody, readChoice, readerChoice, sameText,
@@ -353,6 +355,7 @@ function showNote(state, facts, id, run) {
 function fill(id, facts) {
   const mine = ++token;
   const body = article.querySelector(".reader-body");
+  clearReading(body);
   body.replaceChildren(skeleton());
   body.setAttribute("aria-busy", "true");
   article.querySelector(".reader-end")?.remove();
@@ -389,6 +392,7 @@ function fill(id, facts) {
     const lede = fragment.querySelector("p");
     if (dek && lede && sameText(dek.textContent, lede.textContent)) lede.remove();
     body.replaceChildren(fragment);
+    body.prepend(readBar({ id, body, headline: facts.title || "", outlet: record.source_name || facts.source || "" }));
     const end = linkOut(record.url || facts.href, record.source_name || facts.source);
     const thumbs = await thumbsRow(id, facts.sid);
     if (mine === token && current?.id === id) article.append(end, thumbs);

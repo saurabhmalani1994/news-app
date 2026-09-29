@@ -19,6 +19,7 @@ import { proposalFromAsk, askState, cleanRequest, strengthStep, confidenceLine }
 import { readChoice, readNoul, expectedPosition, RULES } from "../../app/static/js/jev/decide.js";
 import { storyState, analysisView, analysisCache, CACHE_CAP, hourlyAnswers, questionsLeft, fromCompact } from "../../app/static/js/jev/story.js";
 import { askJev, JevError } from "../../app/static/js/jev/client.js";
+import { splitSentences, readingBlocks, readingQuestions, readingView, readCache, ROLE_CHOICES, MAX_PARAGRAPHS } from "../../app/static/js/jev/read.js";
 import { gateProposal } from "../../app/static/js/ai/gate.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { MemoryStorage } from "../../app/static/js/profile/store.js";
@@ -540,4 +541,78 @@ test("only the questions the hourly run left are asked live", () => {
   const view = analysisView(answers);
   assert.equal(view.verdict.label, "Negative");
   assert.ok(view.rows.some((r) => r.key === "ai" && r.value === "Unlikely 5%"));
+});
+
+
+// --- J13: reading with Jev ---
+
+const ARTICLE = [
+  "Five people arrested over a plot targeting an airbase were released on bail on Monday. Police are still investigating.",
+  "The base hosts American bombers. It has been the site of protests before.",
+  "Officers searched 11 addresses in three cities, police said.",
+  "\u201cWe have no connection to them,\u201d a ministry spokesperson said.",
+];
+
+test("sentences split at their ends, keeping quotes and numbers", () => {
+  assert.deepEqual(splitSentences("One here. Two there! 3 more? \u201cQuoted.\u201d Last"), ["One here.", "Two there!", "3 more?", "\u201cQuoted.\u201d", "Last"]);
+  assert.deepEqual(splitSentences("  "), []);
+  assert.deepEqual(splitSentences("Mr. Smith said so. Done."), ["Mr. Smith said so.", "Done."]);
+  assert.deepEqual(splitSentences("U.S. Ambassador Perdue spoke on Sept. 28. China replied."),
+    ["U.S. Ambassador Perdue spoke on Sept. 28.", "China replied."], "initials and months never end a sentence");
+  assert.deepEqual(splitSentences("The U.N. met. Talks ended."), ["The U.N. met.", "Talks ended."]);
+  assert.deepEqual(splitSentences("Talks were held in the U.S. Officials said so."), ["Talks were held in the U.S. Officials said so."],
+    "a known limit: initials ending a real sentence join the next");
+});
+
+test("the article is numbered for Jev, kept to its limits, and asked in calls of at most 12", () => {
+  const blocks = readingBlocks(ARTICLE, { headline: "Suspects bailed", outlet: "BBC" });
+  assert.deepEqual(blocks.paragraphs.map((p) => p.id), ["P1", "P2", "P3", "P4"]);
+  assert.equal(blocks.state.paragraphs.P1, "[S1] Five people arrested over a plot targeting an airbase were released on bail on Monday. [S2] Police are still investigating.");
+  assert.equal(validateState(blocks.state).ok, true);
+  const calls = readingQuestions(blocks);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(Object.keys(calls[0]), ["key", "p1", "p2", "p3", "p4"]);
+  assert.deepEqual(calls[0].key.criteria, ["S1", "S2", "S3", "S4", "S5", "S6"]);
+  assert.equal(validateQuestions(calls[0]).ok, true);
+  const long = readingBlocks(Array.from({ length: 40 }, (_, i) => `Paragraph ${i} says something. It ends here.`));
+  assert.equal(long.paragraphs.length, MAX_PARAGRAPHS);
+  const many = readingQuestions(long);
+  assert.equal(many.length, 2);
+  assert.ok(many.every((q) => Object.keys(q).length <= 12 && validateQuestions(q).ok));
+});
+
+test("the view labels only sure paragraphs, highlights the key sentences and skims the rest", () => {
+  const blocks = readingBlocks(ARTICLE);
+  const role = (asked, confidence, probabilities = null) => ({ type: "choice", value: asked, label: asked, confidence, probabilities });
+  const answers = {
+    key: { type: "choice", value: "S1", label: "S1", confidence: 0.7, probabilities: { S1: 0.7, S5: 0.26, S2: 0.04 } },
+    p1: role("Reports the main news", 0.9),
+    p2: role("Gives background or context", 0.8),
+    p3: role("Gives a key number or figure", 0.45),
+    p4: role("Quotes someone directly", 0.2),
+  };
+  const view = readingView(answers, blocks);
+  assert.deepEqual(view.roles, {
+    P1: { label: "Main news", status: "sure", confidence: 0.9 },
+    P2: { label: "Background", status: "sure", confidence: 0.8 },
+    P3: { label: "Key number", status: "lean", confidence: 0.45 },
+  }, "an unsure paragraph gets no label");
+  assert.deepEqual(view.keys, ["S1", "S5"]);
+  assert.deepEqual([...view.skim], ["P1", "P3", "P4"], "background folds; an unlabelled paragraph is never hidden");
+  const unsure = readingView({ key: { type: "choice", value: "S3", label: "S3", confidence: 0.2, probabilities: null } }, blocks);
+  assert.deepEqual(unsure.keys, [], "no highlight when Jev is unsure");
+  assert.equal(ROLE_CHOICES.length, 7);
+});
+
+test("every reading question is one positive claim", () => {
+  for (const q of Object.values(readingQuestions(readingBlocks(ARTICLE))[0])) {
+    assert.doesNotMatch(q.instructions, /rather than|\bnot\b|n't\b|\bnever\b|\bneither\b/i);
+  }
+});
+
+test("the read cache keeps the newest reads", () => {
+  const c = readCache(new MemoryStorage(), 2);
+  c.put("a", { answers: {} }); c.put("b", { answers: {} }); c.put("c", { answers: {} });
+  assert.equal(c.get("a"), null);
+  assert.ok(c.get("c"));
 });

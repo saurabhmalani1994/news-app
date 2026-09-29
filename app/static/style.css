@@ -3789,3 +3789,102 @@ body {
     transition: none;
   }
 }
+
+/* J13: reading with Jev in the reader. A quiet bar above the body; once Jev has read the
+   article, a small label in the app's own words before each paragraph it was sure
+   about, the key sentences highlighted in place (the Custom Highlight API, no markup),
+   and Skim folding the paragraphs that are background, reaction or analysis. */
+.jev-read-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 0 0 20px;
+  padding: 0 0 14px;
+  border-bottom: var(--divider-weight) solid var(--color-divider);
+}
+
+.jev-read-go,
+.jev-read-toggle {
+  min-height: 40px;
+  padding: 0 14px;
+  background: transparent;
+  border: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-headline);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.jev-read-toggle {
+  font-weight: 500;
+}
+
+.jev-read-toggle[aria-pressed="true"] {
+  background: var(--color-pressed);
+  border-color: var(--color-headline);
+}
+
+.jev-read-go:focus-visible,
+.jev-read-toggle:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: -2px;
+}
+
+.jev-read-go[aria-busy="true"] {
+  animation: jev-pulse 1s ease-in-out infinite alternate;
+}
+
+.jev-read-note {
+  flex-basis: 100%;
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 17px;
+  color: var(--color-meta);
+}
+
+.jev-role {
+  margin: 20px 0 6px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-meta);
+}
+
+.jev-role:is([data-role="Main news"], [data-role="New development"], [data-role="Key number"]) {
+  color: #D9A53A;
+}
+
+::highlight(jev-key) {
+  background-color: rgba(255, 205, 96, 0.28);
+  color: inherit;
+}
+
+.jev-key-para {
+  background-color: rgba(255, 205, 96, 0.16);
+}
+
+.reader-body.jev-skim .jev-minor {
+  display: none;
+}
+
+@media (prefers-color-scheme: light) {
+  .jev-role:is([data-role="Main news"], [data-role="New development"], [data-role="Key number"]) {
+    color: #8A5A00;
+  }
+
+  ::highlight(jev-key) {
+    background-color: rgba(255, 196, 0, 0.3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jev-read-go[aria-busy="true"] {
+    animation: none;
+  }
+}
