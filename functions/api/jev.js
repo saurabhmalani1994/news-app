@@ -44,24 +44,60 @@ function reply(status, body, extra = {}) {
 
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 
+/** J7: the OpenRouter key as it should be sent: stray spaces, line breaks and wrapping
+ * quotes from pasting it into the dashboard removed. "" when unset. */
+export function openRouterKey(env) {
+  return String(env.OPENROUTER_API_KEY || "").trim().replace(/^["']|["']$/g, "").trim();
+}
+
 /** Which route answers: "mock", "openrouter", "workers" or null (not set up). */
 export function route(env, deps = {}) {
   if (env.JEV_MOCK === "1") return "mock";
-  if (env.OPENROUTER_API_KEY) return "openrouter";
+  if (openRouterKey(env)) return "openrouter";
   if (deps.ai || env.AI) return "workers";
   return null;
 }
 
-/** One OpenRouter call. Throws on a non-2xx answer; the error never carries the key or
- * the body. */
+/** J7: a failed call, with a short reason the phone can show: the upstream status and
+ * the start of OpenRouter's own error message, never the key or the request. */
+export class JevCallError extends Error {
+  constructor(reason, status = null) {
+    super(reason);
+    this.reason = reason;
+    this.status = status;
+  }
+}
+
+const KEYISH = /(sk-[A-Za-z0-9_-]{6,}|Bearer\s+\S+)/g;
+
+/** OpenRouter's own error message, clipped and with anything key-like removed. */
+async function upstreamMessage(response) {
+  try {
+    const body = await response.json();
+    const message = typeof body?.error?.message === "string" ? body.error.message : "";
+    return message.replace(KEYISH, "[hidden]").replace(/\s+/g, " ").trim().slice(0, 160);
+  } catch {
+    return "";
+  }
+}
+
+/** One OpenRouter call. Throws a JevCallError on a non-2xx answer or a failed fetch. */
 async function openRouter(env, input, deps, signal) {
-  const response = await (deps.fetch || fetch)(env.JEV_OPENROUTER_URL || OPENROUTER_URL, {
-    method: "POST",
-    headers: { authorization: `Bearer ${env.OPENROUTER_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({ model: env.JEV_MODEL || OPENROUTER_MODEL, state: input.state, questions: toWire(input.questions) }),
-    signal,
-  });
-  if (!response.ok) throw new Error(`openrouter ${response.status}`);
+  let response;
+  try {
+    response = await (deps.fetch || fetch)(env.JEV_OPENROUTER_URL || OPENROUTER_URL, {
+      method: "POST",
+      headers: { authorization: `Bearer ${openRouterKey(env)}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: env.JEV_MODEL || OPENROUTER_MODEL, state: input.state, questions: toWire(input.questions) }),
+      signal,
+    });
+  } catch (error) {
+    throw new JevCallError(error?.name === "AbortError" ? "timeout" : "network");
+  }
+  if (!response.ok) {
+    const message = await upstreamMessage(response);
+    throw new JevCallError(`openrouter_${response.status}${message ? `: ${message}` : ""}`, response.status);
+  }
   return response.json();
 }
 
@@ -72,7 +108,7 @@ async function runJev(env, input, deps) {
   const controller = new AbortController();
   let timer;
   const timeout = new Promise((_, rejectRun) => {
-    timer = setTimeout(() => { controller.abort(); rejectRun(new Error("timeout")); }, deps.timeoutMs ?? TIMEOUT_MS);
+    timer = setTimeout(() => { controller.abort(); rejectRun(new JevCallError("timeout")); }, deps.timeoutMs ?? TIMEOUT_MS);
   });
   const call = which === "openrouter"
     ? openRouter(env, input, deps, controller.signal)
@@ -90,7 +126,8 @@ async function runJev(env, input, deps) {
  * accessIdentity reads; deps.ai (a stand-in binding), deps.getKeys, deps.now.
  */
 export async function handle(request, env = {}, deps = {}) {
-  if (request.method !== "POST") return reply(405, { error: "POST only" }, { allow: "POST" });
+  if (request.method === "GET") return status(request, env, deps);
+  if (request.method !== "POST") return reply(405, { error: "GET or POST only" }, { allow: "GET, POST" });
   const who = await accessIdentity(request, env, deps);
   if (!who.ok) return reply(who.status, { error: who.error });
   if (!route(env, deps)) return reply(503, { error: "Jev is not set up on this site yet" });
@@ -118,13 +155,31 @@ export async function handle(request, env = {}, deps = {}) {
   let raw;
   try {
     raw = await runJev(env, { state: data.state, questions: data.questions }, deps);
-  } catch {
-    return reply(502, { error: "Jev did not answer" });
+  } catch (error) {
+    const reason = error instanceof JevCallError ? error.reason : "model_error";
+    return reply(502, { error: "Jev did not answer", reason });
   }
   const { answers, missing } = normalizeAnswers(data.questions, raw);
   const fallback = route(env, deps) === "openrouter" ? OPENROUTER_MODEL : JEV_MODEL;
   const model = isObject(raw) && typeof raw.model === "string" ? raw.model.slice(0, 64) : env.JEV_MODEL || fallback;
   return reply(200, { ok: true, model, answers, missing });
+}
+
+/** J7: GET /api/jev, behind the same Access check: how this site reaches Jev, with no
+ * secret in it. key_set and key_trimmed say whether the OpenRouter secret is present and
+ * whether pasting left spaces, line breaks or quotes around it (trimmed before use). */
+async function status(request, env, deps) {
+  const who = await accessIdentity(request, env, deps);
+  if (!who.ok) return reply(who.status, { error: who.error });
+  const raw = String(env.OPENROUTER_API_KEY || "");
+  const which = route(env, deps);
+  return reply(200, {
+    route: which || "not_set_up",
+    model: which === "openrouter" ? env.JEV_MODEL || OPENROUTER_MODEL : which === "workers" ? env.JEV_MODEL || JEV_MODEL : null,
+    key_set: Boolean(raw),
+    key_trimmed: Boolean(raw) && raw !== openRouterKey(env),
+    key_prefix_ok: openRouterKey(env).startsWith("sk-or-"),
+  });
 }
 
 /** Pages Functions entry: every method on /api/jev. */

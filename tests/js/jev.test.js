@@ -11,7 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { handle, onRequest, route, MAX_BODY_BYTES, OPENROUTER_URL, OPENROUTER_MODEL } from "../../functions/api/jev.js";
+import { handle, onRequest, route, openRouterKey, MAX_BODY_BYTES, OPENROUTER_URL, OPENROUTER_MODEL } from "../../functions/api/jev.js";
 import { validateQuestions, validateState, normalizeAnswers, scoreIndex, MAX_QUESTIONS } from "../../app/static/js/jev/contract.js";
 import { mockJev } from "../../app/static/js/jev/mock.js";
 import { STORY_QUESTIONS, askQuestions, askTargets, NONE } from "../../app/static/js/jev/questions.js";
@@ -67,8 +67,8 @@ test("needs an Access identity; the dev stand-in works only on this machine's ho
 
 test("POST only, same origin, JSON only, size limit", async () => {
   const ai = fakeAi({});
-  const get = new Request(`${LOCAL}/api/jev`, { method: "GET" });
-  assert.equal((await handle(get, DEV_ENV, { ai })).status, 405);
+  const put = new Request(`${LOCAL}/api/jev`, { method: "PUT" });
+  assert.equal((await handle(put, DEV_ENV, { ai })).status, 405);
   assert.equal((await handle(post({ v: 1, state: STATE, questions: QUESTIONS }, { headers: { origin: "https://evil.example" } }), DEV_ENV, { ai })).status, 403);
   assert.equal((await handle(post("x", { raw: true, headers: { "content-type": "text/plain" } }), DEV_ENV, { ai })).status, 415);
   assert.equal((await handle(post("{", { raw: true }), DEV_ENV, { ai })).status, 400);
@@ -446,4 +446,43 @@ test("route order: mock, then OpenRouter, then Workers AI, else not set up", () 
   assert.equal(route({ JEV_MOCK: "1", OPENROUTER_API_KEY: "k" }), "mock");
   assert.equal(route({ AI: {} }), "workers");
   assert.equal(route({}), null);
+});
+
+
+// --- J7: a failure says why, and the key is trimmed ---
+
+test("a pasted key with spaces, a line break or quotes is trimmed before use", async () => {
+  assert.equal(openRouterKey({ OPENROUTER_API_KEY: '  "sk-or-v1-abc"\n' }), "sk-or-v1-abc");
+  const or = fakeFetch({ answers: {} });
+  await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), { ...DEV_ENV, OPENROUTER_API_KEY: " sk-or-v1-abc\n" }, { fetch: or.impl });
+  assert.equal(or.calls[0].init.headers.authorization, "Bearer sk-or-v1-abc");
+});
+
+test("a refused call says why, without the key", async () => {
+  const or = fakeFetch({ error: { message: "User not found. key sk-or-v1-abcdef123 invalid" } }, 401);
+  const res = await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), { ...DEV_ENV, OPENROUTER_API_KEY: "sk-or-v1-abcdef123" }, { fetch: or.impl });
+  const body = await res.json();
+  assert.equal(res.status, 502);
+  assert.match(body.reason, /^openrouter_401: User not found/);
+  assert.ok(!JSON.stringify(body).includes("sk-or-v1-abcdef123"));
+  const broken = { impl: async () => { throw new TypeError("fetch failed"); } };
+  const net = await (await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), { ...DEV_ENV, OPENROUTER_API_KEY: "k" }, { fetch: broken.impl })).json();
+  assert.equal(net.reason, "network");
+});
+
+test("the phone shows the reason after its message", async () => {
+  const res = async () => ({ status: 502, ok: false, redirected: false, json: async () => ({ error: "Jev did not answer", reason: "openrouter_401: User not found" }) });
+  await assert.rejects(askJev(STATE, QUESTIONS, { fetchImpl: res }),
+    (e) => e.kind === "no_answer" && e.message === "Jev didn't answer. Try again in a moment. (openrouter_401: User not found)");
+});
+
+test("GET /api/jev reports the route and whether the key is set, never the key", async () => {
+  const env = { ...DEV_ENV, OPENROUTER_API_KEY: " sk-or-v1-secret\n" };
+  const res = await handle(new Request(`${LOCAL}/api/jev`, { method: "GET" }), env);
+  const body = await res.json();
+  assert.deepEqual(body, { route: "openrouter", model: OPENROUTER_MODEL, key_set: true, key_trimmed: true, key_prefix_ok: true });
+  assert.ok(!JSON.stringify(body).includes("secret"));
+  const none = await (await handle(new Request(`${LOCAL}/api/jev`, { method: "GET" }), DEV_ENV)).json();
+  assert.equal(none.route, "not_set_up");
+  assert.equal((await handle(new Request("https://almanac-dt5.pages.dev/api/jev", { method: "GET" }), env)).status, 401, "Access still required");
 });

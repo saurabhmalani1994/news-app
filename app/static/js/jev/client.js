@@ -16,9 +16,10 @@ export const FAILURES = Object.freeze({
 });
 
 export class JevError extends Error {
-  constructor(kind) {
-    super(FAILURES[kind] || FAILURES.no_answer);
+  constructor(kind, reason = "") {
+    super(reason ? `${FAILURES[kind] || FAILURES.no_answer} (${reason})` : FAILURES[kind] || FAILURES.no_answer);
     this.kind = kind;
+    this.reason = reason;
   }
 }
 
@@ -44,7 +45,18 @@ export async function askJev(state, questions, { fetchImpl = globalThis.fetch, t
   // Access answers a lapsed session with a redirect to its login page.
   if (response.redirected || response.status === 401 || response.status === 403) throw new JevError("signed_out");
   if (response.status === 503) throw new JevError("not_set_up");
-  if (!response.ok) throw new JevError("no_answer");
+  if (!response.ok) {
+    // J7: the server's short reason ("openrouter_401: ...", "timeout"), shown after the
+    // message so a failure says why. Plain text only; the server never puts a key in it.
+    let reason = "";
+    try {
+      const body = await response.json();
+      reason = typeof body?.reason === "string" ? body.reason.replace(/[\u0000-\u001f<>]/g, "").slice(0, 160) : "";
+    } catch {
+      reason = "";
+    }
+    throw new JevError("no_answer", reason);
+  }
   let data;
   try {
     data = await response.json();

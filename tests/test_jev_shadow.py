@@ -264,3 +264,17 @@ def test_known_pairs_are_asked_before_articles(tmp_path):
     js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=api.post)
     kinds = ["pair" if "same_event" in c[2]["questions"] else "article" for c in api.calls]
     assert kinds[0] == "pair" and kinds.index("article") > kinds.index("pair")
+
+
+def test_a_pasted_key_is_trimmed_and_the_first_error_is_named(tmp_path):
+    api = FakeOpenRouter(good_answers)
+    js.run(pool(), NOW, env={"OPENROUTER_API_KEY": f'  "{OR_KEY}"\n'}, cache_path=tmp_path / "a.json", post=api.post)
+    assert {c[1] for c in api.calls} == {OR_KEY}
+
+    def refuse(url, key, payload, timeout):
+        import io
+        import urllib.error
+        raise urllib.error.HTTPError(url, 401, "no", {}, io.BytesIO(b'{"error":{"message":"User not found"}}'))
+    doc = js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "b.json", post=refuse)
+    assert doc["run"]["first_error"] == "http_401"
+    assert "first error http_401" in render_jev(doc)

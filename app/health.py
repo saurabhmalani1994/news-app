@@ -348,7 +348,8 @@ def render_jev(doc):
     conf_text = ", ".join(f"{k} {v}" for k, v in sorted(conf.items(), key=lambda kv: -kv[1])) or "none yet"
     rows = [
         ("Model", "Local stand-in (mock)" if doc.get("mock") else doc.get("model", "")),
-        ("Last run", f"{run.get('state', '')}: {run.get('asked', 0)} asked, {run.get('cached', 0)} cached"),
+        ("Last run", f"{run.get('state', '')}: {run.get('asked', 0)} asked, {run.get('cached', 0)} cached"
+                     + (f", first error {run['first_error']}" if run.get("first_error") else "")),
         ("Articles answered", _of(r["articles_answered"], r["articles_in_pool"])),
         ("Section matches the feed's bucket", _of(sec["agree"], sec["scored"])),
         ("Region matches the feed's bucket", _of(reg["agree"], reg["scored"])),
