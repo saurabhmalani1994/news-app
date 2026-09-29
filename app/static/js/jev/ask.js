@@ -134,3 +134,25 @@ export function confidenceLine(target) {
   return "Jev gave no confidence · small step";
 }
 
+
+/** J21: what the Ask bar shows under it on focus, so a first-time reader sees what Jev
+ * can do: up to three ready requests built from the reader's own sections and today's
+ * feed, no Jev call. `counts` is {topic id: articles on today's page}. "Less" names the
+ * section filling today's page most; "More" names the two with the lowest setting that
+ * have something to show, the second with a size word, so every shape of request
+ * appears once. */
+export function askSuggestions(profile, counts = {}) {
+  const topics = profile?.topics || {};
+  const rows = askTargets(profile)
+    .map((t) => ({ ...t, affinity: topics[t.id]?.affinity ?? 0, count: counts[t.id] || 0 }))
+    .filter((t) => t.count > 0);
+  if (!rows.length) return [];
+  const less = [...rows].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))[0];
+  const more = rows.filter((t) => t !== less && t.affinity < 1)
+    .sort((a, b) => a.affinity - b.affinity || b.count - a.count || a.label.localeCompare(b.label));
+  const out = [];
+  if (more[0]) out.push(`More ${more[0].label}`);
+  if (less.affinity > 0) out.push(`Less ${less.label}`);
+  if (more[1]) out.push(`A lot more ${more[1].label}`);
+  return out;
+}

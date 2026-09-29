@@ -941,3 +941,16 @@ input.switch:focus-visible {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* J21: a feature's checks sit under it, set in from the edge so they read as its parts. */
+.jev-check {
+  padding-left: calc(var(--space-gutter) * 2);
+}
+
+.jev-check .setting-sublabel {
+  white-space: normal;
+}
+
+.jev-check-result {
+  color: var(--color-headline);
+}

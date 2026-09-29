@@ -173,7 +173,7 @@ def test_the_health_section_escapes_feed_titles(tmp_path, monkeypatch):
     doc = js.run(p, NOW, env=ENV, cache_path=tmp_path / "j.json", post=api.post, get=api.get)
     from app.health import render_jev_articles
     html = render_jev(doc) + render_jev_articles(doc, p)
-    assert "Jev, shadow mode" in html and "&lt;b&gt;AI&lt;/b&gt; chips &amp; more" in html and "<b>" not in html
+    assert "Jev today" in html and "Jev features and their checks" in html and "&lt;b&gt;AI&lt;/b&gt; chips &amp; more" in html and "<b>" not in html
     assert render_jev(None) == ""
     mock = js.run(pool(), NOW, env={"JEV_MOCK": "1"}, cache_path=tmp_path / "m.json")
     assert "local stand-in" in render_jev(mock)
@@ -413,3 +413,16 @@ def test_health_reports_the_splits(tmp_path):
     assert "&lt;b&gt;AI&lt;/b&gt;" in html
     doc["report"]["groups"] = {"applied": False, "reason": "$.clusters: bad", "annotated": 0, "split": 0, "dissolved": 0, "examples": []}
     assert "Story groups: not changed this run" in render_jev(doc)
+
+
+def test_health_groups_each_check_under_its_feature(tmp_path):
+    """J21: features with their checks in plain words, value against target."""
+    doc = js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=FakeOpenRouter(good_answers).post)
+    doc["scorecard"] = js.scorecard(doc)
+    html = render_jev(doc)
+    assert html.index("Jev today") < html.index("Jev features and their checks") < html.index("More Jev numbers")
+    feature = html.index("Versions and other side")
+    assert feature < html.index("The same story from two outlets is read as one event") < html.index("Tabs and tags")
+    assert "Target: at least 90%." in html and "Target: at most 1,500 ms." in html
+    assert "Check: " not in html and "Feature: " not in html
+    assert "nothing it says changes your feed" not in html

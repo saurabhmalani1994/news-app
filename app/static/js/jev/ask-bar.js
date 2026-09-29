@@ -8,12 +8,13 @@
 
 import { askJev } from "./client.js";
 import { askQuestions } from "./questions.js";
-import { askState, cleanRequest, proposalFromAsk, confidenceLine } from "./ask.js";
+import { askState, cleanRequest, proposalFromAsk, confidenceLine, askSuggestions } from "./ask.js";
 import { submitProposal, applyApprovedProposal } from "../ai/review.js";
 import { RejectionLedger } from "../ai/ledger.js";
 import { openSheet, closeSheet } from "../sheet.js";
 import { showToast } from "../toast.js";
 import { getStore, rerenderAfterProfileChange } from "../story-actions.js";
+import { pageInput } from "../page-input.js";
 
 const NO_PROPOSAL = Object.freeze({
   no_match: "Jev couldn't match that to one of your sections. Try naming one, like “more Singapore”.",
@@ -168,6 +169,7 @@ function present(request, answers, { store, schemas, input }, chosen = {}) {
 async function onSubmit(event) {
   event.preventDefault();
   const form = event.currentTarget;
+  hideHelp();
   const input = form.querySelector(".ask-input");
   const request = cleanRequest(input.value);
   if (!request || form.getAttribute("aria-busy") === "true") return;
@@ -184,5 +186,62 @@ async function onSubmit(event) {
   }
 }
 
+// J21: what Jev can do, shown under the bar while it has focus: one line on what a
+// request is, up to three ready requests from the reader's own sections and today's
+// feed (ask.js askSuggestions, no Jev call), and where Jev answers about one story. A
+// tap on a suggestion sends it; the review sheet still decides nothing until Apply.
 const form = document.getElementById("ask-bar");
-if (form) form.addEventListener("submit", onSubmit);
+const help = document.getElementById("ask-help");
+const suggest = document.getElementById("ask-suggest");
+
+function topicCounts() {
+  const counts = {};
+  try {
+    for (const a of pageInput()?.pool?.articles || []) for (const t of a.topics || []) counts[t] = (counts[t] || 0) + 1;
+  } catch {
+    // No page input: the help line still shows, without suggestions.
+  }
+  return counts;
+}
+
+async function showHelp() {
+  if (!help || !help.hidden) return;
+  help.hidden = false;
+  try {
+    const store = await getStore();
+    const items = askSuggestions(store.current(), topicCounts()).map((text) => {
+      const button = el("button", "ask-suggestion", text);
+      button.type = "button";
+      button.addEventListener("click", () => {
+        const input = form.querySelector(".ask-input");
+        input.value = text;
+        form.requestSubmit();
+      });
+      return button;
+    });
+    suggest?.replaceChildren(...items);
+  } catch {
+    suggest?.replaceChildren();
+  }
+}
+
+function hideHelp() {
+  if (help) help.hidden = true;
+}
+
+if (form) {
+  form.addEventListener("submit", onSubmit);
+  form.addEventListener("focusin", showHelp);
+  // A tap on a suggestion keeps focus in the bar (a phone does not focus a tapped
+  // button), so the help stays up until the tap lands.
+  help?.addEventListener("mousedown", (event) => {
+    if (event.target.closest(".ask-suggestion")) event.preventDefault();
+  });
+  // Closes when focus leaves the bar and its help, so a tap on a suggestion still lands.
+  for (const node of [form, help]) {
+    node?.addEventListener("focusout", (event) => {
+      const next = event.relatedTarget;
+      if (!next || !(form.contains(next) || help?.contains(next))) hideHelp();
+    });
+  }
+}

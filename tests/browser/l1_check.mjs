@@ -8,7 +8,7 @@
 //     (U3); each meta line is 11dp (U3: one or two lines), the age and count are never
 //     cut, the marker never clipped;
 //   - each row's 48dp .lean-hit sits centred on its own row's dots (anchor positioning)
-//     and wins a tap there, while a tap on the headline still hits the row's link;
+//     and wins a tap there, while a tap on the headline hits no link (J21: only the buttons open);
 //   - a tap opens the lean sheet: the outlet's name, the bucket in words, the cited
 //     basis (from source-catalog.json), and the outlet-not-story line;
 //   - You > Display: markers off (none drawn, first paint included) and color on;
@@ -214,7 +214,7 @@ const hits = await evaluate(`(() => {
     headline: at(head.left + 10, head.top + head.height / 2)?.closest("a.story-link") ? "story-link" : "other" };
 })()`);
 check(hits.dots === "lean-hit" && hits.near === "lean-hit", `a tap on or near the dots hits the marker (${hits.dots}, ${hits.near})`);
-check(hits.headline === "story-link", "a tap on the headline still opens the story");
+check(hits.headline !== "story-link", "a tap on the headline opens nothing: only the row's buttons open (J21)");
 
 // 3. The sheet.
 await evaluate(`document.querySelector('#section-today li.story[data-sid="${target.sid}"] .lean-hit').click()`);

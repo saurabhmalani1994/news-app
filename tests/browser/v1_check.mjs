@@ -267,7 +267,7 @@ const hits = await evaluate(`(() => { const a = ${JSON.stringify(at)}; const on 
   return { count: on(a.count.x, a.count.y)?.closest(".story-coverage") ? "story-coverage" : on(a.count.x, a.count.y)?.className, headline: on(a.headline.x, a.headline.y)?.closest("a")?.className || "",
     name: on(a.name.left + 4, a.name.y)?.className }; })()`);
 check(hits.count === "story-coverage", `a tap on "N sources" reaches the carousel trigger (${hits.count})`);
-check(hits.headline === "story-link", `a tap on the headline beside it still opens the story (${hits.headline})`);
+check(hits.headline !== "story-link", `a tap on the headline beside it opens nothing: only the buttons open (J21, ${hits.headline || "no link"})`);
 console.log(`  a tap on the source name's first letters reaches: ${hits.name}`);
 await shot("v1-row-dark.png");
 const before = await shiftSum();

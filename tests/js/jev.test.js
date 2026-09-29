@@ -15,7 +15,7 @@ import { handle, onRequest, route, openRouterKey, MAX_BODY_BYTES, OPENROUTER_URL
 import { validateQuestions, validateState, normalizeAnswers, scoreIndex, MAX_QUESTIONS, toWire } from "../../app/static/js/jev/contract.js";
 import { mockJev } from "../../app/static/js/jev/mock.js";
 import { STORY_QUESTIONS, askQuestions, askTargets, NONE } from "../../app/static/js/jev/questions.js";
-import { proposalFromAsk, askState, cleanRequest, strengthStep, confidenceLine } from "../../app/static/js/jev/ask.js";
+import { proposalFromAsk, askState, cleanRequest, strengthStep, confidenceLine, askSuggestions } from "../../app/static/js/jev/ask.js";
 import { readChoice, readNoul, expectedPosition, RULES } from "../../app/static/js/jev/decide.js";
 import { storyState, analysisView, analysisCache, CACHE_CAP, hourlyAnswers, questionsLeft, fromCompact } from "../../app/static/js/jev/story.js";
 import { askJev, JevError } from "../../app/static/js/jev/client.js";
@@ -702,4 +702,20 @@ test("the record keeps only recent reads and survives a corrupt value", () => {
   assert.equal(JSON.parse(store.getItem(STATS_KEY)).recent.length, RECENT_CAP);
   store.setItem(STATS_KEY, "{broken");
   assert.equal(readingSummary(store).reads, 0);
+});
+
+test("the Ask bar suggests requests from the reader's own sections and today's feed", () => {
+  const profile = { topics: {
+    us_politics: { label: "US Politics", affinity: 0.8, enabled: true },
+    singapore: { label: "Singapore", affinity: 0.9, enabled: true },
+    ai: { label: "AI", affinity: 0.6, enabled: true },
+    world: { label: "World", affinity: 0.7, enabled: true },
+    biotech: { label: "Industrial Biotech", affinity: 0.3, enabled: false },
+    must_know: { label: "Must-know", affinity: 0, enabled: true },
+  } };
+  const counts = { us_politics: 40, singapore: 12, ai: 9, world: 20, biotech: 30, must_know: 50 };
+  assert.deepEqual(askSuggestions(profile, counts), ["More AI", "Less US Politics", "A lot more World"]);
+  assert.deepEqual(askSuggestions(profile, {}), [], "nothing on the page, nothing suggested");
+  assert.deepEqual(askSuggestions(profile, { ai: 3 }), ["Less AI"]);
+  for (const text of askSuggestions(profile, counts)) assert.ok(!/not|n't|rather/i.test(text), "each suggestion asks in the positive");
 });

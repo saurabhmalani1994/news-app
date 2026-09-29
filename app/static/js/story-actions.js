@@ -581,6 +581,24 @@ document.addEventListener("click", (event) => {
   open.closest("li.story")?.querySelector(".story-link")?.click();
 });
 
+// J21: the other side's "Read here" opens that version in Almanac's reader. A throwaway
+// a.story-link[data-body] is clicked inside this trusted tap, so reader.js's own
+// document listener opens it (coverage-view.js does the same), and history and the
+// opened record behave exactly as for a card.
+document.addEventListener("click", (event) => {
+  const read = event.target.closest(".other-side-read");
+  if (!read?.dataset.body) return;
+  event.preventDefault();
+  const a = document.createElement("a");
+  a.className = "story-link";
+  a.hidden = true;
+  a.href = read.closest(".other-side")?.querySelector(".other-side-go")?.getAttribute("href") || "#";
+  a.dataset.body = read.dataset.body;
+  read.closest("li.story")?.append(a);
+  a.click();
+  a.remove();
+});
+
 document.addEventListener("click", (event) => {
   const button = event.target.closest(".story-overflow");
   if (!button) return;
