@@ -123,3 +123,18 @@ and Cloudflare Workers AI otherwise (to be added later).
 - **Spend:** the shadow run charges each call OpenRouter's own `usage.cost` against the
   daily dollar cap. Also set a credit limit on the key in OpenRouter's dashboard, so no
   bug can spend more than that.
+
+## J6: confirmed on a real OpenRouter call (2026-09-29)
+
+- `typesafe/jev-1.13` answers (as `typesafe/jev-1.13-20260917`); `typesafe/jev-router`
+  does not exist on the System One endpoint.
+- **Request:** a choice's `criteria` must be a record (option -> description); a yes/no
+  question's must be an object or left out; a score's stay a list of levels. The app
+  converts at the edge (`contract.js toWire`, `jev_shadow.to_wire`).
+- **Choice answer:** `{choice, probabilities: {option: p, ...every option}, confidence}`.
+- **Yes/no answer:** `{noul: p}`, no confidence.
+- **Score answer:** `{score: 2.68, legend: {"0": "Minor", ...}, probabilities: {"0": p,
+  ...}, confidence}`. The score is a 0-based position; probabilities are keyed by level
+  index. The app reads them by index and names them from its own criteria.
+- **Cost and speed:** 453 input tokens cost $0.000019 ($0.042 per million, as listed);
+  0.58 s for three questions.

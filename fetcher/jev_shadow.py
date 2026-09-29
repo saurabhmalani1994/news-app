@@ -267,6 +267,23 @@ class WorkersJev:
         return res, tokens, None
 
 
+def to_wire(questions):
+    """J6: questions as OpenRouter's System One endpoint validates them (contract.js
+    toWire): a choice's criteria a record of option -> description, a yes/no question's
+    an object (left out when empty), a score's the ordered list of levels."""
+    out = {}
+    for key, q in questions.items():
+        criteria = list(q.get("criteria") or [])
+        base = {"type": q["type"], "instructions": q["instructions"]}
+        if q["type"] == "choice":
+            out[key] = {**base, "criteria": {c: c for c in criteria}}
+        elif q["type"] == "noul":
+            out[key] = {**base, "criteria": {c: c for c in criteria}} if criteria else base
+        else:
+            out[key] = {**base, "criteria": criteria}
+    return out
+
+
 class OpenRouterJev:
     """Jev on OpenRouter's System One endpoint, with the pipeline's OpenRouter key."""
 
@@ -275,7 +292,8 @@ class OpenRouterJev:
 
     def ask(self, state, questions):
         try:
-            doc = self.post(self.url, self.key, {"model": self.model, "state": state, "questions": questions}, self.timeout)
+            doc = self.post(self.url, self.key, {"model": self.model, "state": state, "questions": to_wire(questions)},
+                            self.timeout)
         except (OSError, ValueError) as exc:
             raise JevError(embed._status(exc)) from None
         if not isinstance(doc, dict) or not isinstance(doc.get("answers"), dict):

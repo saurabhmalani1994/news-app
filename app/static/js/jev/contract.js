@@ -67,20 +67,24 @@ export function validateState(state) {
   return { ok: true };
 }
 
-/** A probability map kept to the question's own criteria, each value clamped to 0..1. */
+/** A probability map kept to the question's own criteria, each value clamped to 0..1.
+ * J6: Jev keys a score's probabilities by level index ("0", "1", ...), with a `legend`
+ * naming each; a level's probability is read by its name or its index, so the map that
+ * comes out is always keyed by the app's own criteria. */
 function probabilitiesFor(raw, criteria) {
   if (!isObject(raw)) return null;
   const out = {};
-  for (const c of criteria) {
-    const p = unit(raw[c]);
+  criteria.forEach((c, i) => {
+    const p = unit(raw[c] ?? raw[String(i)]);
     if (p !== null) out[c] = p;
-  }
+  });
   return Object.keys(out).length ? out : null;
 }
 
-/** The criterion a score answer sits on: the most probable one when Jev sends
- * probabilities, else the score read as a 0..1 position or a 1..n rank on the scale.
- * The spike (docs/JEV-SPIKE.md) confirms which of the two Jev actually sends. */
+/** The level a score answer sits on: the most probable one when Jev sends
+ * probabilities, else the score itself. J6, confirmed on a real call: Jev's score is a
+ * 0-based position on the scale (2.68 on Minor/Notable/Important/Major is between
+ * Important and Major, nearest Major), matching its legend {"0": "Minor", ...}. */
 export function scoreIndex(score, criteria, probabilities = null) {
   if (probabilities) {
     let best = -1;
@@ -91,8 +95,7 @@ export function scoreIndex(score, criteria, probabilities = null) {
     if (best >= 0) return best;
   }
   const n = criteria.length;
-  if (score >= 0 && score <= 1) return Math.round(score * (n - 1));
-  if (score >= 1 && score <= n) return Math.round(score) - 1;
+  if (score >= 0 && score <= n - 1) return Math.round(score);
   return null;
 }
 
@@ -137,4 +140,29 @@ export function normalizeAnswers(questions, raw) {
     else missing.push(key);
   }
   return { answers, missing };
+}
+
+/**
+ * J6: the questions as OpenRouter's System One endpoint validates them (checked against
+ * its own 400 answers): a choice's criteria are a record of option -> description, a
+ * yes/no question's criteria an object (left out when there are none), a score's
+ * criteria stay the ordered list of levels. The app keeps its own list form everywhere
+ * else; only the request on the wire changes. Each option is its own description, so
+ * the option names Jev answers with are exactly the app's criteria.
+ */
+export function toWire(questions) {
+  const out = {};
+  for (const [key, q] of Object.entries(questions)) {
+    const criteria = q.criteria || [];
+    if (q.type === "choice") {
+      out[key] = { type: q.type, instructions: q.instructions, criteria: Object.fromEntries(criteria.map((c) => [c, c])) };
+    } else if (q.type === "noul") {
+      out[key] = criteria.length
+        ? { type: q.type, instructions: q.instructions, criteria: Object.fromEntries(criteria.map((c) => [c, c])) }
+        : { type: q.type, instructions: q.instructions };
+    } else {
+      out[key] = { type: q.type, instructions: q.instructions, criteria: [...criteria] };
+    }
+  }
+  return out;
 }
