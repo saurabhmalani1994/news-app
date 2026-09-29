@@ -269,6 +269,28 @@ jobs:
             exit 1
           fi
 
+      # J15: the site's /api/jev reads OPENROUTER_API_KEY from the Pages project's own
+      # Production secrets, which the dashboard route kept missing. This copies the
+      # GitHub secret the hourly shadow run already uses into the project just before the
+      # deploy below, which is what makes a Pages Function see a secret, so the key lives
+      # in one place. Piped on stdin, never echoed (GitHub also masks it in logs). Skipped
+      # when the secret is absent; allowed to fail, so it can never stop a publish.
+      - name: Sync the OpenRouter key to the site (J15)
+        if: steps.cf.outputs.ok == 'true'
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "jev key sync: skipped, no OPENROUTER_API_KEY secret in GitHub"
+            exit 0
+          fi
+          printf '%s' "$OPENROUTER_API_KEY" | npx --yes wrangler@4.137.0 pages secret put OPENROUTER_API_KEY --project-name almanac > /dev/null
+          echo "jev key sync: done"
+
       # W1: run from the repo root, so wrangler also compiles and uploads functions/
       # (the /api/interests Pages Function) with the static site; its generated routes
       # send only /api/interests to the function, every other path stays static.
