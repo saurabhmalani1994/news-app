@@ -141,7 +141,7 @@ const ROWS = `(() => {
     const lean = meta.querySelector(".lean");
     const hit = li.querySelector(".lean-hit");
     const rest = [...meta.querySelectorAll(".meta-age, .meta-count")];
-    const read = meta.querySelector(".meta-read-source");
+    const read = li.querySelector(".story-acts .meta-read-source") || meta.querySelector(".meta-read-source"); // C3: the name sits in the action row
     const link = li.querySelector("a.story-link");
     const shown = (n) => n && n.getClientRects().length > 0;
     const box = (n) => { const r = n.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, l: r.left, r: r.right }; };
