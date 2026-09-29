@@ -281,6 +281,7 @@ PAGE = """<!doctype html>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="profile.css">
 <script src="js/sw-register.js" defer></script>
+<script type="module" src="js/jev/read-stats-view.js"></script>
 </head>
 <body>
 <header class="masthead">
@@ -302,6 +303,11 @@ PAGE = """<!doctype html>
 {sources}
 </section>
 {jev}
+<section class="settings-section" aria-labelledby="jev-reading-label" id="jev-reading" hidden>
+<h2 class="settings-label" id="jev-reading-label">Your reading with Jev</h2>
+<p class="settings-hint">From your own Read with Jev use on this phone, never sent anywhere: how the marks spread, and whether you used Skim or Hide marks.</p>
+<div id="jev-reading-rows"></div>
+</section>
 </main>
 <footer class="colophon"><p class="colophon-text">Read from the pool generated <time datetime="{generated_at}">{generated_label}</time>.</p></footer>
 <script src="js/health-age.js"></script>

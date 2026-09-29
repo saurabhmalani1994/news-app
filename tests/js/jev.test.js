@@ -21,6 +21,7 @@ import { storyState, analysisView, analysisCache, CACHE_CAP, hourlyAnswers, ques
 import { askJev, JevError } from "../../app/static/js/jev/client.js";
 import { splitSentences, readingBlocks, readingQuestions, readingView, readingDensity, readingSections, readCache, TAKEAWAYS, NONE as READ_NONE } from "../../app/static/js/jev/read.js";
 import { gateProposal } from "../../app/static/js/ai/gate.js";
+import { recordRead, recordEvent, readingSummary, STATS_KEY, MIN_READS, RECENT_CAP } from "../../app/static/js/jev/read-stats.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { MemoryStorage } from "../../app/static/js/profile/store.js";
 
@@ -669,4 +670,36 @@ test("the read cache keeps the newest reads", () => {
   c.put("c", { answers: {} });
   assert.equal(c.get("a"), null);
   assert.ok(c.get("c"));
+});
+
+
+// --- J19: your reading with Jev ---
+
+test("reads and Skim/Hide use are recorded, and the checks wait for enough reads", () => {
+  const store = new MemoryStorage();
+  recordRead(store, { marked: 4, paragraphs: 20, share: 0.2, longestGap: 6 }, "2026-09-29T00:00:00Z");
+  recordEvent(store, "skim");
+  let s = readingSummary(store);
+  assert.equal(s.reads, 1);
+  assert.equal(s.skimRate, 1);
+  assert.ok(s.checks.every((c) => c.status === "not_enough_data"));
+  for (let i = 0; i < MIN_READS; i += 1) recordRead(store, { marked: 3, paragraphs: 30, share: 0.1, longestGap: 12 });
+  recordRead(store, { marked: 0, paragraphs: 8, share: 0, longestGap: 8 });
+  recordEvent(store, "hide");
+  recordEvent(store, "error");
+  s = readingSummary(store);
+  assert.equal(s.reads, MIN_READS + 2);
+  assert.equal(s.errors, 1);
+  const status = Object.fromEntries(s.checks.map((c) => [c.key, c.status]));
+  assert.deepEqual(status, { share_low: "fail", share_high: "pass", gap: "fail", hide: "pass", empty: "pass" },
+    "a 0.1 share is too thin and a 12-paragraph gap too long; the empty read is excluded from the averages");
+  assert.ok(Math.abs(s.avgShare - (0.2 + 0.1 * MIN_READS) / (MIN_READS + 1)) < 1e-9);
+});
+
+test("the record keeps only recent reads and survives a corrupt value", () => {
+  const store = new MemoryStorage();
+  for (let i = 0; i < RECENT_CAP + 5; i += 1) recordRead(store, { marked: 1, paragraphs: 5, share: 0.2, longestGap: 2 });
+  assert.equal(JSON.parse(store.getItem(STATS_KEY)).recent.length, RECENT_CAP);
+  store.setItem(STATS_KEY, "{broken");
+  assert.equal(readingSummary(store).reads, 0);
 });

@@ -8,6 +8,16 @@
 
 import { askJev } from "./client.js";
 import { readingBlocks, readingQuestions, readingView, readingDensity, readCache } from "./read.js";
+// J19: each read and each Skim or Hide marks, recorded on this phone for the Health screen.
+import { recordRead, recordEvent } from "./read-stats.js";
+
+function record(fn, ...args) {
+  try {
+    fn(window.localStorage, ...args);
+  } catch {
+    // Storage blocked: reading works the same, only the record is lost.
+  }
+}
 
 const HIGHLIGHT = "jev-key";
 const POINT = "jev-point"; // J18: the lighter tint for key points through the article
@@ -130,6 +140,7 @@ export function readBar({ id, body, headline, outlet }) {
     const view = readingView(answers, blocks);
     const drawn = applyReading(body, elements, blocks, view, bar);
     const d = readingDensity(view, blocks);
+    record(recordRead, d);
     const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
     note.textContent = drawn
       ? `Jev marked ${plural(d.marked, "passage")} across ${plural(d.paragraphs, "paragraph")}: ${plural(view.takeaways.length, "takeaway")} above, ${plural(view.points.length, "key point")} in the text. The words are the publisher's.`
@@ -154,6 +165,7 @@ export function readBar({ id, body, headline, outlet }) {
       if (!results.some((r) => r.model === "mock-jev")) cache.put(id, { answers, at: new Date().toISOString() });
       show(answers);
     } catch (error) {
+      record(recordEvent, "error");
       note.textContent = error.message;
       read.textContent = "Read with Jev";
     } finally {
@@ -164,8 +176,10 @@ export function readBar({ id, body, headline, outlet }) {
     const on = !body.classList.contains("jev-skim");
     body.classList.toggle("jev-skim", on);
     skim.setAttribute("aria-pressed", String(on));
+    if (on) record(recordEvent, "skim");
   });
   hide.addEventListener("click", () => {
+    record(recordEvent, "hide");
     clearReading(body);
     skim.hidden = true;
     hide.hidden = true;
