@@ -666,19 +666,19 @@ def render_jev(doc):
     if isinstance(groups, dict):
         if groups.get("applied"):
             rows += [
-                ("Story versions Jev split off as a different event", str(groups.get("split", 0))),
-                ("Story groups dissolved (no two left on one event)", str(groups.get("dissolved", 0))),
-                ("Versions marked for the other-side pick", str(groups.get("annotated", 0))),
+                ("Stories Jev moved to their own card", str(groups.get("split", 0))),
+                ("Cards left with one story, so no longer a group", str(groups.get("dissolved", 0))),
+                ("Versions Jev compared for the Other side pick", str(groups.get("annotated", 0))),
             ]
         else:
-            rows.append(("Story groups: not changed this run", groups.get("reason") or "no answers yet"))
+            rows.append(("Jev did not change any cards this run", groups.get("reason") or "no answers yet"))
     # C4: a long value (a run with its first error) wraps under its label instead of
     # running off a phone's screen.
     body = [(LEDGER_ROW_STACKED if len(value) > 28 else LEDGER_ROW).format(label=_esc(label), value=_esc(value))
             for label, value in rows]
     for ex in (groups or {}).get("examples", [])[:4] if isinstance(groups, dict) else []:
         body.append(LEDGER_ROW_STACKED.format(label=_esc(ex.get("title", "")),
-                                              value=_esc(f"Split off from: {ex.get('anchor', '')} ({round(100 * ex.get('same', 0))}% the same event)")))
+                                              value=_esc(f"Was on the card for: {ex.get('anchor', '')}. Jev was {round(100 * ex.get('same', 0))}% sure they are the same event, so it moved to its own card.")))
     hint = ("Every hour Jev reads the new articles and answers the same fixed questions about each one. "
             "Its answers change your feed in two places only: splitting a story group whose versions are not one event, "
             "and choosing the other-side version. Sections, tags and the order of your feed still come from the rules and your profile.")

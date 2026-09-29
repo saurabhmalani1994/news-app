@@ -418,10 +418,10 @@ def test_health_reports_the_splits(tmp_path):
     doc["report"]["groups"] = {"applied": True, "annotated": 1, "split": 2, "dissolved": 1,
                                "examples": [{"title": "Startup unveils <b>AI</b> chip", "anchor": "Council approves flood barrier", "same": 0.05}]}
     html = render_jev(doc)
-    assert "Story versions Jev split off as a different event" in html and "Split off from: Council approves flood barrier (5% the same event)" in html
+    assert "Stories Jev moved to their own card" in html and "Was on the card for: Council approves flood barrier. Jev was 5% sure they are the same event" in html
     assert "&lt;b&gt;AI&lt;/b&gt;" in html
     doc["report"]["groups"] = {"applied": False, "reason": "$.clusters: bad", "annotated": 0, "split": 0, "dissolved": 0, "examples": []}
-    assert "Story groups: not changed this run" in render_jev(doc)
+    assert "Jev did not change any cards this run" in render_jev(doc)
 
 
 def test_health_groups_each_check_under_its_feature(tmp_path):
