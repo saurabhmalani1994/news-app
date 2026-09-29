@@ -267,6 +267,11 @@ class WorkersJev:
         return res, tokens, None
 
 
+def openrouter_key(env):
+    """J7: the OpenRouter key with pasted spaces, line breaks and wrapping quotes removed."""
+    return str(env.get(OPENROUTER_ENV) or "").strip().strip("\"'").strip()
+
+
 def to_wire(questions):
     """J6: questions as OpenRouter's System One endpoint validates them (contract.js
     toWire): a choice's criteria a record of option -> description, a yes/no question's
@@ -431,8 +436,9 @@ def ask_all(pool, client, cache, now, used, budget, ceiling_left, pairs, cost=ne
         try:
             raw, reported, charged = client.ask(state, questions)
             latencies.append((time.monotonic() - t0) * 1000)
-        except JevError:
+        except JevError as exc:
             stats["errors"] += 1
+            stats.setdefault("first_error", str(exc))  # a short status (http_401), never a body or key
             stats["spent"] += cost(est)  # a failed call may still be charged
             continue
         tokens = max(est, reported or 0)
@@ -539,13 +545,13 @@ def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=e
     if mock:
         route, model, unit, budget, cost = "mock", "mock-jev", "neurons", DAILY_NEURON_BUDGET, neurons
         client, ceiling_left, plan = MockJev(), float("inf"), "mock"
-    elif env.get(OPENROUTER_ENV):
+    elif openrouter_key(env):
         route, model, unit, cost = "openrouter", env.get("JEV_MODEL") or OPENROUTER_MODEL, "usd", usd
         try:
             budget = max(0.0, float(daily_usd if daily_usd is not None else env.get("JEV_DAILY_USD") or DAILY_USD_BUDGET))
         except ValueError:
             budget = DAILY_USD_BUDGET
-        client = OpenRouterJev(env[OPENROUTER_ENV], model=model, post=post)
+        client = OpenRouterJev(openrouter_key(env), model=model, post=post)
         ceiling_left, plan = float("inf"), "openrouter"
     else:
         route, model, unit, budget, cost = "workers", env.get("JEV_MODEL") or WORKERS_MODEL, "neurons", DAILY_NEURON_BUDGET, neurons

@@ -328,6 +328,90 @@ def _of(part, whole):
     return f"{part} of {whole}{pct}"
 
 
+# J8: every article Jev read, newest first: the rules' own tags beside Jev's answers,
+# each answer with the decision rules' word for how sure Jev was (the bands of
+# app/static/js/jev/decide.js). Headlines and outlet names are feed text, escaped (R26);
+# a link only for an http(s) url. The first JEV_ARTICLES_SHOWN are listed, the rest one
+# tap away, the page's own static markup (no script).
+JEV_ARTICLES_SHOWN = 30
+JEV_ARTICLES = """<section class="settings-section" aria-labelledby="jev-articles-label" id="jev-articles">
+<h2 class="settings-label" id="jev-articles-label">Articles Jev read</h2>
+<p class="settings-hint">{hint}</p>
+{rows}{more}
+</section>"""
+JEV_ARTICLE_ROW = ('<div class="setting-row setting-row--stack jev-article" data-article="{id}">'
+                   '<div class="setting-row-text">{title}'
+                   '<span class="setting-sublabel">{meta}</span>'
+                   '<span class="setting-sublabel jev-article-answers">{answers}</span>{about}'
+                   '</div></div>')
+ABOUT_LABELS = (("ai", "AI"), ("hard_news", "hard news"), ("clinical", "clinical medicine"),
+                ("industrial_biotech", "industrial biotech"))
+SENTIMENT_SHOWN = {"Good news": "Good news", "Bad news": "Bad news", "Both good and bad news": "Mixed",
+                   "Neither good nor bad news": "Neutral"}
+
+
+def _sure_word(answer):
+    """sure, leaning, split or unsure, from the pick, its confidence and the top-two gap."""
+    probs = sorted((answer.get("p") or {}).values(), reverse=True)
+    c = answer.get("c")
+    if len(probs) > 1 and probs[0] - probs[1] < 0.15:
+        return "split"
+    if c is None:
+        return ""
+    return "sure" if c >= 0.6 else "leaning" if c >= 0.4 else "unsure"
+
+
+def _choice_text(name, answer, shown=None):
+    if not isinstance(answer, dict) or answer.get("t") != "choice":
+        return ""
+    pick = (shown or {}).get(answer["v"], answer["v"])
+    word, c = _sure_word(answer), answer.get("c")
+    detail = ", ".join(x for x in (word, f"{round(100 * c)}%" if isinstance(c, (int, float)) else "") if x)
+    return f"{name} {pick}" + (f" ({detail})" if detail else "")
+
+
+def _link(url, text):
+    safe = isinstance(url, str) and url.lower().startswith(("https://", "http://"))
+    if not safe:
+        return f'<span class="setting-label">{_esc(text)}</span>'
+    return (f'<a class="setting-label jev-article-title" href="{_html.escape(url, quote=True)}" '
+            f'target="_blank" rel="noopener noreferrer">{_esc(text)}</a>')
+
+
+def render_jev_articles(doc, pool, now=None):
+    """The list of articles Jev read, or '' when there are none."""
+    answers = (doc or {}).get("answers") if isinstance(doc, dict) else None
+    if not isinstance(answers, dict) or not answers:
+        return ""
+    names = source_names(pool)
+    by_id = {a["id"]: a for a in pool.get("articles", [])}
+    read = sorted((by_id[i] for i in answers if i in by_id), key=lambda a: (a.get("published_at", ""), a["id"]), reverse=True)
+    now = now or _parse_time(pool.get("generated_at", ""))
+    rows = []
+    for a in read:
+        ans = answers[a["id"]]
+        published = _parse_time(a.get("published_at", ""))
+        age = _relative_age((now - published).total_seconds()) if now and published else ""
+        rules = ", ".join(a.get("topics") or []) or "none"
+        meta = " · ".join(x for x in (names.get(a.get("source_id"), a.get("source_id", "")), age, f"rules: {rules}") if x)
+        parts = [_choice_text("Section", ans.get("section")), _choice_text("Region", ans.get("region")),
+                 _choice_text("", ans.get("sentiment"), SENTIMENT_SHOWN).strip()]
+        likely = [f"{label} {round(100 * ans[key]['v'])}%" for key, label in ABOUT_LABELS
+                  if isinstance(ans.get(key), dict) and ans[key].get("t") == "noul" and ans[key]["v"] >= 0.7]
+        about = f'<span class="setting-sublabel">Likely about: {_esc(", ".join(likely))}</span>' if likely else ""
+        rows.append(JEV_ARTICLE_ROW.format(
+            id=_html.escape(a["id"], quote=True), title=_link(a.get("url"), a.get("title", "")),
+            meta=_esc(meta), answers=_esc(" · ".join(x for x in parts if x) or "No usable answers"), about=about))
+    shown, rest = rows[:JEV_ARTICLES_SHOWN], rows[JEV_ARTICLES_SHOWN:]
+    more = (f'\n<details class="jev-more"><summary class="settings-hint">Show {len(rest)} more</summary>\n'
+            + "\n".join(rest) + "\n</details>") if rest else ""
+    hint = (f"{len(read)} articles in today's pool, newest first. Each shows the rules' own tags, then Jev's answers "
+            "with how sure it was (sure, leaning, split when its top two were close, unsure).")
+    if (doc or {}).get("mock"):
+        hint += " These answers come from the local stand-in, not the real Jev."
+    return JEV_ARTICLES.format(hint=_esc(hint), rows="\n".join(shown), more=more)
+
+
 def _budget_row(run):
     """Today's spend against the day's cap, in the route's own unit."""
     spent, cap = run.get("spent_day", 0) or 0, run.get("budget_day", 0) or 0
@@ -348,7 +432,8 @@ def render_jev(doc):
     conf_text = ", ".join(f"{k} {v}" for k, v in sorted(conf.items(), key=lambda kv: -kv[1])) or "none yet"
     rows = [
         ("Model", "Local stand-in (mock)" if doc.get("mock") else doc.get("model", "")),
-        ("Last run", f"{run.get('state', '')}: {run.get('asked', 0)} asked, {run.get('cached', 0)} cached"),
+        ("Last run", f"{run.get('state', '')}: {run.get('asked', 0)} asked, {run.get('cached', 0)} cached"
+                     + (f", first error {run['first_error']}" if run.get("first_error") else "")),
         ("Articles answered", _of(r["articles_answered"], r["articles_in_pool"])),
         ("Section matches the feed's bucket", _of(sec["agree"], sec["scored"])),
         ("Region matches the feed's bucket", _of(reg["agree"], reg["scored"])),
@@ -419,7 +504,7 @@ def render(pool, sources_path=None, now=None, jev=None):
         watch_line=f'\n<p class="notice-text notice-text--watch" id="watch-counts">{_esc(watch_text)}</p>' if watch_text else "",
         ledger=_render_ledger(counts),
         sources=_render_sources(pool, sources_path),
-        jev=render_jev(jev),
+        jev=render_jev(jev) + ("\n" + render_jev_articles(jev, pool) if jev else ""),
     )
 
 
