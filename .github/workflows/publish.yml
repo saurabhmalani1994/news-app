@@ -142,6 +142,9 @@ jobs:
       # when the OPENROUTER_API_KEY secret is set, under a daily dollar cap (the
       # JEV_DAILY_USD repository variable, default 0.10). Otherwise Workers AI with the
       # pipeline token and B7's zero-charge plan check. With neither, it asks nothing.
+      # J20: --apply splits group members Jev reads as a different event out of their
+      # group and marks members for the other-side pick; the new pool must pass
+      # contract.validate, and is written atomically, before it replaces the old one.
       - name: Jev shadow run (J3)
         continue-on-error: true
         timeout-minutes: 3
@@ -150,7 +153,7 @@ jobs:
           JEV_DAILY_USD: ${{ vars.JEV_DAILY_USD }}
           CF_PIPELINE_TOKEN: ${{ secrets.CLOUDFLARE_PIPELINE_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
-        run: python3 -m fetcher.jev_shadow --pool dist/pool.json --out dist/jev.json
+        run: python3 -m fetcher.jev_shadow --pool dist/pool.json --out dist/jev.json --apply
 
       - name: Save Jev answers (J3)
         if: always() && hashFiles('.cache/jev.json') != ''

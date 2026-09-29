@@ -58,7 +58,8 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "per_page": {"type": "integer", "minimum": 0, "maximum": 10}
+            "per_page": {"type": "integer", "minimum": 0, "maximum": 10},
+            "jev": {"description": "J20: let Jev narrow the other-side pick to versions it reads as the same event, preferring a different framing. Default true.", "type": "boolean"}
           }
         }
       }

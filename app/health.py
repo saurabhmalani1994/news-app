@@ -487,10 +487,23 @@ def render_jev(doc):
         ("How sure Jev was", conf_text),
         _budget_row(run),
     ]
+    groups = r.get("groups")
+    if isinstance(groups, dict):
+        if groups.get("applied"):
+            rows += [
+                ("Story versions Jev split off as a different event", str(groups.get("split", 0))),
+                ("Story groups dissolved (no two left on one event)", str(groups.get("dissolved", 0))),
+                ("Versions marked for the other-side pick", str(groups.get("annotated", 0))),
+            ]
+        else:
+            rows.append(("Story groups: not changed this run", groups.get("reason") or "no answers yet"))
     # C4: a long value (the confidence counts, a run with its first error) wraps under its
     # label instead of running off a phone's screen.
     body = [(LEDGER_ROW_STACKED if len(value) > 28 else LEDGER_ROW).format(label=_esc(label), value=_esc(value))
             for label, value in rows]
+    for ex in (groups or {}).get("examples", [])[:4] if isinstance(groups, dict) else []:
+        body.append(LEDGER_ROW_STACKED.format(label=_esc(ex.get("title", "")),
+                                              value=_esc(f"Split off from: {ex.get('anchor', '')} ({round(100 * ex.get('same', 0))}% the same event)")))
     card = doc.get("scorecard") or {}
     word = {"pass": "Pass", "fail": "Needs work", "not_enough_data": "Not enough data"}
     for c in card.get("checks", []):

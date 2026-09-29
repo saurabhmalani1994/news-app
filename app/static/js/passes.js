@@ -53,7 +53,7 @@ export const SECTION_PASSES = Object.freeze(["lean-quota", "other-side"]);
 export const PASS_DEFAULTS = Object.freeze({
   lean_quota: Object.freeze({ window: 10, max_share: 0.6 }),
   exploration: Object.freeze({ positions: Object.freeze([4, 14, 24]) }),
-  other_side: Object.freeze({ per_page: 1 }),
+  other_side: Object.freeze({ per_page: 1 }), // J20: other_side.jev absent reads as on
 });
 // Design-set and not a profile field: the other side needs a cluster of at least 3
 // sources across at least 2 lean buckets (research section 5, DESIGN-v1 section 6).
@@ -379,8 +379,23 @@ function exploration(list, ctx) {
 // leans, the one furthest across the US spectrum from the card's own lean wins, so a
 // left-led card gets the right before the center. Nothing moves.
 const SPECTRUM = ["left", "center-left", "center", "center-right", "right"];
+// J20 (owner, 2026-09-30): with other_side.jev on (the default), Jev's reading of each
+// group member against its group's anchor (article.jev, fetcher/jev_shadow.py) narrows
+// the pick. The lean is chosen exactly as before, without Jev. Within it, a version Jev
+// reads as a different event (same below OTHER_SIDE_MIN_SAME, or framed "different") is
+// left out, and when none is left there is no link, which beats a wrong one. Among the
+// rest, a version that frames the story differently (another emphasis, or a fact the
+// anchor lacks) comes first; the score above then decides. A version Jev has not read
+// is judged as before.
+export const OTHER_SIDE_MIN_SAME = 0.6;
+const FRAMING_FIRST = new Set(["emphasis", "adds"]);
+const FRAMING_WORDS = { same: "the same facts, the same way", emphasis: "the same facts with a different emphasis",
+  adds: "a fact the others leave out", omits: "fewer facts than the others", different: "a different event" };
+const jevOff = (a) => a.jev && ((typeof a.jev.same === "number" && a.jev.same < OTHER_SIDE_MIN_SAME) || a.jev.framing === "different");
+
 function otherSide(list, ctx) {
   const { per_page } = ctx.settings.other_side;
+  const useJev = ctx.settings.other_side.jev !== false;
   const window = ctx.settings.lean_quota.window;
   const mix = new Map();
   list.slice(0, window).forEach((s) => { const l = cardLean(s, ctx); if (l) mix.set(l, (mix.get(l) || 0) + 1); });
@@ -400,12 +415,18 @@ function otherSide(list, ctx) {
     // trust included; the newest only breaks a tie (an unscored story ties at 0).
     const trust = ctx.profile.trust || {};
     const scoreOf = (a) => versionScore({ sourceId: a.source_id, bv: bvOf(a.id, ctx.versions) }, { trust });
-    const pick = candidates.filter((a) => ctx.leans[a.source_id] === lean)
+    const inLean = candidates.filter((a) => ctx.leans[a.source_id] === lean && !(useJev && jevOff(a)));
+    if (!inLean.length) return story;
+    const framedFirst = (a) => (useJev && a.jev && FRAMING_FIRST.has(a.jev.framing) ? 0 : 1);
+    const pick = inLean
       .map((a) => ({ a, s: scoreOf(a) }))
-      .sort((x, y) => y.s.score - x.s.score || y.s.base - x.s.base || y.a.ms - x.a.ms || byStr(x.a.id, y.a.id))[0].a;
+      .sort((x, y) => framedFirst(x.a) - framedFirst(y.a) || y.s.score - x.s.score || y.s.base - x.s.base || y.a.ms - x.a.ms || byStr(x.a.id, y.a.id))[0].a;
     given += 1;
     const out = { ...story, passes: [...story.passes], other_side: { article_id: pick.id, source_id: pick.source_id, lean } };
-    note(out, "other-side", `Other side attached: ${nameOf(ctx, pick.source_id)} (${lean}) on this story, the least represented lean in this page's first ${window} cards (${count(lean)} of ${Math.min(window, list.length)}); the card itself leads with ${own || "an outlet of no listed lean"}`, { from: i + 1, to: i + 1 });
+    const jevNote = useJev && pick.jev
+      ? `; Jev reads it as ${FRAMING_WORDS[pick.jev.framing] || "the same event"}${typeof pick.jev.same === "number" ? ` (${Math.round(pick.jev.same * 100)}% the same event)` : ""}`
+      : "";
+    note(out, "other-side", `Other side attached: ${nameOf(ctx, pick.source_id)} (${lean}) on this story, the least represented lean in this page's first ${window} cards (${count(lean)} of ${Math.min(window, list.length)}); the card itself leads with ${own || "an outlet of no listed lean"}${jevNote}`, { from: i + 1, to: i + 1 });
     return out;
   });
 }

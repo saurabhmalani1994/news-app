@@ -316,3 +316,100 @@ def test_a_long_report_value_wraps_under_its_label(tmp_path, monkeypatch):
     assert "971 sure · 110 leaning · 89 split · 17 unsure · 3 self-contradicting" in html
     row = html[html.index("How sure Jev was") - 200:html.index("How sure Jev was")]
     assert "jev-row-long" in row
+
+
+
+# --- J20: story groups ---
+
+def group_pool():
+    arts = [
+        _article("g1", "st", 1, "Council approves flood barrier for riverside district", ["singapore"]),
+        _article("g2", "ap", 2, "Riverside flood barrier approved by council", ["world"]),
+        _article("g3", "tc", 3, "Startup unveils new AI chip for phones", ["ai"]),
+        _article("h1", "st", 1, "Minister opens new rail line in the east", ["singapore"]),
+        _article("h2", "tc", 2, "Tech firm reports record quarterly profit", ["ai"]),
+    ]
+    return {"generated_at": "2026-09-30T12:00:00Z", "sources": pool()["sources"], "articles": arts,
+            "clusters": [{"id": "c_g", "method": "cosine_entity", "article_ids": ["g1", "g2", "g3"], "near_duplicates": [],
+                          "independent_sources": 3, "lean_buckets": ["center", "left"]},
+                         {"id": "c_h", "method": "cosine_entity", "article_ids": ["h1", "h2"], "near_duplicates": [],
+                          "independent_sources": 2, "lean_buckets": ["center"]}],
+            "events": []}
+
+
+FACTS = {"st": ("center", "st"), "ap": ("center", "ap"), "tc": ("left", "tc")}
+
+
+def group_answers(payload):
+    qs, st = payload["questions"], payload["state"]
+    if "framing" in qs:
+        a, b = set(st["headline_a"].lower().split()), set(st["headline_b"].lower().split())
+        same = len(a & b) / len(a | b) > 0.25
+        return {"same_event": {"noul": 0.9 if same else 0.05},
+                "framing": {"choice": "Reports the same facts with a different emphasis" if same else "Reports a different event", "confidence": 0.8}}
+    return good_answers(payload)
+
+
+def test_group_members_are_asked_against_their_anchor(tmp_path):
+    p = group_pool()
+    assert js.cluster_anchor(p["clusters"][0], {a["id"]: a for a in p["articles"]}) in {"g1", "g2"}
+    keys = [k for k, _, _ in js.cluster_pairs(p)]
+    assert len(keys) == 3 and all(k.startswith("c:") for k in keys)
+    api = FakeOpenRouter(group_answers)
+    js.run(p, NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=api.post)
+    first = api.calls[0][2]["questions"]
+    assert set(first) == {"same_event", "framing"}, "group pairs are asked first"
+    assert first["framing"]["criteria"]["Reports a different event"] == "Reports a different event"
+
+
+def test_an_off_story_member_splits_out_and_a_lone_pair_dissolves(tmp_path):
+    p = group_pool()
+    api = FakeOpenRouter(group_answers)
+    doc = js.run(p, NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=api.post)
+    new, summary = js.apply_to_pool(p, doc["_cache"], FACTS)
+    assert [c["id"] for c in new["clusters"]] == ["c_g"], "the rail/profit pair was two different events"
+    g = new["clusters"][0]
+    assert g["article_ids"] == ["g1", "g2"] and g["independent_sources"] == 2 and g["lean_buckets"] == ["center"]
+    h_anchor = js.cluster_anchor(p["clusters"][1], {a["id"]: a for a in p["articles"]})
+    assert {x["article"] for x in summary["splits"]} == {"g3"} | ({"h1", "h2"} - {h_anchor})
+    assert summary["dissolved"] == ["c_h"]
+    member = next(a for a in new["articles"] if a["id"] in ("g1", "g2") and "jev" in a)
+    assert member["jev"] == {"same": 0.9, "framing": "emphasis"}
+    assert len(new["articles"]) == len(p["articles"]), "a split article stays in the pool as its own story"
+    assert p["clusters"][0]["article_ids"] == ["g1", "g2", "g3"], "the input pool is not changed"
+
+
+def test_a_live_event_keeps_its_group_whole(tmp_path):
+    p = group_pool()
+    p["events"] = [{"cluster_ids": ["c_h"]}]
+    api = FakeOpenRouter(group_answers)
+    doc = js.run(p, NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=api.post)
+    new, summary = js.apply_to_pool(p, doc["_cache"], FACTS)
+    assert "c_h" in [c["id"] for c in new["clusters"]] and summary["dissolved"] == []
+
+
+def test_the_pool_is_replaced_only_when_the_new_one_is_valid(tmp_path, monkeypatch):
+    import contract.validate as cv
+    p = group_pool()
+    path = tmp_path / "pool.json"
+    path.write_text(json.dumps(p))
+    monkeypatch.setattr(cv, "validate", lambda pool: ["$.clusters: broken on purpose"])
+    got = js.apply_and_write(path, p, {"articles": {}, "pairs": {}}, FACTS)
+    assert got["applied"] is False and "broken on purpose" in got["reason"]
+    assert json.loads(path.read_text()) == p, "an invalid result never replaces the pool"
+    monkeypatch.setattr(cv, "validate", lambda pool: [])
+    assert js.apply_and_write(path, p, {"articles": {}, "pairs": {}}, FACTS)["applied"] is True
+    assert not (tmp_path / "pool.json.jev-tmp").exists()
+
+
+def test_health_reports_the_splits(tmp_path):
+    p = group_pool()
+    doc = js.run(p, NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=FakeOpenRouter(group_answers).post)
+    doc.pop("_cache")
+    doc["report"]["groups"] = {"applied": True, "annotated": 1, "split": 2, "dissolved": 1,
+                               "examples": [{"title": "Startup unveils <b>AI</b> chip", "anchor": "Council approves flood barrier", "same": 0.05}]}
+    html = render_jev(doc)
+    assert "Story versions Jev split off as a different event" in html and "Split off from: Council approves flood barrier (5% the same event)" in html
+    assert "&lt;b&gt;AI&lt;/b&gt;" in html
+    doc["report"]["groups"] = {"applied": False, "reason": "$.clusters: bad", "annotated": 0, "split": 0, "dissolved": 0, "examples": []}
+    assert "Story groups: not changed this run" in render_jev(doc)

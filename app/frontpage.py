@@ -270,7 +270,8 @@ def build_stories(pool):
 # W1: `watch` is W2's watch tags (the hourly search's "w:" hashes, never a phrase) and
 # the compact pool also carries rank_dek(), so a phrase interest matches a headline or
 # a dek on the device exactly as it would at build time.
-RANK_ARTICLE_FIELDS = ("id", "source_id", "title", "published_at", "topics", "geo", "watch")
+# J20: "jev" ({same, framing}, fetcher/jev_shadow.py --apply) for the other-side pick.
+RANK_ARTICLE_FIELDS = ("id", "source_id", "title", "published_at", "topics", "geo", "watch", "jev")
 RANK_DEK_CHARS = 200
 RANK_CLUSTER_FIELDS = ("id", "article_ids", "near_duplicates", "independent_sources", "lean_buckets",
                        "primary_source")

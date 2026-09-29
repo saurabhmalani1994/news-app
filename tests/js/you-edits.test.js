@@ -254,3 +254,16 @@ test("add, remove and undo through the store: one version each, exact restore, t
   // checks clean against the schema too.
   assert.deepEqual(validateProfile(store.current(), SCHEMA), []);
 });
+
+
+test("J20: the Jev other-side switch reads absent as on and writes one field", async () => {
+  const { jevOtherSideOn, withJevOtherSide } = await import("../../app/static/js/profile/you-edits.js");
+  const { buildDefaultProfile: fresh } = await import("../../app/static/js/profile/default-profile.js");
+  const p = fresh("2026-09-30T00:00:00Z");
+  assert.equal(jevOtherSideOn(p), true);
+  assert.equal(withJevOtherSide(p, true), null, "already on");
+  const off = withJevOtherSide(p, false);
+  assert.equal(off.passes.other_side.jev, false);
+  assert.equal(off.passes.other_side.per_page, p.passes.other_side.per_page, "the rest of the setting kept");
+  assert.equal(jevOtherSideOn(off), false);
+});

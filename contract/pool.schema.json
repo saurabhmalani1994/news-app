@@ -165,6 +165,15 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": {"$ref": "#/$defs/watch_tag"}
+        },
+        "jev": {
+          "description": "J20: optional, written by fetcher/jev_shadow.py --apply on a story group member: Jev's probability that it reports the same event as its group's anchor (same), and how its headline frames it against the anchor's (framing). Read by the other-side pick (app/static/js/passes.js).",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "same": {"description": "0 to 1; the writer clamps it (this validator has no maximum keyword).", "type": "number", "minimum": 0},
+            "framing": {"enum": ["same", "emphasis", "adds", "omits", "different"]}
+          }
         }
       }
     },
