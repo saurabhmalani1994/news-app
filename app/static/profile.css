@@ -887,3 +887,8 @@ input.switch:focus-visible {
   cursor: pointer;
   padding: 12px var(--space-gutter);
 }
+
+.jev-row-long .setting-sublabel {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

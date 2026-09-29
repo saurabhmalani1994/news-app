@@ -323,6 +323,11 @@ JEV_SECTION = """<section class="settings-section" aria-labelledby="jev-label" i
 </section>"""
 
 
+LEDGER_ROW_STACKED = ('<div class="setting-row setting-row--stack jev-row-long"><div class="setting-row-text">'
+                      '<span class="setting-label">{label}</span>'
+                      '<span class="setting-sublabel">{value}</span></div></div>')
+
+
 def _of(part, whole):
     pct = f" ({round(100 * part / whole)}%)" if whole else ""
     return f"{part} of {whole}{pct}"
@@ -429,7 +434,9 @@ def render_jev(doc):
     ai = r["ai_rules_vs_jev"]
     ai_total = ai["both"] + ai["rules_only"] + ai["jev_only"] + ai["neither"]
     conf = r.get("confidence") or {}
-    conf_text = ", ".join(f"{k} {v}" for k, v in sorted(conf.items(), key=lambda kv: -kv[1])) or "none yet"
+    words = {"sure": "sure", "lean": "leaning", "ambiguous": "split", "unsure": "unsure", "unrated": "no confidence",
+             "conflict": "self-contradicting", "missing": "unanswered"}
+    conf_text = " · ".join(f"{v} {words.get(k, k)}" for k, v in sorted(conf.items(), key=lambda kv: -kv[1])) or "none yet"
     rows = [
         ("Model", "Local stand-in (mock)" if doc.get("mock") else doc.get("model", "")),
         ("Last run", f"{run.get('state', '')}: {run.get('asked', 0)} asked, {run.get('cached', 0)} cached"
@@ -446,7 +453,10 @@ def render_jev(doc):
         ("How sure Jev was", conf_text),
         _budget_row(run),
     ]
-    body = [LEDGER_ROW.format(label=_esc(label), value=_esc(value)) for label, value in rows]
+    # C4: a long value (the confidence counts, a run with its first error) wraps under its
+    # label instead of running off a phone's screen.
+    body = [(LEDGER_ROW_STACKED if len(value) > 28 else LEDGER_ROW).format(label=_esc(label), value=_esc(value))
+            for label, value in rows]
     for cell, heading in (("jev_only", "Found by Jev only"), ("rules_only", "Tagged by rules only")):
         for ex in ai["examples"].get(cell, [])[:3]:
             body.append(LEDGER_ROW.format(label=_esc(ex["title"]), value=_esc(heading)))

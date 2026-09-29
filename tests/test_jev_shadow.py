@@ -297,3 +297,13 @@ def test_health_lists_each_article_jev_read_beside_the_rules(tmp_path, monkeypat
     assert "rules: singapore" in html and "Section Singapore (sure, 80%)" in html
     assert "Likely about: AI 90%" in html
     assert render_jev_articles(None, p) == ""
+
+
+def test_a_long_report_value_wraps_under_its_label(tmp_path, monkeypatch):
+    monkeypatch.setattr(js, "load_buckets", lambda path="sources.json": BUCKETS)
+    doc = js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=FakeOpenRouter(good_answers).post)
+    doc["report"]["confidence"] = {"sure": 971, "lean": 110, "ambiguous": 89, "unsure": 17, "conflict": 3}
+    html = render_jev(doc)
+    assert "971 sure · 110 leaning · 89 split · 17 unsure · 3 self-contradicting" in html
+    row = html[html.index("How sure Jev was") - 200:html.index("How sure Jev was")]
+    assert "jev-row-long" in row

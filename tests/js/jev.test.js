@@ -467,7 +467,7 @@ test("a refused call says why, without the key", async () => {
   assert.ok(!JSON.stringify(body).includes("sk-or-v1-abcdef123"));
   const broken = { impl: async () => { throw new TypeError("fetch failed"); } };
   const net = await (await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), { ...DEV_ENV, OPENROUTER_API_KEY: "k" }, { fetch: broken.impl })).json();
-  assert.equal(net.reason, "network");
+  assert.equal(net.reason, "network: TypeError: fetch failed");
 });
 
 test("the phone shows the reason after its message", async () => {
@@ -485,4 +485,29 @@ test("GET /api/jev reports the route and whether the key is set, never the key",
   const none = await (await handle(new Request(`${LOCAL}/api/jev`, { method: "GET" }), DEV_ENV)).json();
   assert.equal(none.route, "not_set_up");
   assert.equal((await handle(new Request("https://almanac-dt5.pages.dev/api/jev", { method: "GET" }), env)).status, 401, "Access still required");
+});
+
+
+// --- J9: the real fetch is called bound; every failure names itself ---
+
+test("with no stand-in, the global fetch is called as fetch(), not detached", async () => {
+  const real = globalThis.fetch;
+  let self = "unset";
+  globalThis.fetch = function (url, init) { self = this; return Promise.resolve({ ok: true, status: 200, json: async () => ({ answers: {} }) }); };
+  try {
+    const res = await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), { ...DEV_ENV, OPENROUTER_API_KEY: "k" });
+    assert.equal(res.status, 200);
+    assert.ok(self === undefined || self === globalThis, "called as a plain function call on the global");
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+test("a Workers AI failure and an unreadable reply each name themselves", async () => {
+  const broken = { run: async () => { throw new Error("5007: No such model typesafe/jev"); } };
+  const w = await (await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), DEV_ENV, { ai: broken })).json();
+  assert.match(w.reason, /^workers_ai: Error: 5007: No such model/);
+  const garbled = { impl: async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected token <"); } }) };
+  const g = await (await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), { ...DEV_ENV, OPENROUTER_API_KEY: "k" }, { fetch: garbled.impl })).json();
+  assert.equal(g.reason, "openrouter_unreadable_reply");
 });
