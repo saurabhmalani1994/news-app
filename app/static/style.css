@@ -3845,21 +3845,6 @@ body {
   color: var(--color-meta);
 }
 
-.jev-role {
-  margin: 20px 0 6px;
-  font-family: var(--font-sans);
-  font-size: 11px;
-  line-height: 14px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--color-meta);
-}
-
-.jev-role:is([data-role="Main news"], [data-role="New development"], [data-role="Key number"]) {
-  color: #D9A53A;
-}
-
 ::highlight(jev-key) {
   background-color: rgba(255, 205, 96, 0.28);
   color: inherit;
@@ -3874,10 +3859,6 @@ body {
 }
 
 @media (prefers-color-scheme: light) {
-  .jev-role:is([data-role="Main news"], [data-role="New development"], [data-role="Key number"]) {
-    color: #8A5A00;
-  }
-
   ::highlight(jev-key) {
     background-color: rgba(255, 196, 0, 0.3);
   }
@@ -3886,5 +3867,71 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .jev-read-go[aria-busy="true"] {
     animation: none;
+  }
+}
+
+/* J17: the Takeaways block under the Read with Jev bar: each picked sentence quoted in
+   the publisher's words under its fixed name, a tap scrolling to it in the article. */
+.jev-takeaways {
+  display: grid;
+  gap: 2px;
+  margin: -6px 0 22px;
+  padding: 12px 14px;
+  background: var(--color-nav-surface);
+}
+
+.jev-takeaways-head {
+  margin: 0 0 4px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-meta);
+}
+
+.jev-takeaway {
+  display: grid;
+  gap: 2px;
+  padding: 8px 0;
+  background: transparent;
+  border-style: none;
+  border-top: var(--divider-weight) solid var(--color-divider);
+  text-align: left;
+  color: var(--color-headline);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.jev-takeaway:first-of-type {
+  border-top-style: none;
+}
+
+.jev-takeaway:active {
+  background: var(--color-pressed);
+}
+
+.jev-takeaway:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: 2px;
+}
+
+.jev-takeaway-name {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #D9A53A;
+}
+
+.jev-takeaway-text {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  line-height: 21px;
+}
+
+@media (prefers-color-scheme: light) {
+  .jev-takeaway-name {
+    color: #8A5A00;
   }
 }

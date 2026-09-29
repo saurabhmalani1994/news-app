@@ -12,14 +12,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import { handle, onRequest, route, openRouterKey, MAX_BODY_BYTES, OPENROUTER_URL, OPENROUTER_MODEL } from "../../functions/api/jev.js";
-import { validateQuestions, validateState, normalizeAnswers, scoreIndex, MAX_QUESTIONS } from "../../app/static/js/jev/contract.js";
+import { validateQuestions, validateState, normalizeAnswers, scoreIndex, MAX_QUESTIONS, toWire } from "../../app/static/js/jev/contract.js";
 import { mockJev } from "../../app/static/js/jev/mock.js";
 import { STORY_QUESTIONS, askQuestions, askTargets, NONE } from "../../app/static/js/jev/questions.js";
 import { proposalFromAsk, askState, cleanRequest, strengthStep, confidenceLine } from "../../app/static/js/jev/ask.js";
 import { readChoice, readNoul, expectedPosition, RULES } from "../../app/static/js/jev/decide.js";
 import { storyState, analysisView, analysisCache, CACHE_CAP, hourlyAnswers, questionsLeft, fromCompact } from "../../app/static/js/jev/story.js";
 import { askJev, JevError } from "../../app/static/js/jev/client.js";
-import { splitSentences, readingBlocks, readingQuestions, readingView, readCache, ROLE_CHOICES, MAX_PARAGRAPHS } from "../../app/static/js/jev/read.js";
+import { splitSentences, readingBlocks, readingQuestions, readingView, readCache, MAX_PARAGRAPHS, TAKEAWAYS, NONE as READ_NONE } from "../../app/static/js/jev/read.js";
 import { gateProposal } from "../../app/static/js/ai/gate.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
 import { MemoryStorage } from "../../app/static/js/profile/store.js";
@@ -548,13 +548,13 @@ test("only the questions the hourly run left are asked live", () => {
 });
 
 
-// --- J13: reading with Jev ---
+// --- J13, J17: reading with Jev: takeaways ---
 
 const ARTICLE = [
-  "Five people arrested over a plot targeting an airbase were released on bail on Monday. Police are still investigating.",
-  "The base hosts American bombers. It has been the site of protests before.",
-  "Officers searched 11 addresses in three cities, police said.",
-  "\u201cWe have no connection to them,\u201d a ministry spokesperson said.",
+  "The city council approved a $40 million flood barrier on Tuesday. The vote passed 7 to 2.",
+  "About 3,000 homes in the riverside district would be protected from the next major flood.",
+  "Two members voted against it, arguing the city could not afford the cost.",
+  "Construction will begin in January and take about three years, officials said.",
 ];
 
 test("sentences split at their ends, keeping quotes and numbers", () => {
@@ -568,55 +568,62 @@ test("sentences split at their ends, keeping quotes and numbers", () => {
     "a known limit: initials ending a real sentence join the next");
 });
 
-test("the article is numbered for Jev, kept to its limits, and asked in calls of at most 12", () => {
-  const blocks = readingBlocks(ARTICLE, { headline: "Suspects bailed", outlet: "BBC" });
+test("the article is numbered for Jev and the five takeaways go in one call", () => {
+  const blocks = readingBlocks(ARTICLE, { headline: "Council approves flood barrier", outlet: "Local Times" });
   assert.deepEqual(blocks.paragraphs.map((p) => p.id), ["P1", "P2", "P3", "P4"]);
-  assert.equal(blocks.state.paragraphs.P1, "[S1] Five people arrested over a plot targeting an airbase were released on bail on Monday. [S2] Police are still investigating.");
+  assert.equal(blocks.state.paragraphs.P1, "[S1] The city council approved a $40 million flood barrier on Tuesday. [S2] The vote passed 7 to 2.");
   assert.equal(validateState(blocks.state).ok, true);
   const calls = readingQuestions(blocks);
   assert.equal(calls.length, 1);
-  assert.deepEqual(Object.keys(calls[0]), ["key", "p1", "p2", "p3", "p4"]);
-  assert.deepEqual(calls[0].key.criteria, ["S1", "S2", "S3", "S4", "S5", "S6"]);
+  assert.deepEqual(Object.keys(calls[0]), ["news", "why", "evidence", "other", "next"]);
+  assert.deepEqual(calls[0].news.criteria, ["S1", "S2", "S3", "S4", "S5", READ_NONE]);
   assert.equal(validateQuestions(calls[0]).ok, true);
+  const wire = toWire(calls[0]);
+  assert.deepEqual(Object.keys(wire.news.criteria).slice(0, 2), ["S1", "S2"], "sent to Jev as a record of sentence numbers");
   const long = readingBlocks(Array.from({ length: 40 }, (_, i) => `Paragraph ${i} says something. It ends here.`));
   assert.equal(long.paragraphs.length, MAX_PARAGRAPHS);
-  const many = readingQuestions(long);
-  assert.equal(many.length, 2);
-  assert.ok(many.every((q) => Object.keys(q).length <= 12 && validateQuestions(q).ok));
+  assert.ok(validateQuestions(readingQuestions(long)[0]).ok);
+  assert.deepEqual(readingQuestions(readingBlocks(["Only one sentence."])), []);
 });
 
-test("the view labels only sure paragraphs, highlights the key sentences and skims the rest", () => {
+test("takeaways come from Jev's sentence numbers, in article order, each sentence once", () => {
   const blocks = readingBlocks(ARTICLE);
-  const role = (asked, confidence, probabilities = null) => ({ type: "choice", value: asked, label: asked, confidence, probabilities });
-  const answers = {
-    key: { type: "choice", value: "S1", label: "S1", confidence: 0.7, probabilities: { S1: 0.7, S5: 0.26, S2: 0.04 } },
-    p1: role("Reports the main news", 0.9),
-    p2: role("Gives background or context", 0.8),
-    p3: role("Gives a key number or figure", 0.45),
-    p4: role("Quotes someone directly", 0.2),
-  };
-  const view = readingView(answers, blocks);
-  assert.deepEqual(view.roles, {
-    P1: { label: "Main news", status: "sure", confidence: 0.9 },
-    P2: { label: "Background", status: "sure", confidence: 0.8 },
-    P3: { label: "Key number", status: "lean", confidence: 0.45 },
-  }, "an unsure paragraph gets no label");
-  assert.deepEqual(view.keys, ["S1", "S5"]);
-  assert.deepEqual([...view.skim], ["P1", "P3", "P4"], "background folds; an unlabelled paragraph is never hidden");
-  const unsure = readingView({ key: { type: "choice", value: "S3", label: "S3", confidence: 0.2, probabilities: null } }, blocks);
-  assert.deepEqual(unsure.keys, [], "no highlight when Jev is unsure");
-  assert.equal(ROLE_CHOICES.length, 7);
+  const pick = (id, confidence, probabilities = null) => ({ type: "choice", value: id, label: id, confidence, probabilities });
+  const view = readingView({
+    next: pick("S5", 0.8),
+    news: pick("S1", 0.9),
+    why: pick("S3", 0.55),
+    evidence: pick("S1", 0.7),
+    other: pick(READ_NONE, 0.9),
+  }, blocks);
+  assert.deepEqual(view.takeaways.map((t) => `${t.name}:${t.id}`), ["The news:S1", "Why it matters:S3", "What's next:S5"],
+    "article order; the evidence pick repeats S1 so it is dropped; None of these leaves the other side out");
+  assert.equal(view.takeaways[0].text, "The city council approved a $40 million flood barrier on Tuesday.");
+  assert.deepEqual([...view.skim], ["P1", "P2", "P4"]);
 });
 
-test("every reading question is one positive claim", () => {
-  for (const q of Object.values(readingQuestions(readingBlocks(ARTICLE))[0])) {
-    assert.doesNotMatch(q.instructions, /rather than|\bnot\b|n't\b|\bnever\b|\bneither\b/i);
+test("a split or unsure pick is left out, and with no takeaway nothing is skimmed", () => {
+  const blocks = readingBlocks(ARTICLE);
+  const view = readingView({
+    news: { type: "choice", value: "S1", label: "S1", confidence: 0.45, probabilities: { S1: 0.45, S2: 0.4 } },
+    why: { type: "choice", value: "S3", label: "S3", confidence: 0.2, probabilities: null },
+    other: { type: "choice", value: "S9", label: "S9", confidence: 0.9, probabilities: null },
+  }, blocks);
+  assert.deepEqual(view.takeaways, [], "a split, an unsure pick and an unknown number all count for nothing");
+  assert.equal(view.skim, null);
+});
+
+test("every takeaway question is one positive claim", () => {
+  for (const [, , instructions] of TAKEAWAYS) {
+    assert.doesNotMatch(instructions, /rather than|\bnot\b|n't\b|\bnever\b|\bneither\b/i, instructions);
   }
 });
 
 test("the read cache keeps the newest reads", () => {
   const c = readCache(new MemoryStorage(), 2);
-  c.put("a", { answers: {} }); c.put("b", { answers: {} }); c.put("c", { answers: {} });
+  c.put("a", { answers: {} });
+  c.put("b", { answers: {} });
+  c.put("c", { answers: {} });
   assert.equal(c.get("a"), null);
   assert.ok(c.get("c"));
 });

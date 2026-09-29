@@ -1,37 +1,32 @@
-// J13: reading with Jev, the pure half (js/jev/read-view.js draws it in the reader).
-// The owner taps "Read with Jev" on a full-text article; Jev is shown the article as
-// numbered paragraphs with numbered sentences and asked, for each paragraph, what it is
-// mainly doing, and which sentence states the main news. The reader then labels each
-// paragraph with the app's own words and highlights the key sentences in place.
+// J13, J17: reading with Jev, the pure half (js/jev/read-view.js draws it in the reader).
+// The owner taps "Read with Jev" on a full-text article. Jev is shown the article with
+// every sentence numbered ([S1], [S2] ...) and asked five takeaway questions, each a
+// choice among those numbers or "None of these": the news, why it matters, the
+// evidence, the other side, what's next. Jev answers with a number (choice), never with
+// text; the app looks the number up in its own numbering and tints that sentence, and
+// the Takeaways block quotes it. J17 replaces J16's word picks (who, what, when) and
+// the paragraph labels, which the owner found too generic.
 //
 // R13, amended by the owner on 2026-09-29: AI may point at the publisher's text, never
-// write it. Every word on the page stays the publisher's; Jev only picks paragraph roles
-// from ROLE_CHOICES and sentence numbers from the article's own, and a pick is used only
-// when the decision rules (decide.js) say Jev was sure enough.
+// write it. Every word shown is the publisher's; the only words the app adds are the
+// fixed takeaway names below.
 
 import { readChoice, ACTIONABLE } from "./decide.js";
 
 export const MAX_PARAGRAPHS = 22;
 export const MAX_ARTICLE_CHARS = 6500;
-export const MAX_KEY_SENTENCES = 3;
-export const KEY_MIN_P = 0.25;
-const PER_CALL = 12; // the most questions one call may carry (contract.js MAX_QUESTIONS)
+export const NONE = "None of these";
+const MARKED = "Sentences are marked [S1], [S2] and so on.";
 
-/** What each paragraph can be doing: as Jev is asked, and as the reader labels it. */
-export const ROLE_CHOICES = Object.freeze([
-  ["Reports the main news", "Main news"],
-  ["Reports a new development", "New development"],
-  ["Gives a key number or figure", "Key number"],
-  ["Quotes someone directly", "Quote"],
-  ["Gives background or context", "Background"],
-  ["Reports a reaction", "Reaction"],
-  ["Offers analysis or opinion", "Analysis"],
+/** The takeaways, in the order they are asked and tie-broken: key, the name the reader
+ * shows, and the question (one positive claim each). */
+export const TAKEAWAYS = Object.freeze([
+  ["news", "The news", `Which sentence states this article's main news most directly? ${MARKED}`],
+  ["why", "Why it matters", `Which sentence explains why this news matters or who it affects? ${MARKED}`],
+  ["evidence", "The evidence", `Which sentence gives the strongest evidence or the most important figure? ${MARKED}`],
+  ["other", "The other side", `Which sentence gives a response or an opposing view? ${MARKED}`],
+  ["next", "What's next", `Which sentence says what happens next? ${MARKED}`],
 ]);
-/** The roles Skim keeps; the rest fold away. */
-export const SKIM_KEEPS = Object.freeze(new Set(["Main news", "New development", "Key number", "Quote"]));
-
-const ROLES_ASKED = ROLE_CHOICES.map(([asked]) => asked);
-const shownRole = (asked) => ROLE_CHOICES.find(([a]) => a === asked)?.[1] || null;
 
 // A piece ending in one of these is not a sentence end: initials (U.S., U.N.), titles
 // and the usual shortenings of names, months and companies.
@@ -77,62 +72,44 @@ export function readingBlocks(texts, { headline = "", outlet = "" } = {}) {
   return { paragraphs, state: { headline: String(headline).slice(0, 300), outlet: String(outlet).slice(0, 80), paragraphs: shown } };
 }
 
-/** The questions, split into calls of at most PER_CALL: the first carries the key
- * sentence question. Each paragraph question names its paragraph. */
+/** The five takeaway questions, in one call: each a choice among the article's own
+ * sentence numbers, "None of these" always allowed. None when the article has fewer
+ * than two sentences. */
 export function readingQuestions(blocks) {
-  const sentenceIds = blocks.paragraphs.flatMap((p) => p.sentences.map((x) => x.id));
-  const all = [];
-  if (sentenceIds.length >= 2) {
-    all.push(["key", {
-      type: "choice",
-      instructions: "Which one sentence states this article's main news most directly? Sentences are marked [S1], [S2] and so on.",
-      criteria: sentenceIds,
-    }]);
-  }
-  for (const p of blocks.paragraphs) {
-    all.push([p.id.toLowerCase(), {
-      type: "choice",
-      instructions: `What is paragraph ${p.id} of this article mainly doing? Paragraphs are the keys P1, P2 and so on.`,
-      criteria: [...ROLES_ASKED],
-    }]);
-  }
-  const calls = [];
-  for (let i = 0; i < all.length; i += PER_CALL) calls.push(Object.fromEntries(all.slice(i, i + PER_CALL)));
-  return calls;
+  const ids = blocks.paragraphs.flatMap((p) => p.sentences.map((x) => x.id));
+  if (ids.length < 2) return [];
+  return [Object.fromEntries(TAKEAWAYS.map(([key, , instructions]) => [key, { type: "choice", instructions, criteria: [...ids, NONE] }]))];
 }
 
 /**
- * Jev's answers read through the decision rules:
- *   roles: {P1: {label, status, confidence}} only where Jev was sure, leaning or gave no
- *          confidence; a split or unsure paragraph gets no label
- *   keys:  sentence ids to highlight: Jev's pick, then any other sentence it gave at
- *          least KEY_MIN_P, at most MAX_KEY_SENTENCES; none when Jev was unsure
- *   skim:  paragraph ids Skim keeps: the SKIM_KEEPS roles, any paragraph holding a key
- *          sentence, and any paragraph Jev gave no usable role (never hidden on a guess)
+ * Jev's answers read through the decision rules (decide.js):
+ *   takeaways: [{key, name, id, text, paragraph, confidence}] in article order. A pick
+ *              counts only when Jev is sure, leaning or gave no confidence; a split (top
+ *              two too close) or "None of these" leaves that takeaway out; a sentence is
+ *              used once, by the first takeaway that picked it.
+ *   skim:      paragraph ids Skim keeps (those holding a takeaway), or null when there
+ *              is nothing to skim to.
  */
 export function readingView(answers, blocks) {
-  const roles = {};
-  for (const p of blocks.paragraphs) {
-    const read = readChoice(answers[p.id.toLowerCase()], ROLES_ASKED);
-    if (ACTIONABLE.has(read.status)) roles[p.id] = { label: shownRole(read.pick), status: read.status, confidence: read.confidence };
+  const byId = new Map();
+  for (const p of blocks.paragraphs) for (const x of p.sentences) byId.set(x.id, { text: x.text, paragraph: p.id });
+  const ids = [...byId.keys()];
+  const taken = new Set();
+  const takeaways = [];
+  for (const [key, name] of TAKEAWAYS) {
+    const read = readChoice(answers[key], [...ids, NONE]);
+    if (!ACTIONABLE.has(read.status) || !byId.has(read.pick) || taken.has(read.pick)) continue;
+    taken.add(read.pick);
+    takeaways.push({ key, name, id: read.pick, ...byId.get(read.pick), confidence: read.confidence });
   }
-  const sentenceIds = blocks.paragraphs.flatMap((p) => p.sentences.map((x) => x.id));
-  const key = readChoice(answers.key, sentenceIds);
-  let keys = [];
-  if (ACTIONABLE.has(key.status) || key.status === "ambiguous") {
-    keys = [key.pick, ...key.spread.filter(([id, p]) => id !== key.pick && p >= KEY_MIN_P).map(([id]) => id)];
-    if (key.status === "ambiguous" && key.runnerUp && !keys.includes(key.runnerUp)) keys.push(key.runnerUp);
-    keys = keys.slice(0, MAX_KEY_SENTENCES);
-  }
-  const holdsKey = (p) => p.sentences.some((x) => keys.includes(x.id));
-  const skim = new Set(blocks.paragraphs
-    .filter((p) => !roles[p.id] || SKIM_KEEPS.has(roles[p.id].label) || holdsKey(p))
-    .map((p) => p.id));
-  return { roles, keys, skim };
+  const order = (id) => ids.indexOf(id);
+  takeaways.sort((a, b) => order(a.id) - order(b.id));
+  const skim = takeaways.length ? new Set(takeaways.map((t) => t.paragraph)) : null;
+  return { takeaways, skim };
 }
 
 /** A small per-device cache of reads, keyed by article id, oldest dropped past `cap`. */
-export const READ_CACHE_KEY = "almanac.jev.read.v1";
+export const READ_CACHE_KEY = "almanac.jev.read.v3"; // J17: takeaway questions
 export function readCache(storage, cap = 100) {
   const read = () => {
     try {

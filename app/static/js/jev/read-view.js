@@ -1,16 +1,17 @@
-// J13: reading with Jev, the reader's half (js/jev/read.js is the pure half). A quiet bar
-// at the top of a full-text article offers "Read with Jev"; only that tap asks Jev. Then
-// each paragraph Jev was sure about gets a small label in the app's own words, the key
-// sentences are highlighted in place, and Skim folds away background, reaction and
-// analysis. The publisher's text is never changed or rewritten: labels are the app's
-// own elements beside it, and the highlight is the CSS Custom Highlight API (a range
-// painted over the text, no markup inserted), falling back to marking the paragraph.
+// J13, J17: reading with Jev, the reader's half (js/jev/read.js is the pure half). A quiet
+// bar at the top of a full-text article offers "Read with Jev"; only that tap asks Jev.
+// Then the Takeaways block quotes the sentences Jev picked, each with its fixed name
+// ("The news", "Why it matters" ...) and a tap that scrolls to it; those sentences are
+// tinted in place; and Skim shows only the paragraphs that hold one. The publisher's
+// text is never changed: the tint is the CSS Custom Highlight API (a range painted over
+// the text, no markup inserted), falling back to tinting the paragraph.
 
 import { askJev } from "./client.js";
 import { readingBlocks, readingQuestions, readingView, readCache } from "./read.js";
 
 const HIGHLIGHT = "jev-key";
 const cache = readCache(window.localStorage);
+const INTRO = "Jev picks the sentences that carry the news, why it matters, the evidence, the other side and what's next. The words stay the publisher's.";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -21,7 +22,7 @@ function el(tag, className, text) {
 
 /** The reader's paragraphs, in order: its own p and li elements with text. */
 function paragraphsOf(body) {
-  return [...body.querySelectorAll("p, li")].filter((node) => !node.closest(".jev-read-bar") && node.textContent.trim());
+  return [...body.querySelectorAll("p, li")].filter((node) => !node.closest(".jev-read-bar, .jev-takeaways") && node.textContent.trim());
 }
 
 /** A Range over `needle` inside `node`'s text, spaces matched loosely, or null. */
@@ -44,44 +45,55 @@ function rangeFor(node, needle) {
   return null;
 }
 
-/** Removes every mark this module made in `body` (labels, classes, highlights). */
+/** Removes every mark this module made in `body`. */
 export function clearReading(body = document.querySelector(".reader-body")) {
   if (typeof CSS !== "undefined" && CSS.highlights) CSS.highlights.delete(HIGHLIGHT);
   if (!body) return;
   body.classList.remove("jev-skim", "jev-marked");
-  body.querySelectorAll(".jev-role").forEach((n) => n.remove());
+  body.querySelectorAll(".jev-takeaways").forEach((n) => n.remove());
   body.querySelectorAll(".jev-minor, .jev-key-para").forEach((n) => n.classList.remove("jev-minor", "jev-key-para"));
 }
 
-/** Draws a reading: a label before each paragraph Jev was sure about, the key sentences
- * highlighted, and the paragraphs Skim folds marked. */
-function applyReading(body, elements, blocks, view) {
+function scrollTo(body, target) {
+  const scroller = body.closest(".reader-scroll") || document.scrollingElement;
+  const rect = target.getBoundingClientRect();
+  const top = rect.top - scroller.getBoundingClientRect().top + scroller.scrollTop - 120;
+  scroller.scrollTo({ top: Math.max(0, top), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+
+/** Draws a reading: the Takeaways block after `bar`, the picked sentences tinted, and the
+ * paragraphs Skim folds marked. Returns how many takeaways were drawn. */
+function applyReading(body, elements, blocks, view, bar) {
   clearReading(body);
+  if (!view.takeaways.length) return 0;
+  const nodeOf = new Map(blocks.paragraphs.map((p) => [p.id, elements[p.index]]));
   const ranges = [];
-  for (const p of blocks.paragraphs) {
-    const node = elements[p.index];
+  const box = el("section", "jev-takeaways");
+  box.setAttribute("aria-label", "Takeaways");
+  box.append(el("p", "jev-takeaways-head", "Takeaways"));
+  for (const t of view.takeaways) {
+    const node = nodeOf.get(t.paragraph);
     if (!node) continue;
-    const role = view.roles[p.id];
-    if (role) {
-      const label = el("div", "jev-role", role.label);
-      label.dataset.role = role.label;
-      node.before(label);
-      if (!view.skim.has(p.id)) label.classList.add("jev-minor");
-    }
-    if (!view.skim.has(p.id)) node.classList.add("jev-minor");
-    for (const s of p.sentences) {
-      if (!view.keys.includes(s.id)) continue;
-      const range = rangeFor(node, s.text);
-      if (range) ranges.push(range);
-      else node.classList.add("jev-key-para");
-    }
+    const range = rangeFor(node, t.text);
+    if (range) ranges.push(range);
+    else node.classList.add("jev-key-para");
+    const item = el("button", "jev-takeaway");
+    item.type = "button";
+    item.append(el("span", "jev-takeaway-name", t.name), el("span", "jev-takeaway-text", t.text));
+    item.addEventListener("click", () => scrollTo(body, range || node));
+    box.append(item);
   }
   if (ranges.length && typeof Highlight !== "undefined" && CSS.highlights) {
     CSS.highlights.set(HIGHLIGHT, new Highlight(...ranges));
   } else {
     for (const r of ranges) r.commonAncestorContainer.parentElement?.closest("p, li")?.classList.add("jev-key-para");
   }
+  for (const p of blocks.paragraphs) {
+    if (view.skim && !view.skim.has(p.id)) elements[p.index]?.classList.add("jev-minor");
+  }
+  bar.after(box);
   body.classList.add("jev-marked");
+  return view.takeaways.length;
 }
 
 /** The bar at the top of a full-text article: "Read with Jev", then Skim and Hide marks. */
@@ -89,7 +101,7 @@ export function readBar({ id, body, headline, outlet }) {
   const bar = el("div", "jev-read-bar");
   const read = el("button", "jev-read-go", "Read with Jev");
   read.type = "button";
-  const note = el("p", "jev-read-note", "Jev marks the key sentences and says what each paragraph does. The words stay the publisher's.");
+  const note = el("p", "jev-read-note", INTRO);
   const skim = el("button", "jev-read-toggle", "Skim");
   skim.type = "button";
   skim.setAttribute("aria-pressed", "false");
@@ -102,12 +114,12 @@ export function readBar({ id, body, headline, outlet }) {
   const show = (answers) => {
     const elements = paragraphsOf(body);
     const blocks = readingBlocks(elements.map((n) => n.textContent), { headline, outlet });
-    const view = readingView(answers, blocks);
-    applyReading(body, elements, blocks, view);
-    const labelled = Object.keys(view.roles).length;
-    note.textContent = `Jev labelled ${labelled} of ${blocks.paragraphs.length} paragraphs and marked ${view.keys.length} key sentence${view.keys.length === 1 ? "" : "s"}. The words are the publisher's.`;
+    const count = applyReading(body, elements, blocks, readingView(answers, blocks), bar);
+    note.textContent = count
+      ? `Jev picked ${count} takeaway${count === 1 ? "" : "s"}. The words are the publisher's.`
+      : "Jev wasn't sure of any takeaway in this article, so nothing is marked.";
     read.hidden = true;
-    skim.hidden = false;
+    skim.hidden = !count;
     hide.hidden = false;
   };
 
@@ -144,7 +156,7 @@ export function readBar({ id, body, headline, outlet }) {
     skim.setAttribute("aria-pressed", "false");
     read.hidden = false;
     read.textContent = "Read with Jev";
-    note.textContent = "Jev marks the key sentences and says what each paragraph does. The words stay the publisher's.";
+    note.textContent = INTRO;
   });
   return bar;
 }
