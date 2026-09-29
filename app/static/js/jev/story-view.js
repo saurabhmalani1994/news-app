@@ -34,7 +34,7 @@ function verdictBlock(verdict) {
 }
 
 /** The sheet body for one story's analysis. */
-export function renderAnalysis({ answers, missing = [], headline = "", cached = false, fullText = false, model = "" }) {
+export function renderAnalysis({ answers, missing = [], headline = "", cached = false, fullText = false, model = "", hourly = 0, liveFailed = "" }) {
   const view = analysisView(answers, missing);
   const nodes = [];
   if (headline) nodes.push(el("p", "why-headline", headline));
@@ -58,6 +58,8 @@ export function renderAnalysis({ answers, missing = [], headline = "", cached = 
     ? "Jev read the full article, the other outlets' headlines and the summary."
     : "Jev read the headlines, outlets and summary only: this outlet doesn't publish its full text.");
   notes.push("A percentage beside an answer is Jev's confidence in it; \u201clikely\u201d means Jev leaned that way, and \u201cA or B\u201d means its top two were too close to call. For an \u201cAbout\u2026\u201d row, the percentage is Jev's probability that the story is about that.");
+  if (hourly) notes.push(`${hourly} answer${hourly === 1 ? "" : "s"} from the hourly Jev run.`);
+  if (liveFailed) notes.push(`Jev couldn't answer the rest just now (${liveFailed}).`);
   if (model === "mock-jev") notes.push("Local test answers from the stand-in, not the real Jev.");
   if (cached) notes.push("Saved from an earlier analysis on this phone.");
   nodes.push(el("p", "why-scale-note jev-note", notes.join(" ")));

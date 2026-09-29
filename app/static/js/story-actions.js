@@ -50,7 +50,7 @@ import { pageInput } from "./page-input.js";
 // J1: "Analyse with Jev", a typed read of the story (js/jev/*): answers are the app's own
 // labels only, cached per story on this phone, and change nothing in the profile.
 import { askJev } from "./jev/client.js";
-import { storyState, analysisCache, STORY_QUESTIONS } from "./jev/story.js";
+import { storyState, analysisCache, hourlyAnswers, questionsLeft } from "./jev/story.js";
 import { renderAnalysis } from "./jev/story-view.js";
 
 function currentHistoryTerms() {
@@ -284,7 +284,26 @@ async function bodyText(li) {
   }
 }
 
-async function doJev({ li, sid, facts }) {
+// J11: the hourly run's answers (dist/jev.json), fetched once per page and reused, so a
+// story Jev already read shows its answers at once without a call.
+let hourlyPromise = null;
+function hourlyDoc() {
+  if (!hourlyPromise) {
+    hourlyPromise = fetch("jev.json", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+  }
+  return hourlyPromise;
+}
+
+/** The row's own article first, then the rest of its story's members. */
+function storyArticleIds(sid, attrs) {
+  const cluster = (getInput().pool?.clusters || []).find((c) => c.id === sid);
+  const ids = cluster ? cluster.article_ids : [sid];
+  return [...new Set([attrs.article_id, ...ids].filter(Boolean))];
+}
+
+async function doJev({ li, sid, attrs, facts }) {
   const opener = li.querySelector(".story-overflow");
   const item = document.querySelector('#sheet-body .sheet-item[data-action="jev"]');
   const label = item?.querySelector(".sheet-item-text");
@@ -294,20 +313,38 @@ async function doJev({ li, sid, facts }) {
     if (item?.getAttribute("aria-busy") === "true") return;
     item?.setAttribute("aria-busy", "true");
     if (label) label.textContent = "Analysing…";
-    try {
-      const articleText = facts.has_body ? await bodyText(li) : "";
-      const { answers, missing, model } = await askJev(storyState(getInput(), sid, facts.title, articleText), STORY_QUESTIONS);
-      result = { answers, missing, model, full_text: Boolean(articleText), at: nowIso() };
-      // The local stand-in's answers are never kept, so switching to the real Jev
-      // never shows a mock answer from the cache.
-      if (Object.keys(answers).length && model !== "mock-jev") jevCache.put(sid, result);
-    } catch (error) {
-      item?.removeAttribute("aria-busy");
-      if (label) label.textContent = "Analyse with Jev";
-      closeSheet();
-      showToast(error.message);
-      return;
+    // J11: what the hourly run already answered for this story, then only the rest live.
+    const hourly = hourlyAnswers(await hourlyDoc(), storyArticleIds(sid, attrs));
+    const answers = { ...(hourly?.answers || {}) };
+    const left = questionsLeft(answers);
+    let missing = [];
+    let model = "";
+    let liveFailed = "";
+    let fullText = false;
+    if (Object.keys(left).length) {
+      try {
+        const articleText = facts.has_body ? await bodyText(li) : "";
+        fullText = Boolean(articleText);
+        const live = await askJev(storyState(getInput(), sid, facts.title, articleText), left);
+        Object.assign(answers, live.answers);
+        missing = live.missing;
+        model = live.model;
+      } catch (error) {
+        if (!hourly) {
+          item?.removeAttribute("aria-busy");
+          if (label) label.textContent = "Analyse with Jev";
+          closeSheet();
+          showToast(error.message);
+          return;
+        }
+        liveFailed = error.reason || error.kind || "no answer";
+        missing = Object.keys(left);
+      }
     }
+    result = { answers, missing, model, full_text: fullText, hourly: hourly ? Object.keys(hourly.answers).length : 0,
+      live_failed: liveFailed, at: nowIso() };
+    // Kept only when complete and real: a partial answer is asked again next time.
+    if (Object.keys(answers).length && model !== "mock-jev" && !liveFailed) jevCache.put(sid, result);
   }
   closeSheet();
   if (!Object.keys(result.answers).length) {
@@ -316,7 +353,7 @@ async function doJev({ li, sid, facts }) {
   }
   const content = renderAnalysis({
     answers: result.answers, missing: result.missing, headline: facts.title, cached,
-    fullText: Boolean(result.full_text), model: result.model || "",
+    fullText: Boolean(result.full_text), model: result.model || "", hourly: result.hourly || 0, liveFailed: result.live_failed || "",
   });
   await sheetClosed();
   openSheet({ title: "Jev's read", content, opener });

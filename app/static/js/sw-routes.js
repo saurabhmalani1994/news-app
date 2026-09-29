@@ -26,7 +26,9 @@ export function strategyFor(request, origin) {
   // W1: the interests sync's own endpoint (a Pages Function) is never cached: its GET is
   // the caller's live value, and a PUT never reaches the worker's GET-only handler.
   if (sameOrigin && url.pathname.startsWith("/api/")) return STRATEGY.BYPASS;
-  if (sameOrigin && /(?:^|\/)pool\.json$/.test(url.pathname)) return STRATEGY.POOL;
+  // J11: jev.json (the hourly Jev answers) is as fresh as the pool: network first, the
+  // cached copy offline.
+  if (sameOrigin && /(?:^|\/)(?:pool|jev)\.json$/.test(url.pathname)) return STRATEGY.POOL;
   if (sameOrigin && request.mode === "navigate") return STRATEGY.PAGE;
   // H2: article photos (cross-origin) are never intercepted. The worker runs under the
   // site's own CSP, whose connect-src is 'self', so its fetch() of another origin's photo

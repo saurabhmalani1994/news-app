@@ -17,7 +17,7 @@ import { mockJev } from "../../app/static/js/jev/mock.js";
 import { STORY_QUESTIONS, askQuestions, askTargets, NONE } from "../../app/static/js/jev/questions.js";
 import { proposalFromAsk, askState, cleanRequest, strengthStep, confidenceLine } from "../../app/static/js/jev/ask.js";
 import { readChoice, readNoul, expectedPosition, RULES } from "../../app/static/js/jev/decide.js";
-import { storyState, analysisView, analysisCache, CACHE_CAP } from "../../app/static/js/jev/story.js";
+import { storyState, analysisView, analysisCache, CACHE_CAP, hourlyAnswers, questionsLeft, fromCompact } from "../../app/static/js/jev/story.js";
 import { askJev, JevError } from "../../app/static/js/jev/client.js";
 import { gateProposal } from "../../app/static/js/ai/gate.js";
 import { buildDefaultProfile } from "../../app/static/js/profile/default-profile.js";
@@ -269,6 +269,7 @@ test("analysisView leads with the verdict and reads rows in label order", () => 
   assert.equal(view.verdict.label, "Negative");
   assert.equal(view.verdict.bars.length, 4);
   assert.deepEqual(view.rows.map((r) => r.key), ["section", "region", "story_type", "significance", "tone", "hard_news", "clinical", "industrial_biotech"]);
+  assert.equal(STORY_QUESTIONS.ai, undefined, "About AI comes only from the hourly run");
 });
 
 test("a yes/no answer shows p as asked, never 1 - p, and never becomes Yes or No", () => {
@@ -510,4 +511,33 @@ test("a Workers AI failure and an unreadable reply each name themselves", async 
   const garbled = { impl: async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected token <"); } }) };
   const g = await (await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), { ...DEV_ENV, OPENROUTER_API_KEY: "k" }, { fetch: garbled.impl })).json();
   assert.equal(g.reason, "openrouter_unreadable_reply");
+});
+
+
+// --- J11: the hourly run's answers show in the sheet, and only the rest is asked live ---
+
+const HOURLY = { answers: {
+  a2: { section: { t: "choice", v: "World", c: 0.9, p: { World: 0.9, Asia: 0.1 } }, ai: { t: "noul", v: 0.05 },
+    sentiment: { t: "choice", v: "Bad news", c: 0.8 }, region: { t: "choice", v: "Africa", c: 0.95 },
+    hard_news: { t: "noul", v: 0.9 }, clinical: { t: "noul", v: 0.02 }, industrial_biotech: { t: "noul", v: 0.01 },
+    stray: { t: "choice", v: "x" } },
+} };
+
+test("hourly answers for a story come from its first answered member, in the sheet's shape", () => {
+  const got = hourlyAnswers(HOURLY, ["a1", "a2"]);
+  assert.equal(got.id, "a2");
+  assert.deepEqual(got.answers.section, { type: "choice", value: "World", label: "World", confidence: 0.9, probabilities: { World: 0.9, Asia: 0.1 } });
+  assert.deepEqual(got.answers.ai, { type: "noul", value: 0.05, label: null, confidence: null, probabilities: null });
+  assert.equal(got.answers.stray, undefined, "a key the sheet does not show is dropped");
+  assert.equal(hourlyAnswers(HOURLY, ["zz"]), null);
+  assert.equal(hourlyAnswers(null, ["a2"]), null);
+  assert.equal(fromCompact({ t: "choice", v: 3 }), null);
+});
+
+test("only the questions the hourly run left are asked live", () => {
+  const { answers } = hourlyAnswers(HOURLY, ["a2"]);
+  assert.deepEqual(Object.keys(questionsLeft(answers)).sort(), ["significance", "story_type", "tone"]);
+  const view = analysisView(answers);
+  assert.equal(view.verdict.label, "Negative");
+  assert.ok(view.rows.some((r) => r.key === "ai" && r.value === "Unlikely 5%"));
 });

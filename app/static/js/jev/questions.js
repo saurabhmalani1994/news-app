@@ -90,6 +90,7 @@ export const STORY_LABELS = Object.freeze([
   ["story_type", "Kind of story"],
   ["significance", "Significance"],
   ["tone", "Headline tone"],
+  ["ai", "About AI"],
   ["hard_news", "About policy, conflict, economy, science or safety"],
   ["clinical", "About clinical medicine"],
   ["industrial_biotech", "About industrial biotech"],

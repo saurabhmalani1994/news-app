@@ -3775,3 +3775,15 @@ body {
 .jev-row:is([data-status="lean"], [data-status="ambiguous"], [data-status="unsure"], [data-status="conflict"], [data-status="unlikely"], [data-status="uncertain"]) .jev-row-value {
   color: var(--color-meta);
 }
+
+/* J10: the card a #story- link brought into view, tinted for a moment. */
+.story.is-found {
+  background: var(--color-pressed);
+  transition: background-color 600ms var(--motion-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story.is-found {
+    transition: none;
+  }
+}

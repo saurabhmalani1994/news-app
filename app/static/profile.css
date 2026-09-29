@@ -892,3 +892,52 @@ input.switch:focus-visible {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+
+/* J10: "Articles Jev read" as its own accordion, closed until tapped, with a group per
+   question: the section heading is the tap target, a chevron says it opens. */
+.jev-accordion > summary,
+.jev-group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--touch-min);
+  cursor: pointer;
+  list-style: none;
+}
+
+.jev-accordion > summary::-webkit-details-marker,
+.jev-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.jev-accordion > summary::after,
+.jev-group > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin-right: var(--space-gutter);
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.jev-accordion[open] > summary::after,
+.jev-group[open] > summary::after {
+  transform: rotate(-135deg);
+}
+
+.jev-group {
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.jev-group > summary {
+  color: var(--color-headline);
+  font-weight: 600;
+}
+
+.jev-article-versions {
+  display: inline-block;
+  margin-top: 4px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
