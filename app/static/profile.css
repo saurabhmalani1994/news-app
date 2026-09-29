@@ -865,3 +865,25 @@ input.switch:focus-visible {
 .weekly-noticed-line {
   padding-bottom: 12px;
 }
+
+/* J8: the Health screen's list of articles Jev read. The headline in the row's own label
+   voice as a link; the answers wrap under it; "Show N more" is the page's static
+   details, no script. */
+.jev-article-title {
+  color: var(--color-headline);
+  text-decoration: none;
+}
+
+.jev-article-title:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: 2px;
+}
+
+.jev-article .setting-sublabel {
+  white-space: normal;
+}
+
+.jev-more > summary {
+  cursor: pointer;
+  padding: 12px var(--space-gutter);
+}

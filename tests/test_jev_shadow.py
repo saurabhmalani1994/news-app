@@ -278,3 +278,22 @@ def test_a_pasted_key_is_trimmed_and_the_first_error_is_named(tmp_path):
     doc = js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "b.json", post=refuse)
     assert doc["run"]["first_error"] == "http_401"
     assert "first error http_401" in render_jev(doc)
+
+
+def test_health_lists_each_article_jev_read_beside_the_rules(tmp_path, monkeypatch):
+    from app.health import render_jev_articles
+    monkeypatch.setattr(js, "load_buckets", lambda path="sources.json": BUCKETS)
+    p = pool()
+    p["articles"][0]["url"] = "https://example.org/hdb"
+    p["articles"][1]["url"] = "javascript:alert(1)"
+    p["articles"][1]["title"] = "<i>Wire</i>: Ceasefire talks resume in Doha"
+    api = FakeOpenRouter(good_answers)
+    doc = js.run(p, NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=api.post)
+    html = render_jev_articles(doc, p)
+    assert html.count('class="setting-row setting-row--stack jev-article"') == 5
+    assert html.index('data-article="a1"') < html.index('data-article="a4"'), "newest first"
+    assert 'href="https://example.org/hdb"' in html and "javascript:" not in html
+    assert "&lt;i&gt;Wire&lt;/i&gt;" in html and "<i>" not in html
+    assert "rules: singapore" in html and "Section Singapore (sure, 80%)" in html
+    assert "Likely about: AI 90%" in html
+    assert render_jev_articles(None, p) == ""
