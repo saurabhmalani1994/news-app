@@ -7,9 +7,10 @@
 // the text, no markup inserted), falling back to tinting the paragraph.
 
 import { askJev } from "./client.js";
-import { readingBlocks, readingQuestions, readingView, readCache } from "./read.js";
+import { readingBlocks, readingQuestions, readingView, readingDensity, readCache } from "./read.js";
 
 const HIGHLIGHT = "jev-key";
+const POINT = "jev-point"; // J18: the lighter tint for key points through the article
 const cache = readCache(window.localStorage);
 const INTRO = "Jev picks the sentences that carry the news, why it matters, the evidence, the other side and what's next. The words stay the publisher's.";
 
@@ -47,7 +48,10 @@ function rangeFor(node, needle) {
 
 /** Removes every mark this module made in `body`. */
 export function clearReading(body = document.querySelector(".reader-body")) {
-  if (typeof CSS !== "undefined" && CSS.highlights) CSS.highlights.delete(HIGHLIGHT);
+  if (typeof CSS !== "undefined" && CSS.highlights) {
+    CSS.highlights.delete(HIGHLIGHT);
+    CSS.highlights.delete(POINT);
+  }
   if (!body) return;
   body.classList.remove("jev-skim", "jev-marked");
   body.querySelectorAll(".jev-takeaways").forEach((n) => n.remove());
@@ -61,39 +65,48 @@ function scrollTo(body, target) {
   scroller.scrollTo({ top: Math.max(0, top), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
 }
 
-/** Draws a reading: the Takeaways block after `bar`, the picked sentences tinted, and the
- * paragraphs Skim folds marked. Returns how many takeaways were drawn. */
-function applyReading(body, elements, blocks, view, bar) {
-  clearReading(body);
-  if (!view.takeaways.length) return 0;
-  const nodeOf = new Map(blocks.paragraphs.map((p) => [p.id, elements[p.index]]));
+/** Tints `items` with highlight `name`; a paragraph class where the API is missing. */
+function tint(nodeOf, items, name, fallbackClass) {
   const ranges = [];
-  const box = el("section", "jev-takeaways");
-  box.setAttribute("aria-label", "Takeaways");
-  box.append(el("p", "jev-takeaways-head", "Takeaways"));
-  for (const t of view.takeaways) {
+  for (const t of items) {
     const node = nodeOf.get(t.paragraph);
     if (!node) continue;
     const range = rangeFor(node, t.text);
+    t.range = range;
     if (range) ranges.push(range);
-    else node.classList.add("jev-key-para");
-    const item = el("button", "jev-takeaway");
-    item.type = "button";
-    item.append(el("span", "jev-takeaway-name", t.name), el("span", "jev-takeaway-text", t.text));
-    item.addEventListener("click", () => scrollTo(body, range || node));
-    box.append(item);
+    else node.classList.add(fallbackClass);
   }
-  if (ranges.length && typeof Highlight !== "undefined" && CSS.highlights) {
-    CSS.highlights.set(HIGHLIGHT, new Highlight(...ranges));
-  } else {
-    for (const r of ranges) r.commonAncestorContainer.parentElement?.closest("p, li")?.classList.add("jev-key-para");
+  if (ranges.length && typeof Highlight !== "undefined" && CSS.highlights) CSS.highlights.set(name, new Highlight(...ranges));
+  else for (const r of ranges) r.commonAncestorContainer.parentElement?.closest("p, li")?.classList.add(fallbackClass);
+}
+
+/** Draws a reading: the Takeaways block after `bar` (named takeaways only), the named
+ * sentences tinted strongly and the key points lightly, and the paragraphs Skim folds
+ * marked. Returns whether anything was drawn. */
+function applyReading(body, elements, blocks, view, bar) {
+  clearReading(body);
+  if (!view.takeaways.length && !view.points.length) return false;
+  const nodeOf = new Map(blocks.paragraphs.map((p) => [p.id, elements[p.index]]));
+  tint(nodeOf, view.takeaways, HIGHLIGHT, "jev-key-para");
+  tint(nodeOf, view.points, POINT, "jev-point-para");
+  if (view.takeaways.length) {
+    const box = el("section", "jev-takeaways");
+    box.setAttribute("aria-label", "Takeaways");
+    box.append(el("p", "jev-takeaways-head", "Takeaways"));
+    for (const t of view.takeaways) {
+      const item = el("button", "jev-takeaway");
+      item.type = "button";
+      item.append(el("span", "jev-takeaway-name", t.name), el("span", "jev-takeaway-text", t.text));
+      item.addEventListener("click", () => scrollTo(body, t.range || nodeOf.get(t.paragraph)));
+      box.append(item);
+    }
+    bar.after(box);
   }
   for (const p of blocks.paragraphs) {
     if (view.skim && !view.skim.has(p.id)) elements[p.index]?.classList.add("jev-minor");
   }
-  bar.after(box);
   body.classList.add("jev-marked");
-  return view.takeaways.length;
+  return true;
 }
 
 /** The bar at the top of a full-text article: "Read with Jev", then Skim and Hide marks. */
@@ -114,12 +127,15 @@ export function readBar({ id, body, headline, outlet }) {
   const show = (answers) => {
     const elements = paragraphsOf(body);
     const blocks = readingBlocks(elements.map((n) => n.textContent), { headline, outlet });
-    const count = applyReading(body, elements, blocks, readingView(answers, blocks), bar);
-    note.textContent = count
-      ? `Jev picked ${count} takeaway${count === 1 ? "" : "s"}. The words are the publisher's.`
+    const view = readingView(answers, blocks);
+    const drawn = applyReading(body, elements, blocks, view, bar);
+    const d = readingDensity(view, blocks);
+    const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+    note.textContent = drawn
+      ? `Jev marked ${plural(d.marked, "passage")} across ${plural(d.paragraphs, "paragraph")}: ${plural(view.takeaways.length, "takeaway")} above, ${plural(view.points.length, "key point")} in the text. The words are the publisher's.`
       : "Jev wasn't sure of any takeaway in this article, so nothing is marked.";
     read.hidden = true;
-    skim.hidden = !count;
+    skim.hidden = !drawn;
     hide.hidden = false;
   };
 

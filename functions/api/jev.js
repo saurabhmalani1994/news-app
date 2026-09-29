@@ -29,7 +29,7 @@ import { mockJev } from "../../app/static/js/jev/mock.js";
 export const JEV_MODEL = "typesafe/jev";
 export const OPENROUTER_MODEL = "typesafe/jev-1.13";
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/systemone";
-export const MAX_BODY_BYTES = 16384;
+export const MAX_BODY_BYTES = 98304; // J18: a whole article's state plus its questions
 export const TIMEOUT_MS = 10_000;
 
 const HEADERS = {

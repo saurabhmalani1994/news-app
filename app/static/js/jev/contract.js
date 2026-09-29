@@ -16,11 +16,11 @@
 
 export const JEV_TYPES = Object.freeze(["noul", "choice", "score"]);
 export const MAX_QUESTIONS = 12;
-export const MAX_CRITERIA = 120; // a choice: J13 asks which of an article's numbered sentences
+export const MAX_CRITERIA = 255; // a choice: Jev takes up to 255 options (J18: an article's sentences)
 export const MAX_LEVELS = 10; // a score: Jev takes 2 to 10 ordered levels
 export const MAX_CRITERION = 60;
 export const MAX_INSTRUCTIONS = 400;
-export const MAX_STATE_CHARS = 8000;
+export const MAX_STATE_CHARS = 48000; // J18: a whole article, up to read.js MAX_ARTICLE_CHARS
 
 const KEY = /^[a-z][a-z0-9_]{0,31}$/;
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
