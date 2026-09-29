@@ -101,6 +101,7 @@ PAGE = """<!doctype html>
 {top}
 </ol>
 {more}
+<script src="js/story-times.js"></script>
 <footer class="colophon"><p class="colophon-text">{count} stories from {articles} articles. Updated <time datetime="{generated_at}">{updated}</time></p></footer>
 </section>
 {panels}
@@ -205,7 +206,15 @@ ASK_BAR = """<form class="ask-bar" id="ask-bar" role="search" aria-label="Ask Je
 <p class="ask-help-text" id="ask-help-what">Jev changes how much of each of your sections you see. Name a section, say more or less, and add a size if you like: a little, a lot. Nothing changes until you tap Apply.</p>
 <div class="ask-suggest" id="ask-suggest" aria-label="Try one of these"></div>
 <p class="ask-help-text">About one story: tap the three dots on its card, then Jev's read. In an article: tap Read with Jev.</p>
-</div>"""
+</div>
+<div class="today-order" id="today-order" role="group" aria-label="Order Today">
+<button class="today-order-btn" type="button" data-order="for_you" aria-pressed="true">For you</button>
+<button class="today-order-btn" type="button" data-order="latest" aria-pressed="false">Latest</button>
+<button class="today-order-btn" type="button" data-order="urgent" aria-pressed="false">Urgent</button>
+</div>
+<p class="today-order-note"><span class="today-order-why" data-order="for_you">Your interests, how recent each story is and how many outlets cover it.</span><span class="today-order-why" data-order="latest">Newest first.</span><span class="today-order-why" data-order="urgent">Must-know stories, and hard news that many outlets cover, from the last day first.</span></p>"""
+# J22: Today's order switch (js/today-order-ui.js, js/today-order.js). rank-gate.js sets
+# the order-* class on <html> before first paint, so the stored choice shows at once.
 
 # S24: the reusable bottom sheet (js/sheet.js), an NYT-style overflow/share sheet.
 # Static chrome only, empty and hidden until a caller opens it: this slice's own
@@ -587,8 +596,21 @@ STORY_ACTS = '<div class="story-acts">{open_act}{coverage}' + STORY_OVERFLOW + '
 STORY = (
     '<li class="story story--{tier}" data-sid="{sid}">{open}'
     '<span class="story-body">{media}<span class="headline{headline_mod}">{title}</span>{dek}'
-    '<span class="meta">{meta}</span></span>{close}{lean_hit}{acts}{other}</li>'
+    '<span class="meta">{meta}</span>{times}</span>{close}{lean_hit}{acts}{other}</li>'
 )
+# J22: when the card's article was written and when Almanac first pulled the story, as
+# ISO times the phone writes out in its own time zone (js/story-times.js, a classic
+# script right after the lists). The line's height is fixed, so filling it moves nothing.
+TIMES = '<span class="story-times" data-written="{written}" data-pulled="{pulled}"></span>'
+
+
+def _times(story, article, by_id):
+    """The TIMES line for a row, or '' when the article has no usable time."""
+    written = article.get("published_at")
+    if not _parse_time(written):
+        return ""
+    pulled = sorted(t for t in ((by_id.get(i) or {}).get("fetched_at") for i in story.article_ids) if _parse_time(t))
+    return TIMES.format(written=escape(written, quote=True), pulled=escape(pulled[0], quote=True) if pulled else "")
 # S13 other-side slot: one attached link under a many-outlet card, to the same story as
 # an outlet of the lean least seen on this page tells it (app/static/js/passes.js says
 # which and why). Its own link beside the card's, never inside it. tiers.js draws the
@@ -822,6 +844,7 @@ def _render_story(story, tier, source_names, now, by_id, other="", coverage="", 
     return STORY.format(
         tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
         title=title, dek=dek, meta=_meta(story, source_names, now, lean=lean, country=country),
+        times=_times(story, article, by_id),
         other=other, acts=_acts(url, read_from, coverage, visible_sources),
         lean_hit=lean_hit_html(source_id, lean, country) if source_names.get(source_id) else "",
         media=_media(tier, hero_media(_members(story, by_id), article, source_names) if tier == "hero" else None,

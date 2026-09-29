@@ -142,6 +142,12 @@ export function placeFace(li, faceId, buildFace, input) {
   }
   const age = line.querySelector(".meta-age");
   if (age) age.textContent = front.a;
+  // J22: the times line follows the face's own written time (js/story-times.js).
+  const times = li.querySelector(".story-times");
+  if (times && article.published_at) {
+    times.setAttribute("data-written", article.published_at);
+    globalThis.window?.almanacFillTimes?.(li);
+  }
   const second = li.querySelector(".meta-line--2");
   if (second && front.a) second.setAttribute("data-age", front.a);
   li.querySelectorAll(":scope > .lean-hit:not(.lean-hit--other)").forEach((el) => el.remove());

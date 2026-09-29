@@ -540,20 +540,34 @@ def report(pool, cache, pairs, buckets=None):
     by_id = {a["id"]: a for a in pool.get("articles", [])}
     answered = {i: cache["articles"][i][0] for i in by_id if i in cache["articles"]}
 
+    names = {s["id"]: s.get("name", "") for s in pool.get("sources", [])}
+
+    def article_ref(i):
+        a = by_id[i]
+        return {"id": i, "title": a.get("title", "")[:140], "source": names.get(a["source_id"], a["source_id"])}
+
     def agreement(expected_map, key):
-        per = {}
-        for i, ans in answered.items():
+        """J22: also one article it matched and one it missed per bucket, so Health can
+        show a real example beside each number."""
+        per, ex = {}, {}
+        for i in sorted(answered):
+            ans = answered[i]
             bucket = buckets.get(by_id[i]["source_id"])
             want = expected_map.get(bucket)
             a = ans.get(key)
             if not want or choice_status(a) not in ("sure", "lean", "unrated"):
                 continue
             row = per.setdefault(bucket, [0, 0])
-            row[0] += a["v"] in want
+            hit = a["v"] in want
+            row[0] += hit
             row[1] += 1
+            slot = ex.setdefault(bucket, {})
+            if ("hit" if hit else "miss") not in slot:
+                slot["hit" if hit else "miss"] = {**article_ref(i), "expected": sorted(want)[0], "got": a["v"]}
         total = [sum(r[0] for r in per.values()), sum(r[1] for r in per.values())]
         return {"agree": total[0], "scored": total[1],
-                "by_bucket": {b: {"agree": r[0], "scored": r[1]} for b, r in sorted(per.items())}}
+                "by_bucket": {b: {"agree": r[0], "scored": r[1], **({"examples": ex[b]} if b in ex else {})}
+                              for b, r in sorted(per.items())}}
 
     statuses = {}
     for ans in answered.values():
@@ -577,6 +591,20 @@ def report(pool, cache, pairs, buckets=None):
             examples[cell].append({"id": i, "title": by_id[i].get("title", "")[:140]})
 
     positives, negatives = pairs
+    def pair_examples(pairs_list, good):
+        """J22: one pair Jev read as expected and one it did not, as titles."""
+        out = {}
+        for p in pairs_list:
+            a = cache["pairs"].get("|".join(p), [{}])[0].get("same_event")
+            if not a or not all(x in by_id for x in p):
+                continue
+            slot = "hit" if band(a) == good else "miss"
+            if slot not in out:
+                out[slot] = {"a": article_ref(p[0]), "b": article_ref(p[1]), "p": a["v"]}
+            if len(out) == 2:
+                break
+        return out
+
     pos = [cache["pairs"].get("|".join(p), [{}])[0].get("same_event") for p in positives]
     neg = [cache["pairs"].get("|".join(p), [{}])[0].get("same_event") for p in negatives]
     pos = [a for a in pos if a]
@@ -593,6 +621,7 @@ def report(pool, cache, pairs, buckets=None):
         "same_event_known": {
             "syndicated_pairs": len(pos), "syndicated_read_same": sum(band(a) == "likely" for a in pos),
             "unrelated_pairs": len(neg), "unrelated_read_different": sum(band(a) == "unlikely" for a in neg),
+            "examples": {"same": pair_examples(positives, "likely"), "different": pair_examples(negatives, "unlikely")},
         },
     }
 
@@ -720,6 +749,12 @@ def apply_to_pool(pool, cache, facts=None):
             c["method"] = base + "+embedding" if c["method"].endswith("+embedding") and units > 1 else base
         kept.append(c)
     new["clusters"] = kept
+    # J22: every answered article carries Jev's hard-news probability (jev.hard, the
+    # yes/no answer as asked), for Today's Urgent order (app/static/js/today-order.js).
+    for aid, a in by_id.items():
+        hard = ((cache["articles"].get(aid) or [{}])[0] or {}).get("hard_news")
+        if isinstance(hard, dict) and hard.get("t") == "noul" and isinstance(hard.get("v"), (int, float)):
+            a.setdefault("jev", {})["hard"] = round(min(1.0, max(0.0, float(hard["v"]))), 3)
     return new, {"splits": splits, "dissolved": dissolved, "annotated": annotated}
 
 
@@ -791,6 +826,21 @@ def scorecard(doc):
         "latency": (latency.get("p90"), latency.get("n", 0)),
         "cost": ((run.get("spent", 0) / asked * 1000) if cost_known else None, asked if cost_known else 0),
     }
+    def bucket_examples(by_bucket, names):
+        """J22: the first article matched and the first missed across `names`."""
+        out = {}
+        for b in names:
+            for slot, ex in ((by_bucket.get(b) or {}).get("examples") or {}).items():
+                out.setdefault(slot, {**ex, "bucket": b})
+        return out
+
+    pair_ex = same.get("examples") or {}
+    examples = {
+        "same_event": pair_ex.get("same") or {},
+        "different_event": pair_ex.get("different") or {},
+        "section": bucket_examples(rep["section_vs_bucket"]["by_bucket"], STRONG_SECTION_BUCKETS),
+        "region": bucket_examples(rep["region_vs_bucket"]["by_bucket"], REGIONAL_BUCKETS),
+    }
     checks = []
     for key, label, feature, direction, target, minimum in CHECKS:
         part, n = values[key]
@@ -803,8 +853,11 @@ def scorecard(doc):
         else:
             ok = value >= target if direction == ">=" else value <= target
             status = "pass" if ok else "fail"
-        checks.append({"key": key, "label": label, "feature": feature, "value": value, "target": target,
-                       "direction": direction, "n": n, "status": status})
+        check = {"key": key, "label": label, "feature": feature, "value": value, "target": target,
+                 "direction": direction, "n": n, "status": status}
+        if examples.get(key):
+            check["examples"] = examples[key]
+        checks.append(check)
     features = {}
     for c in checks:
         now = features.get(c["feature"], "ready")

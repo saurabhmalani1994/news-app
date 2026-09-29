@@ -719,3 +719,13 @@ test("the Ask bar suggests requests from the reader's own sections and today's f
   assert.deepEqual(askSuggestions(profile, { ai: 3 }), ["Less AI"]);
   for (const text of askSuggestions(profile, counts)) assert.ok(!/not|n't|rather/i.test(text), "each suggestion asks in the positive");
 });
+
+test("Jev's read says whether the section comes from the rules, Jev, or both (J22)", async () => {
+  const { sortedBy } = await import("../../app/static/js/jev/sorted-by.js");
+  const sure = (label) => ({ label, confidence: 0.8 });
+  assert.equal(sortedBy(["singapore", "asia"], sure("Singapore")).kind, "both");
+  assert.equal(sortedBy(["world"], sure("Singapore")).kind, "jev");
+  assert.match(sortedBy(["world"], sure("Singapore")).sentence, /Rules say World\. Jev says Singapore \(sure\)\./);
+  assert.equal(sortedBy(["world"], { label: "Singapore", confidence: 0.2 }).kind, "rules");
+  assert.equal(sortedBy(["world"], undefined).sentence, "Rules only: World. Jev has not answered.");
+});

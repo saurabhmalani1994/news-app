@@ -3334,6 +3334,59 @@ body {
   border-bottom-color: var(--color-headline);
 }
 
+/* J22: Today's order. The pressed look follows the order-* class rank-gate.js puts on
+   <html> before first paint, so a stored choice never flashes For you first. */
+.today-order {
+  display: flex;
+  gap: 8px;
+  margin: 12px var(--space-gutter) 0;
+}
+
+.today-order-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 8px;
+  background: transparent;
+  border: var(--divider-weight) solid var(--color-divider);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--color-meta);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.today-order-btn:focus-visible {
+  outline: 2px solid var(--color-headline);
+  outline-offset: 2px;
+}
+
+:root:not(.order-latest):not(.order-urgent) .today-order-btn[data-order="for_you"],
+.order-latest .today-order-btn[data-order="latest"],
+.order-urgent .today-order-btn[data-order="urgent"] {
+  background: var(--color-pressed);
+  color: var(--color-headline);
+}
+
+.today-order-note {
+  margin: 8px var(--space-gutter) 0;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-meta);
+}
+
+.today-order-why {
+  display: none;
+}
+
+:root:not(.order-latest):not(.order-urgent) .today-order-why[data-order="for_you"],
+.order-latest .today-order-why[data-order="latest"],
+.order-urgent .today-order-why[data-order="urgent"] {
+  display: inline;
+}
+
 /* J21: what Jev can do, under the bar while it has focus. */
 .ask-help {
   margin: 0 var(--space-gutter);
@@ -4033,4 +4086,19 @@ body {
   .jev-takeaway-name {
     color: #8A5A00;
   }
+}
+
+/* J22: when the card's article was written and when Almanac pulled the story, one
+   quiet line under the meta at a fixed height, filled on the phone (js/story-times.js). */
+.story-times {
+  display: block;
+  height: 16px;
+  margin-top: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-meta);
 }

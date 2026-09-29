@@ -423,7 +423,7 @@ function otherSide(list, ctx) {
       .sort((x, y) => framedFirst(x.a) - framedFirst(y.a) || y.s.score - x.s.score || y.s.base - x.s.base || y.a.ms - x.a.ms || byStr(x.a.id, y.a.id))[0].a;
     given += 1;
     const out = { ...story, passes: [...story.passes], other_side: { article_id: pick.id, source_id: pick.source_id, lean } };
-    const jevNote = useJev && pick.jev
+    const jevNote = useJev && pick.jev && (typeof pick.jev.same === "number" || pick.jev.framing)
       ? `; Jev reads it as ${FRAMING_WORDS[pick.jev.framing] || "the same event"}${typeof pick.jev.same === "number" ? ` (${Math.round(pick.jev.same * 100)}% the same event)` : ""}`
       : "";
     note(out, "other-side", `Other side attached: ${nameOf(ctx, pick.source_id)} (${lean}) on this story, the least represented lean in this page's first ${window} cards (${count(lean)} of ${Math.min(window, list.length)}); the card itself leads with ${own || "an outlet of no listed lean"}${jevNote}`, { from: i + 1, to: i + 1 });

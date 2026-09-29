@@ -55,7 +55,7 @@ def test_top_setting_hides_row_deks_before_first_paint():
     gate = open(f"{ROOT_JS}/rank-gate.js", encoding="utf-8").read()
     assert 'p.display.summaries === "top"' in gate and 'classList.add("summaries-top")' in gate
     # The class is set before the early return, so it applies with the default ranking too.
-    assert gate.index("summaries-top") < gate.index("if (sameProfile && !hasHistory) return;")
+    assert gate.index("summaries-top") < gate.index("if (sameProfile && !hasHistory && todayOrder === \"for_you\") return;")
     css = STYLE_CSS
     rule = re.search(r"\.summaries-top \.story--river \.dek,\s*\.summaries-top \.story--text-only \.dek \{([^}]*)\}", css)
     assert rule and "display: none" in rule.group(1)

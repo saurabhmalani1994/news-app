@@ -5,6 +5,7 @@ Jev only on a confirmed Workers Free plan and inside its budget; answers are cac
 article; the report scores against the free answer keys; the log line and the page
 never carry the token, the account id or markup from a feed."""
 import json
+from pathlib import Path
 import random
 import re
 from datetime import datetime, timezone
@@ -130,7 +131,11 @@ def test_a_free_plan_run_asks_scores_and_caches(tmp_path, monkeypatch):
     assert rep["same_event_known"]["syndicated_pairs"] == 1
     assert rep["same_event_known"]["syndicated_read_same"] == 1
     assert rep["same_event_known"]["unrelated_read_different"] == rep["same_event_known"]["unrelated_pairs"]
-    assert rep["section_vs_bucket"]["by_bucket"]["singapore"] == {"agree": 1, "scored": 2}
+    sg = rep["section_vs_bucket"]["by_bucket"]["singapore"]
+    assert (sg["agree"], sg["scored"]) == (1, 2)
+    # J22: one real article it matched and one it missed, for Health's examples.
+    assert sg["examples"]["hit"]["got"] == "Singapore" and sg["examples"]["miss"]["got"] != "Singapore"
+    assert sg["examples"]["hit"]["source"] == "Straits Times"
     assert rep["ai_rules_vs_jev"]["both"] == 1
     # A second run the same hour asks nothing new.
     api2 = FakeApi(answers=good_answers)
@@ -173,7 +178,7 @@ def test_the_health_section_escapes_feed_titles(tmp_path, monkeypatch):
     doc = js.run(p, NOW, env=ENV, cache_path=tmp_path / "j.json", post=api.post, get=api.get)
     from app.health import render_jev_articles
     html = render_jev(doc) + render_jev_articles(doc, p)
-    assert "Jev today" in html and "Jev features and their checks" in html and "&lt;b&gt;AI&lt;/b&gt; chips &amp; more" in html and "<b>" not in html
+    assert "Jev today" in html and "How Jev is doing" in html and "&lt;b&gt;AI&lt;/b&gt; chips &amp; more" in html and "<b>" not in html
     assert render_jev(None) == ""
     mock = js.run(pool(), NOW, env={"JEV_MOCK": "1"}, cache_path=tmp_path / "m.json")
     assert "local stand-in" in render_jev(mock)
@@ -293,9 +298,10 @@ def test_health_lists_each_article_jev_read_beside_the_rules(tmp_path, monkeypat
     assert html.startswith('<details class="settings-section jev-accordion"'), "its own accordion, closed"
     assert "Articles Jev read (5)" in html
     groups = html.split('<details class="jev-group"')[1:]
-    assert [g[g.index(">") + 1:].split("(")[0].strip().split("\n")[-1] for g in groups] == [
-        '<summary class="settings-hint jev-group-head">Rules tagged AI, Jev disagrees',
-        '<summary class="settings-hint jev-group-head">All articles, newest first']
+    heads = [g[g.index(">") + 1:].split("(")[0].strip().split("\n")[-1].split(">")[-1] for g in groups]
+    assert heads[-2:] == ["Rules tagged AI, Jev disagrees", "All articles, newest first"]
+    # J22: every article says where its section comes from.
+    assert set(heads[:-2]) <= {"Rules + Jev agree on the section", "Jev suggests another section", "Rules only"}
     all_rows = groups[-1]
     assert all_rows.count('class="setting-row setting-row--stack jev-article"') == 5
     assert all_rows.index('data-article="a1"') < all_rows.index('data-article="a4"'), "newest first"
@@ -303,7 +309,7 @@ def test_health_lists_each_article_jev_read_beside_the_rules(tmp_path, monkeypat
     assert 'href="/#story-c1"' in html and 'href="/#bundle-c1"' in html, "a clustered one opens its story and versions"
     assert "http" not in html, "never the publisher's page"
     assert "&lt;i&gt;Wire&lt;/i&gt;" in html and "<i>" not in html
-    assert "rules: singapore" in html and "Section Singapore (sure, 80%)" in html
+    assert "Rules + Jev: both say Singapore." in html and "Rules + Jev</span>" in html
     assert "Likely about: AI 90%" in html
     assert render_jev_articles(None, p) == ""
 
@@ -373,8 +379,11 @@ def test_an_off_story_member_splits_out_and_a_lone_pair_dissolves(tmp_path):
     h_anchor = js.cluster_anchor(p["clusters"][1], {a["id"]: a for a in p["articles"]})
     assert {x["article"] for x in summary["splits"]} == {"g3"} | ({"h1", "h2"} - {h_anchor})
     assert summary["dissolved"] == ["c_h"]
-    member = next(a for a in new["articles"] if a["id"] in ("g1", "g2") and "jev" in a)
-    assert member["jev"] == {"same": 0.9, "framing": "emphasis"}
+    member = next(a for a in new["articles"] if a["id"] in ("g1", "g2") and "same" in a.get("jev", {}))
+    assert {k: v for k, v in member["jev"].items() if k != "hard"} == {"same": 0.9, "framing": "emphasis"}
+    # J22: every answered article carries Jev's hard-news probability for Urgent.
+    assert all(0 <= a["jev"]["hard"] <= 1 for a in new["articles"] if "hard" in a.get("jev", {}))
+    assert any("hard" in a.get("jev", {}) for a in new["articles"])
     assert len(new["articles"]) == len(p["articles"]), "a split article stays in the pool as its own story"
     assert p["clusters"][0]["article_ids"] == ["g1", "g2", "g3"], "the input pool is not changed"
 
@@ -420,9 +429,41 @@ def test_health_groups_each_check_under_its_feature(tmp_path):
     doc = js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=FakeOpenRouter(good_answers).post)
     doc["scorecard"] = js.scorecard(doc)
     html = render_jev(doc)
-    assert html.index("Jev today") < html.index("Jev features and their checks") < html.index("More Jev numbers")
-    feature = html.index("Versions and other side")
-    assert feature < html.index("The same story from two outlets is read as one event") < html.index("Tabs and tags")
-    assert "Target: at least 90%." in html and "Target: at most 1,500 ms." in html
+    assert html.index("Jev today") < html.index("How Jev is doing") < html.index("More Jev numbers")
+    feature = html.index("Grouping versions and the other side")
+    assert feature < html.index("Keeps copies of one story together") < html.index("Sorting articles into sections")
+    assert "Aim: 90% or more." in html and "Aim: 1.5 seconds or less." in html
+    assert "syndicated" not in html.lower() and "bucket" not in html.lower(), "no insider words (J22)"
     assert "Check: " not in html and "Feature: " not in html
     assert "nothing it says changes your feed" not in html
+
+
+def test_health_and_the_phone_map_sections_to_rule_topics_alike():
+    """J22: app/health.py and js/jev/sorted-by.js hold the same section map and words."""
+    import shutil
+    import subprocess
+    from app.health import SECTION_TOPICS, TOPIC_WORDS
+    node = shutil.which("node")
+    if node is None:
+        return
+    out = subprocess.run([node, "--input-type=module", "-e",
+                          'import * as m from "./app/static/js/jev/sorted-by.js";'
+                          "console.log(JSON.stringify([m.SECTION_TOPICS, m.TOPIC_WORDS]))"],
+                         capture_output=True, text=True, check=True, cwd=Path(__file__).resolve().parents[1])
+    sections, words = json.loads(out.stdout)
+    assert sections == {k: list(v) for k, v in SECTION_TOPICS.items()} and words == TOPIC_WORDS
+
+
+def test_each_article_keeps_the_time_it_was_first_pulled():
+    """J22: fetched_at is the first run an article appeared in, carried in state.json."""
+    from fetcher.state import build_state, first_seen_from, stamp_first_seen, validate_state, dumps_state
+    run1 = {"generated_at": "2026-09-30T01:17:00Z", "articles": [{"id": "a"}], "source_health": {}, "clusters": [], "events": []}
+    stamp_first_seen(run1, {})
+    assert run1["articles"][0]["fetched_at"] == "2026-09-30T01:17:00Z"
+    state = build_state(run1)
+    assert validate_state(state) == [] and state["first_seen"] == {"a": "2026-09-30T01:17:00Z"}
+    run2 = {"generated_at": "2026-09-30T02:17:00Z", "articles": [{"id": "a"}, {"id": "b"}], "source_health": {}, "clusters": [], "events": []}
+    stamp_first_seen(run2, first_seen_from(dumps_state(state).encode()))
+    assert [a["fetched_at"] for a in run2["articles"]] == ["2026-09-30T01:17:00Z", "2026-09-30T02:17:00Z"]
+    assert first_seen_from(json.dumps(run2).encode()) == {"a": "2026-09-30T01:17:00Z", "b": "2026-09-30T02:17:00Z"}, "a published pool works too"
+    assert first_seen_from(b"<html>login</html>") == {}

@@ -15,6 +15,8 @@ import { openSheet, closeSheet } from "../sheet.js";
 import { showToast } from "../toast.js";
 import { getStore, rerenderAfterProfileChange } from "../story-actions.js";
 import { pageInput } from "../page-input.js";
+// J22: the Today order switch shares the Ask bar's place at the top of Today.
+import "../today-order-ui.js";
 
 const NO_PROPOSAL = Object.freeze({
   no_match: "Jev couldn't match that to one of your sections. Try naming one, like “more Singapore”.",

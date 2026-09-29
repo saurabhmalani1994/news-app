@@ -39,7 +39,7 @@ SCHEMA_VERSION = 1
 DEFAULT_STATE_PATH = ".cache/state.json"
 
 STATE_FIELDS = frozenset({"schema_version", "generated_at", "source_health", "clusters", "events"})
-OPTIONAL_STATE_FIELDS = frozenset({"embed_budget"})
+OPTIONAL_STATE_FIELDS = frozenset({"embed_budget", "first_seen"})
 CLUSTER_FIELDS = frozenset({"id", "article_ids"})
 EVENT_REQUIRED_FIELDS = frozenset({"id", "cluster_ids", "live"})
 EVENT_ALL_FIELDS = EVENT_REQUIRED_FIELDS | {"live_since"}
@@ -69,6 +69,11 @@ def build_state(pool, embed_budget=None):
     }
     if embed_budget is not None:
         doc["embed_budget"] = {"day": embed_budget["day"], "neurons": embed_budget["neurons"]}
+    # J22: when Almanac first pulled each article in this pool (its fetched_at), so the
+    # next run keeps that time instead of stamping its own.
+    seen = {a["id"]: a["fetched_at"] for a in pool.get("articles", []) if a.get("fetched_at")}
+    if seen:
+        doc["first_seen"] = dict(sorted(seen.items()))
     return doc
 
 
@@ -129,7 +134,40 @@ def validate_state(doc):
                 or isinstance(b["neurons"], bool) or not isinstance(b["neurons"], (int, float))
                 or b["neurons"] < 0):
             errors.append("state.embed_budget: must be {day, neurons >= 0}")
+    if "first_seen" in doc:
+        f = doc["first_seen"]
+        if not isinstance(f, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in f.items()):
+            errors.append("state.first_seen: must map article ids to timestamps")
     return errors
+
+
+def first_seen_from(previous_bytes):
+    """J22: {article id: first pulled time} from the previous run: a state.json's
+    first_seen, or a published pool's articles' fetched_at. {} when there is neither."""
+    if previous_bytes is None:
+        return {}
+    try:
+        doc = json.loads(previous_bytes)
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(doc, dict):
+        return {}
+    seen = doc.get("first_seen")
+    if isinstance(seen, dict):
+        return {k: v for k, v in seen.items() if isinstance(k, str) and isinstance(v, str)}
+    out = {}
+    for a in doc.get("articles") or []:
+        if isinstance(a, dict) and isinstance(a.get("id"), str) and isinstance(a.get("fetched_at"), str):
+            out[a["id"]] = a["fetched_at"]
+    return out
+
+
+def stamp_first_seen(pool, previous):
+    """J22: each article's fetched_at: the time an earlier run first pulled it, or this
+    run's generated_at for an article new this run. Changes `pool` in place."""
+    for a in pool.get("articles", []):
+        a["fetched_at"] = previous.get(a["id"]) or pool["generated_at"]
+    return pool
 
 
 def embed_budget_from(state_bytes):

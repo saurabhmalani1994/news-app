@@ -95,7 +95,7 @@ from fetcher.geo import tag_countries, tag_geo
 from fetcher import best_version, locality
 from fetcher.topics import hard_news_topics, load_topics, tag_article
 from fetcher.health import compute_source_health, fetch_previous_pool, parse_previous_health
-from fetcher.state import DEFAULT_STATE_PATH, embed_budget_from, load_state, write_state
+from fetcher.state import DEFAULT_STATE_PATH, embed_budget_from, first_seen_from, load_state, stamp_first_seen, write_state
 from fetcher.truth_archive import TRUTH_ARCHIVE_URL, link_clusters, load_archive
 from fetcher import watch as wsearch
 from fetcher import workwatch as wwork
@@ -928,14 +928,16 @@ def main(argv=None):
             vectors = {}
         return vectors
 
+    first_seen = first_seen_from(previous_bytes)  # J22: when each article was first pulled
+
     def _build(watch):
-        return build_pool_fanout(
+        return stamp_first_seen(build_pool_fanout(
             sources, fetch_results, now, per_source_cap=args.per_source_cap,
             timings=timings, previous_health=previous_health, previous_pool_status=previous_pool_status,
             bodies_out=bodies_out, previous_events=previous_events, candidates_out=candidates_out,
             watch=watch, embedder=_embedder,
             truth_archive_posts=truth_posts, truth_archive_status=truth_status,
-        )
+        ), first_seen)
 
     # W2: a pool that watch items broke (an exception, or a pool that fails the
     # contract) is rebuilt without them, so a watch bug can never stop a publish. Only

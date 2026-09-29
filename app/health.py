@@ -396,6 +396,35 @@ def _jev_likely(ans, key):
     return isinstance(a, dict) and a.get("t") == "noul" and a["v"] >= 0.7
 
 
+# J22: where an article's section comes from. The rules tag every article (fetcher
+# topics); Jev answers one section per article. Each Jev section maps to the rule topics
+# that mean the same thing (js/jev/sorted-by.js SECTION_TOPICS is the same map).
+SECTION_TOPICS = {
+    "US politics": ("us_politics", "politics"), "World": ("world", "conflict"), "Singapore": ("singapore",),
+    "Asia": ("asia",), "AI and technology": ("ai",), "Industrial biotech": ("biotech", "foodtech", "climate_tech"),
+    "Business and economy": ("economy",), "Science and health": ("science",), "Climate and environment": ("climate_tech",),
+}
+TOPIC_WORDS = {"world": "World", "politics": "Politics", "conflict": "Conflict", "asia": "Asia",
+               "us_politics": "US politics", "climate_tech": "Climate tech", "foodtech": "Food tech",
+               "science": "Science", "ai": "AI", "biotech": "Biotech", "economy": "Economy", "singapore": "Singapore"}
+SORTED_BY = {"both": "Rules + Jev", "rules": "Rules only", "jev": "Jev suggests another section"}
+
+
+def sorted_by(article, ans):
+    """("both" | "rules" | "jev", sentence): whether the rules' tags and Jev's section
+    agree. Jev counts only when it was sure or leaning; otherwise the rules stand alone."""
+    rules = [t for t in (article.get("topics") or [])]
+    rule_words = ", ".join(TOPIC_WORDS.get(t, t) for t in rules) or "none"
+    a = (ans or {}).get("section")
+    word = _sure_word(a) if isinstance(a, dict) and a.get("t") == "choice" else ""
+    if word not in ("sure", "leaning"):
+        why = "Jev was not sure" if word else "Jev has not answered"
+        return "rules", f"Rules only: {rule_words}. {why}."
+    if set(SECTION_TOPICS.get(a["v"], ())) & set(rules):
+        return "both", f"Rules + Jev: both say {a['v']}."
+    return "jev", f"Rules say {rule_words}. Jev says {a['v']} ({word})."
+
+
 def render_jev_articles(doc, pool, now=None):
     """The "Articles Jev read" accordion, or '' when there are none."""
     answers = (doc or {}).get("answers") if isinstance(doc, dict) else None
@@ -416,9 +445,11 @@ def render_jev_articles(doc, pool, now=None):
         sid = story_of.get(a["id"], a["id"])
         published = _parse_time(a.get("published_at", ""))
         age = _relative_age((now - published).total_seconds()) if now and published else ""
-        rules = ", ".join(a.get("topics") or []) or "none"
-        meta = " · ".join(x for x in (names.get(a.get("source_id"), a.get("source_id", "")), age, f"rules: {rules}") if x)
-        parts = [_choice_text("Section", ans.get("section")), _choice_text("Region", ans.get("region")),
+        meta = _esc(" · ".join(x for x in (names.get(a.get("source_id"), a.get("source_id", "")), age) if x))
+        kind, sentence = sorted_by(a, ans)
+        meta += f' · <span class="jev-sorted jev-sorted--{kind}">{_esc(SORTED_BY[kind])}</span>'
+        about_sort = f'<span class="setting-sublabel">{_esc(sentence)}</span>'
+        parts = [_choice_text("Region", ans.get("region")),
                  _choice_text("", ans.get("sentiment"), SENTIMENT_SHOWN).strip()]
         likely = [f"{label} {round(100 * ans[key]['v'])}%" for key, label in ABOUT_LABELS if _jev_likely(ans, key)]
         about = f'<span class="setting-sublabel">Likely about: {_esc(", ".join(likely))}</span>' if likely else ""
@@ -426,24 +457,37 @@ def render_jev_articles(doc, pool, now=None):
                     f'All {size[sid]} versions in Almanac</a>') if size.get(sid, 1) > 1 and _SAFE_ID.match(sid) else ""
         return JEV_ARTICLE_ROW.format(
             id=_html.escape(a["id"], quote=True), title=_almanac_link(sid, a.get("title", "")),
-            meta=_esc(meta), answers=_esc(" · ".join(x for x in parts if x) or "No usable answers"),
-            about=about, versions=versions)
+            meta=meta, answers=_esc(" · ".join(x for x in parts if x) or "No usable answers"),
+            about=about_sort + about, versions=versions)
 
     jev_only = [a for a in read if _jev_likely(answers[a["id"]], "ai") and "ai" not in (a.get("topics") or [])]
     rules_only = [a for a in read if "ai" in (a.get("topics") or []) and "ai" in answers[a["id"]]
                   and not _jev_likely(answers[a["id"]], "ai")]
     groups = []
-    for title, items, is_open in (("Jev found AI the rules missed", jev_only, False),
+    kinds = {a["id"]: sorted_by(a, answers[a["id"]])[0] for a in read}
+    for title, items, is_open in (("Rules + Jev agree on the section", [a for a in read if kinds[a["id"]] == "both"], False),
+                                  ("Jev suggests another section", [a for a in read if kinds[a["id"]] == "jev"], False),
+                                  ("Rules only (Jev not sure)", [a for a in read if kinds[a["id"]] == "rules"], False),
+                                  ("Jev found AI the rules missed", jev_only, False),
                                   ("Rules tagged AI, Jev disagrees", rules_only, False),
                                   ("All articles, newest first", read, False)):
         if items:
             groups.append(JEV_GROUP.format(title=_esc(title), count=len(items), open=" open" if is_open else "",
                                            rows="\n".join(row(a) for a in items)))
-    hint = ("Tap a headline to open the story in Almanac. Each shows the rules' own tags, then Jev's answers "
-            "with how sure it was: sure, leaning, split (its top two were close) or unsure.")
+    hint = ("Each article says where its section comes from: Rules + Jev (both agree), Rules only (Jev was not sure), "
+            "or Jev suggests another section. Your tabs use the rules today. Tap a headline to open the story in Almanac.")
     if (doc or {}).get("mock"):
         hint += " These answers come from the local stand-in, not the real Jev."
     return JEV_ARTICLES.format(count=len(read), hint=_esc(hint), groups="\n".join(groups))
+
+
+def _sorted_rows(doc):
+    """J22: how many articles Jev read fall in each sorted-by group, when the report
+    carries the articles' rule topics (Health's render passes the pool in)."""
+    counts = doc.get("_sorted_counts")
+    if not counts:
+        return []
+    return [(f"Sections: {SORTED_BY[k]}", str(counts.get(k, 0))) for k in ("both", "jev", "rules")]
 
 
 def _budget_row(run):
@@ -463,8 +507,8 @@ JEV_TODAY = """<section class="settings-section" aria-labelledby="jev-label" id=
 {rows}
 </section>"""
 JEV_FEATURES = """<section class="settings-section" aria-labelledby="jev-features-label" id="jev-features">
-<h2 class="settings-label" id="jev-features-label">Jev features and their checks</h2>
-<p class="settings-hint">Each feature is ready when all of its checks pass. The targets were fixed before any data came in, and nothing is labelled by hand: each check uses an answer key the feeds already give.</p>
+<h2 class="settings-label" id="jev-features-label">How Jev is doing</h2>
+<p class="settings-hint">How well Jev is doing at each job. A job is Good when all of its checks are Good. The aims were set before any results came in.</p>
 {features}
 </section>"""
 JEV_FEATURE = """<div class="jev-feature">
@@ -473,8 +517,10 @@ JEV_FEATURE = """<div class="jev-feature">
 </div>"""
 JEV_CHECK = ('<div class="setting-row setting-row--stack jev-check"><div class="setting-row-text">'
              '<span class="setting-label">{label}</span>'
-             '<span class="setting-sublabel jev-check-result">{status}. {result}</span>'
-             '<span class="setting-sublabel">{meaning}</span></div></div>')
+             '<span class="jev-verdict jev-verdict--{status}">{verdict}</span>'
+             '<span class="setting-sublabel jev-check-result">{result}</span>'
+             '<span class="setting-sublabel">{meaning}</span>{examples}</div></div>')
+JEV_EXAMPLE = '<span class="setting-sublabel jev-example"><span class="jev-example-tag">{tag}</span> {text}</span>'
 JEV_NUMBERS = """<details class="settings-section jev-accordion" id="jev-numbers">
 <summary class="settings-label jev-accordion-head">More Jev numbers</summary>
 {rows}
@@ -483,53 +529,91 @@ JEV_MEANING_ROW = ('<div class="setting-row setting-row--stack jev-row-long"><di
                    '<span class="setting-label">{label}: {value}</span>'
                    '<span class="setting-sublabel">{meaning}</span></div></div>')
 
-# What each feature is, in the order the page lists them (fetcher/jev_shadow.py CHECKS).
+# J22: each feature (fetcher/jev_shadow.py CHECKS) as the job it does for the reader.
+FEATURE_NAMES = {
+    "Versions and other side": "Grouping versions and the other side",
+    "Tabs and tags": "Sorting articles into sections",
+    "Analysis sheet": "Jev's read of a story",
+    "Ask bar": "The Ask bar",
+    "Hourly shadow run": "Reading every hour",
+}
+# What each feature is, in the order the page lists them.
 FEATURE_ABOUT = {
     "Versions and other side": "Groups the same event from different outlets, and picks the other-side version.",
-    "Tabs and tags": "Jev's own section and region for each article.",
+    "Tabs and tags": "Jev's own section and region for each article. For now the feed's sections still come from the rules.",
     "Analysis sheet": "Jev's read of one story, from a card's menu.",
     "Ask bar": "Changing your feed by typing a request.",
     "Hourly shadow run": "Jev reading the new articles every hour.",
 }
-# Each check as a plain claim, and what it measures.
+# J22: each check in everyday words: a short name, how to count it, and why it matters.
+# The owner found "syndicated copies" and "the feed's bucket" hard to follow.
 CHECK_WORDS = {
-    "same_event": ("The same story from two outlets is read as one event",
-                   "Two outlets printing the same wire copy (for example one Reuters story) should be the same event. This is what lets Almanac group versions."),
-    "different_event": ("Unrelated stories are kept apart",
-                        "Two articles from different stories should be different events, so Jev never merges stories that aren't one."),
-    "section": ("Single-topic feeds land in their own section",
-                "Some feeds cover one thing only (a Singapore desk, a US politics feed, an AI feed). Jev's section for their articles should match that feed. The feed is a rough answer key, so this is agreement, not accuracy."),
-    "region": ("Regional feeds land in their own region",
-               "The same idea for feeds that cover one region: Jev's region for their articles should match."),
-    "contradictions": ("Jev rarely contradicts itself on biotech",
-                       "Clinical medicine and industrial biotech are asked as two separate questions. Both likely for one article is a sign of confusion."),
-    "sure": ("Jev is sure of most answers",
-             "The share of multiple-choice answers where Jev's top pick was clearly ahead."),
-    "ambiguous": ("Few answers are too close to call",
-                  "The share where Jev's top two options were nearly tied. The app shows those as split and does not act on them."),
-    "latency": ("Answers come back quickly",
-                "The slowest 1 in 10 calls, in milliseconds. The Ask bar waits on this."),
-    "cost": ("Reading stays cheap",
+    "same_event": ("Keeps copies of one story together", "copy pairs kept together",
+                   "Why it matters: when two outlets run the same story, Almanac shows it as one card with versions."),
+    "different_event": ("Keeps different stories apart", "unrelated pairs kept apart",
+                        "Why it matters: two different stories never end up on one card."),
+    "section": ("Puts articles in the right section", "articles put in their feed's section",
+                "How it is checked: some feeds cover one thing only, like a Singapore news feed, so their articles should land in that section. No one labels anything by hand."),
+    "region": ("Puts articles in the right region", "articles put in their feed's region",
+               "How it is checked: articles from a feed that covers one region, like Europe, should land in that region."),
+    "contradictions": ("Does not contradict itself", "articles with a contradiction",
+                       "How it is checked: Jev is asked separately whether a story is clinical medicine and whether it is industrial biotech. Saying yes to both is a contradiction."),
+    "sure": ("Is confident in most answers", "answers Jev was sure of",
+             "Why it matters: the app acts only on answers Jev is sure of or leaning towards."),
+    "ambiguous": ("Is rarely torn between two answers", "answers where Jev was torn",
+                  "Why it matters: when Jev's top two answers are nearly tied, the app ignores that answer."),
+    "latency": ("Answers quickly", "",
+                "Why it matters: the Ask bar and Jev's read wait for this."),
+    "cost": ("Stays cheap", "",
              "Dollars per 1,000 articles Jev reads."),
 }
+BUCKET_WORDS = {"singapore": "Singapore", "us_politics": "US politics", "ai": "AI", "asia": "Asia",
+                "africa": "Africa", "sudan": "Sudan", "middle_east": "Middle East", "israel_gaza": "Israel and Gaza",
+                "europe": "Europe", "latin_america": "Latin America"}
 RUN_STATES = {"ok": "finished", "budget": "stopped at today's spending cap", "time_cap": "stopped at its time limit",
               "api_errors": "finished with errors"}
-STATUS_WORD = {"pass": "Pass", "fail": "Needs work", "not_enough_data": "Not enough data yet"}
-FEATURE_WORD = {"ready": "Ready", "not_ready": "Needs work", "not_enough_data": "Not enough data yet"}
+STATUS_WORD = {"pass": "Good", "fail": "Needs work", "not_enough_data": "Too early to tell"}
+FEATURE_WORD = {"ready": "Good", "not_ready": "Needs work", "not_enough_data": "Too early to tell"}
 
 
-def _check_result(c):
-    """A check's value against its target, in words."""
-    at = "at least" if c["direction"] == ">=" else "at most"
+def _check_result(c, counted):
+    """A check's value against its aim, in everyday words: "10 of 11 copy pairs kept
+    together. Aim: 90% or more." """
+    more = c["direction"] == ">="
     if c["key"] == "latency":
-        value, target = (f"{c['value']:,.0f} ms" if c["value"] is not None else None), f"{c['target']:,.0f} ms"
-    elif c["key"] == "cost":
-        value, target = (f"${c['value']:.2f}" if c["value"] is not None else None), f"${c['target']:.2f}"
-    else:
-        value = f"{round(100 * c['value'])}% of {c['n']}" if c["value"] is not None else None
-        target = f"{round(100 * c['target'])}%"
-    got = f"{value} so far" if value else f"no data yet ({c['n']} so far)"
-    return f"{got[0].upper()}{got[1:]}. Target: {at} {target}."
+        aim = f"Aim: {c['target'] / 1000:.1f} seconds or less."
+        if c["value"] is None:
+            return f"No timings yet. {aim}"
+        return f"The slowest 1 in 10 answers took {c['value'] / 1000:.1f} seconds. {aim}"
+    if c["key"] == "cost":
+        aim = f"Aim: ${c['target']:.2f} or less."
+        return f"${c['value']:.2f} per 1,000 articles. {aim}" if c["value"] is not None else f"No spending yet. {aim}"
+    aim = f"Aim: {round(100 * c['target'])}% or {'more' if more else 'less'}."
+    if c["value"] is None or not c["n"]:
+        return f"Nothing to count yet. {aim}"
+    part = round(c["value"] * c["n"])
+    return f"{part} of {c['n']} {counted} ({round(100 * c['value'])}%). {aim}"
+
+
+def _quote(ref):
+    return f"“{ref.get('title', '')}” ({ref.get('source', '')})"
+
+
+def _check_examples(c):
+    """J22: a real article or pair Jev got right and one it missed, from this run."""
+    ex = c.get("examples") or {}
+    out = []
+    for slot, tag in (("hit", "Got right:"), ("miss", "Missed:")):
+        e = ex.get(slot)
+        if not e:
+            continue
+        if c["key"] in ("same_event", "different_event"):
+            text = f"{_quote(e['a'])} and {_quote(e['b'])}. Jev: {round(100 * e.get('p', 0))}% sure they are the same event."
+        else:
+            feed = BUCKET_WORDS.get(e.get("bucket"), e.get("bucket", ""))
+            text = f"{_quote(e)}, from a {feed} feed. Jev said {e.get('got', '')}."
+        out.append(JEV_EXAMPLE.format(tag=_esc(tag), text=_esc(text)))
+    return "".join(out)
 
 
 def _jev_features(card):
@@ -545,10 +629,12 @@ def _jev_features(card):
     for feature in order:
         rows = []
         for c in (c for c in checks if c["feature"] == feature):
-            label, meaning = CHECK_WORDS.get(c["key"], (c["label"], ""))
-            rows.append(JEV_CHECK.format(label=_esc(label), status=_esc(STATUS_WORD.get(c["status"], "")),
-                                         result=_esc(_check_result(c)), meaning=_esc(meaning)))
-        out.append(JEV_FEATURE.format(name=_esc(feature), about=_esc(FEATURE_ABOUT.get(feature, "")),
+            label, counted, meaning = CHECK_WORDS.get(c["key"], (c["label"], "", ""))
+            rows.append(JEV_CHECK.format(label=_esc(label), status=_esc(c["status"]).replace("_", "-"),
+                                         verdict=_esc(STATUS_WORD.get(c["status"], "")),
+                                         result=_esc(_check_result(c, counted)), meaning=_esc(meaning),
+                                         examples=_check_examples(c)))
+        out.append(JEV_FEATURE.format(name=_esc(FEATURE_NAMES.get(feature, feature)), about=_esc(FEATURE_ABOUT.get(feature, "")),
                                       status=_esc(FEATURE_WORD.get((card.get("features") or {}).get(feature), "")),
                                       checks="\n".join(rows)))
     return JEV_FEATURES.format(features="\n".join(out))
@@ -573,6 +659,7 @@ def render_jev(doc):
         ("Last hourly run", f"{state_text}: {run.get('asked', 0)} new articles read, {run.get('cached', 0)} answers reused"
                             + (f", first error {run['first_error']}" if run.get("first_error") else "")),
         ("Articles in your feed Jev has read", _of(r["articles_answered"], r["articles_in_pool"])),
+        *_sorted_rows(doc),
         _budget_row(run),
     ]
     groups = r.get("groups")
@@ -624,6 +711,18 @@ def _relative_age(seconds):
     return f"{minutes // (24 * 60)}d ago"
 
 
+def _with_sorted_counts(jev, pool):
+    """The Jev doc with how many of its articles each sorted-by group holds."""
+    if not isinstance(jev, dict) or not isinstance(jev.get("answers"), dict):
+        return jev
+    counts = {}
+    for a in pool.get("articles", []):
+        if a["id"] in jev["answers"]:
+            kind = sorted_by(a, jev["answers"][a["id"]])[0]
+            counts[kind] = counts.get(kind, 0) + 1
+    return {**jev, "_sorted_counts": counts}
+
+
 def render(pool, sources_path=None, now=None, jev=None):
     """The Health screen for this pool. `now` defaults to the pool's own generated_at
     (build time has nothing else to compare against); js/health-age.js immediately
@@ -653,7 +752,7 @@ def render(pool, sources_path=None, now=None, jev=None):
         watch_line=f'\n<p class="notice-text notice-text--watch" id="watch-counts">{_esc(watch_text)}</p>' if watch_text else "",
         ledger=_render_ledger(counts),
         sources=_render_sources(pool, sources_path),
-        jev=render_jev(jev) + ("\n" + render_jev_articles(jev, pool) if jev else ""),
+        jev=render_jev(_with_sorted_counts(jev, pool)) + ("\n" + render_jev_articles(jev, pool) if jev else ""),
     )
 
 
