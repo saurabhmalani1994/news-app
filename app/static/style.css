@@ -3895,7 +3895,7 @@ body {
   gap: 2px;
   padding: 8px 0;
   background: transparent;
-  border: 0;
+  border-style: none;
   border-top: var(--divider-weight) solid var(--color-divider);
   text-align: left;
   color: var(--color-headline);
@@ -3903,7 +3903,7 @@ body {
 }
 
 .jev-takeaway:first-of-type {
-  border-top: 0;
+  border-top-style: none;
 }
 
 .jev-takeaway:active {
