@@ -40,7 +40,9 @@ globalThis.document = { querySelectorAll: () => lines };
 """ + script + "\nconsole.log(JSON.stringify(lines.map((l) => l.textContent)));"
     out = subprocess.run([node, "-e", harness], capture_output=True, text=True, check=True).stdout
     both, older, backwards = __import__("json").loads(out)
-    stamp = r"[A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d\d [ap]\.m\."
-    assert re.fullmatch(f"Published {stamp} · Added {stamp}", both), both
+    clock = r"\d{1,2}:\d\d [ap]\.m\."
+    stamp = r"[A-Z][a-z]{2} \d{1,2}, " + clock
+    # J31: the added time drops its date on the published day.
+    assert re.fullmatch(f"Published {stamp} · Added (?:{stamp}|{clock})", both), both
     assert re.fullmatch(f"Published {stamp}", older), "no added time, no added part"
     assert re.fullmatch(f"Published {stamp}", backwards), "an added time before publishing is left out"

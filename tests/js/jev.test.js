@@ -782,3 +782,13 @@ test("Jev's read says what Jev already read and that showing it again asks nothi
   assert.doesNotMatch(whenRead("2026-10-01T01:05:00Z"), /2026/);
   assert.equal(whenRead("not a time"), "");
 });
+
+test("Read with Jev's story line names only what Jev was sure of or leaning towards (J33)", async () => {
+  const { aboutLine } = await import("../../app/static/js/jev/story.js");
+  const sure = { story_type: { label: "Analysis", confidence: 0.8 }, significance: { label: "Important", confidence: 0.7 },
+    tone: { label: "Calm", confidence: 0.9 } };
+  assert.equal(aboutLine(sure), "Analysis \u00b7 Important \u00b7 Calm headline");
+  assert.equal(aboutLine({ ...sure, significance: { label: "Important", confidence: 0.2 } }), "Analysis \u00b7 Calm headline", "an unsure answer is left out");
+  assert.equal(aboutLine({ sentiment: { label: "Good news", confidence: 0.9 } }), "", "only the three story questions");
+  assert.equal(aboutLine(null), "");
+});

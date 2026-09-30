@@ -11,7 +11,11 @@ import { readingBlocks, readingQuestions, readingView, readingDensity, readCache
 // J19: each read and each Skim or Hide marks, recorded on this phone for the Health screen.
 import { recordRead, recordEvent } from "./read-stats.js";
 import { whenRead } from "./story-view.js";
-import { analysisCache } from "./story.js";
+import { analysisCache, aboutLine, STORY_QUESTIONS } from "./story.js";
+
+// J33: the story questions Read with Jev adds; the hourly run asks the rest.
+const ABOUT_QUESTIONS = Object.freeze(Object.fromEntries(["story_type", "significance", "tone"].map((k) => [k, STORY_QUESTIONS[k]])));
+
 
 function record(fn, ...args) {
   try {
@@ -95,16 +99,18 @@ function tint(nodeOf, items, name, fallbackClass) {
 /** Draws a reading: the Takeaways block after `bar` (named takeaways only), the named
  * sentences tinted strongly and the key points lightly, and the paragraphs Skim folds
  * marked. Returns whether anything was drawn. */
-function applyReading(body, elements, blocks, view, bar) {
+function applyReading(body, elements, blocks, view, bar, about = "") {
   clearReading(body);
-  if (!view.takeaways.length && !view.points.length) return false;
+  if (!view.takeaways.length && !view.points.length && !about) return false;
   const nodeOf = new Map(blocks.paragraphs.map((p) => [p.id, elements[p.index]]));
   tint(nodeOf, view.takeaways, HIGHLIGHT, "jev-key-para");
   tint(nodeOf, view.points, POINT, "jev-point-para");
-  if (view.takeaways.length) {
+  if (view.takeaways.length || about) {
     const box = el("section", "jev-takeaways");
     box.setAttribute("aria-label", "Takeaways");
-    box.append(el("p", "jev-takeaways-head", "Takeaways"));
+    // J33: what Jev says the story is, then the Takeaways.
+    if (about) box.append(el("p", "jev-about", about));
+    if (view.takeaways.length) box.append(el("p", "jev-takeaways-head", "Takeaways"));
     for (const t of view.takeaways) {
       const item = el("button", "jev-takeaway");
       item.type = "button";
@@ -126,17 +132,12 @@ export function readBar({ id, body, headline, outlet, sid = "" }) {
   const bar = el("div", "jev-read-bar");
   const read = el("button", "jev-read-go", "Read with Jev");
   read.type = "button";
-  // J32 (owner): asking Jev about the story lives here, with the article open. The
-  // story menu's handler (story-actions.js, "almanac:ask-jev") shows Jev's saved answers
-  // or asks with this article's own text, in the Jev's read sheet over the reader.
-  const ask = el("button", "jev-read-go jev-ask-go", analysisCache(window.localStorage).get(sid) ? "Show Jev's answers" : "Ask Jev about this story");
-  ask.type = "button";
-  ask.hidden = !sid;
-  ask.addEventListener("click", () => {
-    if (ask.getAttribute("aria-busy") === "true") return;
-    const text = paragraphsOf(body).map((n) => n.textContent.trim()).join("\n\n");
-    document.dispatchEvent(new CustomEvent("almanac:ask-jev", { detail: { sid, title: headline, text, button: ask } }));
-  });
+  // J33 (owner): one button. Read with Jev also asks the story questions the hourly run
+  // does not (kind of story, significance, headline tone) about this same article, in
+  // the same tap; their answers show as one line above the Takeaways and are saved for
+  // Jev's read in the story menu (js/jev/story.js analysisCache).
+  const stories = analysisCache(window.localStorage);
+  let lastStory = null; // this read's story answers, shown even when not saved (a test stand-in)
   const note = el("p", "jev-read-note", INTRO);
   const skim = el("button", "jev-read-toggle", "Skim");
   skim.type = "button";
@@ -145,13 +146,13 @@ export function readBar({ id, body, headline, outlet, sid = "" }) {
   const hide = el("button", "jev-read-toggle", "Hide marks");
   hide.type = "button";
   hide.hidden = true;
-  bar.append(read, ask, skim, hide, note);
+  bar.append(read, skim, hide, note);
 
   const show = (answers, { savedAt = null } = {}) => {
     const elements = paragraphsOf(body);
     const blocks = readingBlocks(elements.map((n) => n.textContent), { headline, outlet });
     const view = readingView(answers, blocks);
-    const drawn = applyReading(body, elements, blocks, view, bar);
+    const drawn = applyReading(body, elements, blocks, view, bar, aboutLine(stories.get(sid)?.answers || lastStory));
     const d = readingDensity(view, blocks);
     if (!savedAt) record(recordRead, d); // J31: a saved reading shown again is not a new read
     const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -175,9 +176,19 @@ export function readBar({ id, body, headline, outlet, sid = "" }) {
     const blocks = readingBlocks(elements.map((n) => n.textContent), { headline, outlet });
     try {
       const calls = readingQuestions(blocks);
-      const results = await Promise.all(calls.map((questions) => askJev(blocks.state, questions)));
+      const askStory = Boolean(sid) && !stories.get(sid);
+      const [results, story] = await Promise.all([
+        Promise.all(calls.map((questions) => askJev(blocks.state, questions))),
+        askStory ? askJev(blocks.state, ABOUT_QUESTIONS).catch(() => null) : Promise.resolve(null),
+      ]);
       const answers = Object.assign({}, ...results.map((r) => r.answers));
-      if (!results.some((r) => r.model === "mock-jev")) cache.put(id, { answers, at: new Date().toISOString() });
+      const at = new Date().toISOString();
+      if (!results.some((r) => r.model === "mock-jev")) cache.put(id, { answers, at });
+      lastStory = story?.answers || null;
+      if (story && story.model !== "mock-jev" && Object.keys(story.answers).length) {
+        stories.put(sid, { answers: story.answers, missing: story.missing, model: story.model, full_text: true,
+          hourly: 0, live_failed: "", at });
+      }
       globalThis.window?.almanacFillTimes?.(); // J31: the card now says Jev read it
       show(answers);
     } catch (error) {
