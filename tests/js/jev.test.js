@@ -726,9 +726,10 @@ test("Jev's read says whether the section comes from the rules, Jev, or both (J2
   const sure = (label) => ({ label, confidence: 0.8 });
   assert.equal(sortedBy(["singapore", "asia"], sure("Singapore")).kind, "both");
   assert.equal(sortedBy(["world"], sure("Singapore")).kind, "jev");
-  assert.match(sortedBy(["world"], sure("Singapore")).sentence, /Rules say World\. Jev says Singapore \(sure\)\./);
+  assert.equal(sortedBy(["world"], sure("Singapore")).sentence, "Rules say World; Jev says Singapore (sure).");
+  assert.equal(sortedBy(["singapore"], sure("Singapore")).sentence, "Both say Singapore.", "the label is not repeated");
   assert.equal(sortedBy(["world"], { label: "Singapore", confidence: 0.2 }).kind, "rules");
-  assert.equal(sortedBy(["world"], undefined).sentence, "Rules only: World. Jev has not answered.");
+  assert.equal(sortedBy(["world"], undefined).sentence, "Rules say World; Jev has not answered.");
 });
 
 

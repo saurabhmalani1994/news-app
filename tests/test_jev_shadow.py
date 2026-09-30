@@ -309,7 +309,8 @@ def test_health_lists_each_article_jev_read_beside_the_rules(tmp_path, monkeypat
     assert 'href="/#story-c1"' in html and 'href="/#bundle-c1"' in html, "a clustered one opens its story and versions"
     assert "http" not in html, "never the publisher's page"
     assert "&lt;i&gt;Wire&lt;/i&gt;" in html and "<i>" not in html
-    assert "Rules + Jev: both say Singapore." in html and "Rules + Jev</span>" in html
+    assert "Both say Singapore." in html and "Rules + Jev</span>" in html
+    assert "Rules + Jev:" not in html and "Rules only:" not in html, "the label is never repeated in its sentence"
     assert "Likely about: AI 90%" in html
     assert render_jev_articles(None, p) == ""
 
