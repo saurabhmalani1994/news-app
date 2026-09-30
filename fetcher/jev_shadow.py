@@ -110,6 +110,21 @@ ARTICLE_QUESTIONS = {
         "Is this story about government policy, war or conflict, the economy, science, or public safety?"),
         "criteria": []},
 }
+# J28: Jev reads the articles near the keep rule's cut (fetcher/keep_rule.py
+# triage_items, .cache/triage.json from the fetch step) and its answers feed the next
+# hour's keep rule (keep_rule.jev_points), counted only once its opinion check passes.
+TRIAGE_VERSION = "triage-v1"
+TRIAGE_PATH = ".cache/triage.json"
+TRIAGE_SHARE = 0.4  # of the hourly lane; the story checks and article answers keep the rest
+TRIAGE_PER_RUN = 100
+TRIAGE_KINDS = ["Original news reporting", "Analysis or explainer", "Opinion or commentary",
+                "A summary of other outlets' reporting", "A press release or company announcement", "None of these"]
+TRIAGE_QUESTIONS = {
+    "kind": {"type": "choice", "instructions": "What kind of article is this?", "criteria": TRIAGE_KINDS},
+    "sourced": {"type": "noul", "instructions": (
+        "Does the headline or summary name where its information comes from, such as an official, a document, "
+        "a study or the outlet's own reporters?"), "criteria": []},
+}
 PAIR_QUESTIONS = {
     "same_event": {"type": "noul", "instructions": (
         "Do these two headlines report the same news event?"), "criteria": []},
@@ -410,7 +425,7 @@ def usd(tokens):
 def load_cache(path=CACHE_PATH, model=OPENROUTER_MODEL):
     """({"articles": {id: [answers, hour]}, "pairs": {key: [answers, hour]}}, status). A
     different question set or model starts over."""
-    empty = {"articles": {}, "pairs": {}}
+    empty = {"articles": {}, "pairs": {}, "triage": {}}
     p = Path(path)
     if not p.exists():
         return empty, "absent"
@@ -418,32 +433,85 @@ def load_cache(path=CACHE_PATH, model=OPENROUTER_MODEL):
         doc = json.loads(p.read_bytes())
         if doc.get("schema_version") != CACHE_SCHEMA or doc.get("questions") != QUESTIONS_VERSION or doc.get("model") != model:
             return empty, "changed"
-        return {"articles": dict(doc.get("articles") or {}), "pairs": dict(doc.get("pairs") or {})}, "hit"
+        # J28: the triage answers have their own question version.
+        triage = dict(doc.get("triage") or {}) if doc.get("triage_questions") == TRIAGE_VERSION else {}
+        return {"articles": dict(doc.get("articles") or {}), "pairs": dict(doc.get("pairs") or {}), "triage": triage}, "hit"
     except (OSError, ValueError, TypeError, AttributeError):
         return empty, "corrupt"
 
 
 def save_cache(cache, hour, budget, path=CACHE_PATH, model=OPENROUTER_MODEL):
-    keep = {kind: {k: v for k, v in sorted(cache[kind].items()) if hour - v[1] <= CACHE_KEEP_HOURS}
-            for kind in ("articles", "pairs")}
-    body = json.dumps({"schema_version": CACHE_SCHEMA, "questions": QUESTIONS_VERSION, "model": model,
-                       "budget": budget, **keep}, separators=(",", ":")).encode("utf-8")
+    keep = {kind: {k: v for k, v in sorted(cache.get(kind, {}).items()) if hour - v[1] <= CACHE_KEEP_HOURS}
+            for kind in ("articles", "pairs", "triage")}
+    body = json.dumps({"schema_version": CACHE_SCHEMA, "questions": QUESTIONS_VERSION, "triage_questions": TRIAGE_VERSION,
+                       "model": model, "budget": budget, **keep}, separators=(",", ":")).encode("utf-8")
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(body)
     return len(body)
 
 
-def spent_today(path, day, unit):
-    """What this route already spent today, from the cache's own budget record."""
+def spent_today(path, day, unit, field="spent"):
+    """What this route already spent today, from the cache's own budget record (J28:
+    field "triage_spent" for the triage share)."""
     try:
         prev = json.loads(Path(path).read_bytes()).get("budget")
     except (OSError, ValueError, AttributeError):
         return 0.0
     if isinstance(prev, dict) and prev.get("day") == day and prev.get("unit") == unit:
-        spent = prev.get("spent")
+        spent = prev.get(field)
         return float(spent) if isinstance(spent, (int, float)) and spent >= 0 else 0.0
     return 0.0
+
+
+def load_triage(path=TRIAGE_PATH):
+    """J28: the fetch step's reading list, [{id, headline, summary, outlet}], or []."""
+    try:
+        items = json.loads(Path(path).read_text(encoding="utf-8")).get("items")
+    except (OSError, ValueError, AttributeError):
+        return []
+    return [i for i in items if isinstance(i, dict) and isinstance(i.get("id"), str)] if isinstance(items, list) else []
+
+
+def ask_triage(items, client, cache, now, used, budget, ceiling_left, cost, max_seconds=MAX_SECONDS, per_run=TRIAGE_PER_RUN):
+    """J28: asks TRIAGE_QUESTIONS about up to per_run items Jev has not read, in the
+    list's order, within the triage share of the budget. Answers land in cache["triage"]."""
+    hour = int(now.timestamp() // 3600)
+    stats = {"state": "ok", "asked": 0, "cached": 0, "errors": 0, "spent": 0.0, "tokens": 0}
+    todo = []
+    for item in items:
+        hit = cache["triage"].get(item["id"])
+        if hit:
+            hit[1] = hour
+            stats["cached"] += 1
+        elif len(todo) < per_run:
+            todo.append(item)
+    start = time.monotonic()
+    for item in todo:
+        state = {"headline": str(item.get("headline", ""))[:300], "summary": str(item.get("summary", ""))[:300],
+                 "outlet": str(item.get("outlet", ""))[:80]}
+        est = estimate_tokens(state, TRIAGE_QUESTIONS)
+        if used + stats["spent"] + cost(est) > budget or stats["spent"] + cost(est) > ceiling_left:
+            stats["state"] = "budget"
+            break
+        if time.monotonic() - start > max_seconds:
+            stats["state"] = "time_cap"
+            break
+        try:
+            raw, reported, charged = client.ask(state, TRIAGE_QUESTIONS)
+        except JevError as exc:
+            stats["errors"] += 1
+            stats.setdefault("first_error", str(exc))
+            stats["spent"] += cost(est)
+            continue
+        tokens = max(est, reported or 0)
+        stats["spent"] += charged if charged is not None else cost(tokens)
+        stats["tokens"] += tokens
+        stats["asked"] += 1
+        cache["triage"][item["id"]] = [clean_answers(TRIAGE_QUESTIONS, raw), hour]
+    if stats["errors"] and stats["state"] == "ok":
+        stats["state"] = "api_errors"
+    return stats
 
 
 # The run ----------------------------------------------------------------------------------
@@ -629,7 +697,7 @@ def report(pool, cache, pairs, buckets=None):
 
 
 def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=embed._get_json,
-        max_seconds=MAX_SECONDS, max_articles=MAX_ARTICLES, daily_usd=None):
+        max_seconds=MAX_SECONDS, max_articles=MAX_ARTICLES, daily_usd=None, triage_path=None):
     """The step's entry point: the jev.json document (report plus compact answers)."""
     env = os.environ if env is None else env
     pairs = known_pairs(pool, random.Random(pool.get("generated_at", "")))
@@ -661,13 +729,24 @@ def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=e
         ceiling_left = SHARED_CEILING - (measured or 0.0)
     cache, cache_status = load_cache(cache_path, model)
     used = spent_today(cache_path, day, unit) if cache_status == "hit" else 0.0
+    # J28: with a reading list from the fetch step, TRIAGE_SHARE of today's budget is
+    # the triage's own, tracked apart, so neither can spend the other's.
+    triage_items = load_triage(triage_path) if triage_path else []
+    triage_budget = budget * TRIAGE_SHARE if triage_items else 0.0
+    main_budget = budget - triage_budget
+    used_triage = spent_today(cache_path, day, unit, "triage_spent") if cache_status == "hit" else 0.0
+    triage_stats = {"state": "no_list", "asked": 0, "cached": 0, "errors": 0, "spent": 0.0, "tokens": 0}
     if client is None:
         stats = {"state": f"skipped_{plan}", "asked": 0, "cached": 0, "errors": 0, "spent": 0.0, "tokens": 0,
                  "latency_ms": {"n": 0}}
     else:
-        stats = ask_all(pool, client, cache, now, used, budget, ceiling_left, pairs, cost=cost, max_seconds=max_seconds,
+        stats = ask_all(pool, client, cache, now, used, main_budget, ceiling_left, pairs, cost=cost, max_seconds=max_seconds,
                         max_articles=max_articles, groups=cluster_pairs(pool))
-    budget_state = {"day": day, "unit": unit, "spent": round(used + stats["spent"], 6)}
+        if triage_items:
+            triage_stats = ask_triage(triage_items, client, cache, now, used_triage, triage_budget,
+                                      ceiling_left - stats["spent"], cost, max_seconds=max_seconds)
+    budget_state = {"day": day, "unit": unit, "spent": round(used + stats["spent"], 6),
+                    "triage_spent": round(used_triage + triage_stats["spent"], 6)}
     cache_bytes = save_cache(cache, int(now.timestamp() // 3600), budget_state, cache_path, model) if client else 0
     ids = {a["id"] for a in pool.get("articles", [])}
     doc = {
@@ -678,7 +757,10 @@ def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=e
         "mock": mock,
         "questions": QUESTIONS_VERSION,
         "run": {**stats, "plan": plan, "cache": cache_status, "cache_bytes": cache_bytes, "unit": unit,
-                "spent_day": budget_state["spent"], "budget_day": budget, "neurons_measured_before": measured},
+                "spent_day": round(budget_state["spent"] + budget_state["triage_spent"], 6), "budget_day": budget,
+                "neurons_measured_before": measured,
+                "triage": {**triage_stats, "listed": len(triage_items), "spent_day": budget_state["triage_spent"],
+                           "budget_day": round(triage_budget, 6)}},
         "report": report(pool, cache, pairs),
         "answers": {i: cache["articles"][i][0] for i in sorted(ids) if i in cache["articles"]},
     }
@@ -928,10 +1010,12 @@ def main(argv=None):
     ap.add_argument("--max-seconds", type=int, default=MAX_SECONDS)
     ap.add_argument("--scorecard", action="store_true", help="print the scorecard after the run")
     ap.add_argument("--apply", action="store_true", help="J20: split off-story group members and annotate the pool")
+    ap.add_argument("--triage", default=os.environ.get("JEV_TRIAGE_PATH", TRIAGE_PATH),
+                    help="J28: the fetch step's reading list for the keep rule")
     args = ap.parse_args(argv)
     pool = json.loads(Path(args.pool).read_text(encoding="utf-8"))
     doc = run(pool, datetime.now(timezone.utc), cache_path=args.cache, max_seconds=args.max_seconds,
-              max_articles=args.max_articles, daily_usd=args.daily_usd)
+              max_articles=args.max_articles, daily_usd=args.daily_usd, triage_path=args.triage)
     cache = doc.pop("_cache")
     if args.apply:
         applied = apply_and_write(args.pool, pool, cache)

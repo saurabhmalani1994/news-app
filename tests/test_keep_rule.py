@@ -165,7 +165,7 @@ def test_health_shows_facts_first_and_evidence_folded():
     html = render_keep(doc, {"sources": SOURCES})
     assert "Keep rule trial" in html and "Trial only: your feed still uses today's rule" in html
     assert "Older than 36 hours" in html and "→" in html
-    assert html.count('<details class="jev-fold">') == 5
+    assert html.count('<details class="jev-fold">') == 6  # J28: What Jev adds
     assert "\u2014" not in html, "no em dashes in the page's own words"
     assert "could not run" in render_keep({"state": "error", "error": "RuntimeError"}, {})
     assert render_keep(None, {}) == ""
@@ -278,3 +278,74 @@ def test_state_carries_the_trial_history_and_health_says_where_it_stands():
     assert "Live: the new rule chose this edition" in render_keep(doc, {"sources": SOURCES})
     doc["mode"], doc["gate"]["decided"] = "shadow", "held"
     assert "SELECT_MODE to cap" in render_keep(doc, {"sources": SOURCES})
+
+
+# --- J28: Jev helps decide what to keep ---
+
+def _triage_answer(kind, c=0.8, sourced=0.8):
+    p = {k: (c if k == kind else (1 - c) / 5) for k in keep_rule.JEV_KIND_POINTS}
+    return [{"kind": {"t": "choice", "v": kind, "c": c, "p": p}, "sourced": {"t": "noul", "v": sourced}}, 0]
+
+
+def test_jev_points_follow_the_whole_answer_and_never_read_1_minus_p():
+    cands = candidates()
+    ctx = ctx_for(cands, jev_cache={"triage": {
+        "left1_1": _triage_answer("Original news reporting"),
+        "left1_2": _triage_answer("A press release or company announcement"),
+        "left1_3": _triage_answer("Original news reporting", c=0.3),
+        "left1_4": _triage_answer("Analysis or explainer", c=0.5, sourced=0.1)}})
+    by = {a["id"]: a for a in cands}
+    assert keep_rule.jev_points(by["left1_1"], ctx) > 8, "sure original reporting, sources named"
+    assert keep_rule.jev_points(by["left1_2"], ctx) < 0
+    assert keep_rule.jev_points(by["left1_3"], ctx) == 3, "unsure kind adds nothing; named sources still count"
+    assert keep_rule.jev_points(by["left1_4"], ctx) == round(0.5 * keep_rule._spread_value(
+        _triage_answer("Analysis or explainer", c=0.5)[0]["kind"], keep_rule.JEV_KIND_POINTS)), "a low yes/no adds nothing"
+    assert keep_rule.fact_terms(by["left1_1"], ctx)["jev"] == 0, "not counted before the check passes"
+    ctx["jev"]["counts"] = True
+    assert keep_rule.fact_terms(by["left1_1"], ctx)["jev"] > 8
+
+
+def test_jevs_points_count_only_after_it_spots_marked_opinion():
+    cands = [art(f"o{i}", "left1", 2) for i in range(25)]
+    for a in cands:
+        a["url"] = f"https://left1.example/opinion/{a['id']}"
+    right = {a["id"]: _triage_answer("Opinion or commentary") for a in cands[:21]}
+    wrong = {a["id"]: _triage_answer("Original news reporting") for a in cands[21:]}
+    assert keep_rule.jev_check(cands, ctx_for(cands, jev_cache={"triage": {**right, **wrong}}))["passed"], "21 of 25"
+    few = dict(list(right.items())[:10])
+    assert not keep_rule.jev_check(cands, ctx_for(cands, jev_cache={"triage": few}))["passed"], "too few to judge"
+    half = {**dict(list(right.items())[:12]), **{a["id"]: _triage_answer("Original news reporting") for a in cands[12:]}}
+    assert not keep_rule.jev_check(cands, ctx_for(cands, jev_cache={"triage": half}))["passed"]
+
+
+def test_a_version_jev_split_off_stops_counting_as_coverage():
+    cands = candidates()
+    plain = ctx_for(cands)
+    split = ctx_for(cands, jev_cache={"pairs": {"c:left1_0|sg1_0": [{"same_event": {"t": "noul", "v": 0.05}}, 0]}})
+    by = {a["id"]: a for a in cands}
+    assert keep_rule.fact_terms(by["left1_0"], plain)["corroboration"] > keep_rule.fact_terms(by["left1_0"], split)["corroboration"]
+    assert keep_rule.fact_terms(by["sg1_0"], split)["corroboration"] == 0
+    assert split["jev"]["split"] == {"sg1_0"}
+
+
+def test_the_newest_story_of_the_last_three_hours_is_always_kept():
+    cands = candidates()
+    scoop = art("scoop", "right1", 0.5, topics=("science",))  # one outlet, no coverage yet
+    cands.append(scoop)
+    ctx = ctx_for(cands)
+    ids, why = keep_rule.select_pool(cands, ctx, 10 ** 9, {"general": 3, "singapore": 4, "ai": 2})
+    assert why.get("scoop") == "floor_source"
+
+
+def test_jev_reads_next_the_articles_nearest_the_cut_and_nothing_private():
+    cands = candidates()
+    secret = art("w9", "left1", 1)
+    secret["watch"] = ["w:0123456789"]
+    cands.append(secret)
+    ctx = ctx_for(cands, jev_cache={"triage": {"sg1_0": _triage_answer("Original news reporting")}})
+    doc, _ = keep_rule.run_shadow(cands, [a["id"] for a in cands[:20]], ctx)
+    items = doc.pop("_triage")
+    ids = [i["id"] for i in items]
+    assert "sg1_0" not in ids and "w9" not in ids and ids
+    assert set(items[0]) == {"id", "headline", "summary", "outlet"}
+    assert doc["jev"]["read"] == 1 and doc["jev"]["counting"] is False

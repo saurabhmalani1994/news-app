@@ -30,6 +30,9 @@ Fact terms, whole points (the same style as fetcher/best_version.py):
   hard           10 when any topic tag is hard news (topics.json hard_news)
   recency        20 x 2^(-age / 12 hours)
   incumbent      6 when the previous pool had it (steadier hour to hour)
+  jev            J28: from Jev's reading of the article, when Jev has read it and its
+                 check passes (see JEV_KIND_POINTS and jev_check): original reporting
+                 and named sources up, press releases and summaries of others down
 
 Deterministic: no clock (now is passed in), no randomness, ties broken by
 (score desc, published_at desc, id), so the same candidates in any order give the same
@@ -39,11 +42,14 @@ import json
 import math
 from collections import Counter
 
+import re
+
 from fetcher.best_version import failed_runs, is_syndicated_copy
 from fetcher.fetch import _plain
+from fetcher.jev_shadow import SPLIT_BELOW, band, choice_status
 
 SCHEMA_VERSION = 1
-TERMS = ("corroboration", "lean_span", "original", "complete", "health", "paywall", "hard", "recency", "incumbent")
+TERMS = ("corroboration", "lean_span", "original", "complete", "health", "paywall", "hard", "recency", "incumbent", "jev")
 
 FLOOR_PER_SOURCE = 2
 SOURCE_CEIL = 12
@@ -67,6 +73,30 @@ PUBLISHED_DEK_CHARS = 600  # fetcher.fanout's, kept equal by tests/test_select.p
 
 WHY = ("floor_source", "floor_story", "floor_bucket", "fill")
 
+# J28: each outlet's newest item from the last FRESH_H hours is always kept, so a story
+# only one outlet has so far (a scoop, breaking local news) is not cut for lacking
+# coverage it has not had time to get.
+FRESH_H = 3
+
+# J28: Jev's reading of an article near the cut (fetcher/jev_shadow.py TRIAGE_QUESTIONS).
+# kind: points per answer, weighted by Jev's own probabilities over every answer, full
+# when Jev is sure, half when it leans, nothing when it is split, unsure or silent.
+# sourced (a yes/no, read only as asked): likely adds, possible adds less, a low
+# probability adds nothing; 1 - p is never read as "no sources".
+JEV_KIND_POINTS = {
+    "Original news reporting": 8, "Analysis or explainer": 4, "Opinion or commentary": -4,
+    "A summary of other outlets' reporting": -6, "A press release or company announcement": -8, "None of these": 0,
+}
+JEV_SOURCED_POINTS = {"likely": 3, "possible": 1}
+# Jev's points count only once Jev tells opinion apart where the address already says it:
+# of the articles whose address marks them opinion, Jev must call at least
+# JEV_CHECK_SHARE of them opinion (sure or leaning), over at least JEV_CHECK_MIN.
+OPINION_URL = re.compile(r"/(?:opinion|opinions|commentary|op-ed|oped|columns?|columnists?|views|editorials?|voices)/", re.I)
+JEV_CHECK_SHARE = 0.8
+JEV_CHECK_MIN = 20
+TRIAGE_BORDER = 100
+TRIAGE_CALIBRATION = 20
+
 
 def _epoch(ts):
     from datetime import datetime, timezone
@@ -76,23 +106,48 @@ def _epoch(ts):
         return None
 
 
+def jev_split_off(all_clusters, pairs):
+    """J28: {member id} Jev read as a different event from its group's anchor
+    (fetcher/jev_shadow.py's cached "c:<anchor>|<member>" answers, same_event below
+    SPLIT_BELOW), for any group where both are still together."""
+    out = set()
+    for key, value in (pairs or {}).items():
+        if not key.startswith("c:") or "|" not in key:
+            continue
+        anchor, member = key[2:].split("|", 1)
+        ans = ((value or [{}])[0] or {}).get("same_event") if isinstance(value, list) else None
+        if isinstance(ans, dict) and isinstance(ans.get("v"), (int, float)) and ans["v"] < SPLIT_BELOW:
+            if any(anchor in cl["article_ids"] and member in cl["article_ids"] for cl in all_clusters):
+                out.add(member)
+    return out
+
+
 def build_context(sources, candidates, all_clusters, body_candidates=None, previous_health=None,
-                  previous_ids=frozenset(), now=None, hard_topics=()):
-    """What the terms read, built once per run from the pre-cap candidates."""
+                  previous_ids=frozenset(), now=None, hard_topics=(), jev_cache=None):
+    """What the terms read, built once per run from the pre-cap candidates. jev_cache is
+    fetcher/jev_shadow.py's cache document (.cache/jev.json), or None."""
     by_id = {a["id"]: a for a in candidates}
     sources_by_id = {s["id"]: s for s in sources}
     syndication = {s["id"]: s.get("syndication_group") or s["id"] for s in sources}
     lean = {s["id"]: s["lean"] for s in sources if s.get("lean")}
+    jev_cache = jev_cache if isinstance(jev_cache, dict) else {}
+    split = jev_split_off(all_clusters, jev_cache.get("pairs"))
     cluster_of = {}
     for cl in all_clusters:
-        ids = [i for i in cl["article_ids"] if i in by_id]
+        ids = [i for i in cl["article_ids"] if i in by_id and i not in split]
         srcs = {by_id[i]["source_id"] for i in ids}
         info = {"id": cl.get("id") or min(ids), "n": len({syndication.get(s, s) for s in srcs}),
                 "leans": sorted({lean[s] for s in srcs if s in lean}), "size": len(ids)}
         for i in ids:
             cluster_of[i] = info
     body_chars = {i: len(_plain(h)) for i, h in (body_candidates or {}).items() if h}
+    triage = {}
+    for key, value in (jev_cache.get("triage") or {}).items():
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            triage[key] = value[0]
+    ctx_jev = {"triage": triage, "split": split}
     return {
+        "jev": ctx_jev,
         "by_id": by_id, "sources": sources_by_id, "syndication": syndication, "lean": lean,
         "cluster_of": cluster_of, "body_chars": body_chars, "previous_health": previous_health or {},
         "previous_ids": frozenset(previous_ids), "now": now.timestamp() if hasattr(now, "timestamp") else now,
@@ -107,6 +162,47 @@ def _cluster(article, ctx):
 def age_hours(article, ctx):
     t = _epoch(article.get("published_at"))
     return max(0.0, (ctx["now"] - t) / 3600) if t is not None and ctx["now"] is not None else STALE_H * 2
+
+
+def _spread_value(answer, points):
+    """Points weighted by Jev's probabilities over every answer, or the pick's points."""
+    p = answer.get("p") if isinstance(answer.get("p"), dict) else None
+    if p:
+        total = sum(v for k, v in p.items() if k in points)
+        if total > 0:
+            return sum(points[k] * v for k, v in p.items() if k in points) / total
+    return points.get(answer.get("v"), 0)
+
+
+def jev_points(article, ctx):
+    """J28: Jev's points for an article it read near the cut, before the check: kind by
+    its whole spread (full when sure, half when leaning), plus named sources."""
+    ans = ctx.get("jev", {}).get("triage", {}).get(article["id"])
+    if not ans:
+        return 0
+    points = 0.0
+    kind = ans.get("kind")
+    if isinstance(kind, dict):
+        status = choice_status(kind)
+        weight = 1.0 if status == "sure" else 0.5 if status == "lean" else 0.0
+        points += weight * _spread_value(kind, JEV_KIND_POINTS)
+    points += JEV_SOURCED_POINTS.get(band(ans.get("sourced")), 0)
+    return round(points)
+
+
+def jev_check(candidates, ctx):
+    """{"n", "agree", "share", "passed"}: of the candidates Jev read whose address marks
+    them opinion, how many Jev called opinion (sure or leaning)."""
+    triage = ctx.get("jev", {}).get("triage", {})
+    marked = [a for a in candidates if a["id"] in triage and OPINION_URL.search(a.get("url", ""))]
+    agree = 0
+    for a in marked:
+        kind = triage[a["id"]].get("kind")
+        if isinstance(kind, dict) and kind.get("v") == "Opinion or commentary" and choice_status(kind) in ("sure", "lean"):
+            agree += 1
+    share = agree / len(marked) if marked else None
+    return {"n": len(marked), "agree": agree, "share": share,
+            "passed": len(marked) >= JEV_CHECK_MIN and share is not None and share >= JEV_CHECK_SHARE}
 
 
 def fact_terms(article, ctx):
@@ -125,6 +221,8 @@ def fact_terms(article, ctx):
         "hard": 10 if any(t in ctx["hard"] for t in article.get("topics", ())) else 0,
         "recency": round(20 * 2 ** (-age_hours(article, ctx) / 12)),
         "incumbent": 6 if article["id"] in ctx["previous_ids"] else 0,
+        # J28: Jev's points, counted only once its check passes (ctx["jev"]["counts"]).
+        "jev": jev_points(article, ctx) if ctx.get("jev", {}).get("counts") else 0,
     }
 
 
@@ -204,7 +302,10 @@ def select_pool(candidates, ctx, budget, bucket_budget=None):
     for sid in sorted(by_source):
         items = by_source[sid]
         fresh = [a for a in items if age_hours(a, ctx) <= STALE_H]
-        picks = fresh[:FLOOR_PER_SOURCE] or sorted(items, key=lambda a: (-(_epoch(a.get("published_at")) or 0), a["id"]))[:1]
+        newest = sorted(items, key=lambda a: (-(_epoch(a.get("published_at")) or 0), a["id"]))
+        # J28: the outlet's newest item of the last FRESH_H hours first, then the best.
+        latest = [a for a in newest[:1] if age_hours(a, ctx) <= FRESH_H]
+        picks = (latest + [a for a in fresh if a not in latest])[:FLOOR_PER_SOURCE] or newest[:1]
         for a in picks:
             if fits(a, ceilings="none"):
                 take(a, "floor_source")
@@ -273,6 +374,30 @@ def select_pool(candidates, ctx, budget, bucket_budget=None):
         if fits(a):
             take(a, "fill")
     return chosen, why
+
+
+def triage_items(candidates, kept_ids, ctx):
+    """J28: what Jev reads next (fetcher/jev_shadow.py, after this run publishes): the
+    TRIAGE_BORDER lowest-scored articles the rule kept and the TRIAGE_BORDER best it
+    dropped, where its points decide most, plus up to TRIAGE_CALIBRATION articles whose
+    address marks them opinion, for Jev's check. Articles Jev has read, and anything a
+    watch search found, are left out. [{id, headline, summary, outlet, url}]."""
+    triage = ctx.get("jev", {}).get("triage", {})
+    kept = set(kept_ids)
+    pool = [a for a in candidates if a["id"] not in triage and not a.get("watch")]
+    score = {a["id"]: sum(fact_terms(a, ctx).values()) for a in pool}
+    ranked = sorted(pool, key=lambda a: (-score[a["id"]], a["id"]))
+    low_kept = [a for a in reversed(ranked) if a["id"] in kept][:TRIAGE_BORDER]
+    top_dropped = [a for a in ranked if a["id"] not in kept][:TRIAGE_BORDER]
+    calibration = [a for a in ranked if OPINION_URL.search(a.get("url", ""))][:TRIAGE_CALIBRATION]
+    out, seen = [], set()
+    for a in calibration + top_dropped + low_kept:
+        if a["id"] in seen:
+            continue
+        seen.add(a["id"])
+        out.append({"id": a["id"], "headline": a.get("title", "")[:300], "summary": _cut(a.get("dek"), 250),
+                    "outlet": (ctx["sources"].get(a["source_id"]) or {}).get("name", a["source_id"])})
+    return out
 
 
 def missed_count(dropped, ctx):
@@ -357,11 +482,26 @@ def run_shadow(candidates, cap_ids, ctx, previous_dropped=None):
     each rule dropped, which the next run checks for the missed-stories count."""
     kept = [ctx["by_id"][i] for i in cap_ids if i in ctx["by_id"]]
     budget = int(sum(est_bytes(a) for a in kept) * SIZE_MARGIN)
+    # J28: Jev's points count only once its check passes; either way the report says how
+    # many articles they would move.
+    check = jev_check(candidates, ctx)
+    ctx.setdefault("jev", {"triage": {}, "split": set()})["counts"] = check["passed"]
     bucket_budget = Counter(_bucket(a, ctx) for a in kept)
     score_ids, why = select_pool(candidates, ctx, budget, dict(bucket_budget))
     doc = compare(cap_ids, score_ids, why, candidates, ctx, previous_dropped)
     doc["budget_bytes"] = budget
     doc["_score_ids"] = score_ids  # J27: taken out by the caller, never written
+    # J28: what Jev adds: articles it has read, its check, and what its points move.
+    read = sum(1 for a in candidates if a["id"] in ctx["jev"]["triage"])
+    moved = 0
+    if read:
+        ctx["jev"]["counts"] = not check["passed"]
+        other_ids, _ = select_pool(candidates, ctx, budget, dict(bucket_budget))
+        ctx["jev"]["counts"] = check["passed"]
+        moved = len(set(other_ids) ^ set(score_ids)) // 2
+    doc["jev"] = {"read": read, "split_off": len(ctx["jev"]["split"]), "check": check,
+                  "counting": check["passed"], "moved": moved}
+    doc["_triage"] = triage_items(candidates, score_ids, ctx)  # J28: taken out by the caller
     all_ids = {a["id"] for a in candidates}
     dropped = {"cap": fresh_singletons(all_ids - set(cap_ids), ctx),
                "score": fresh_singletons(all_ids - set(score_ids), ctx)}

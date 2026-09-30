@@ -586,7 +586,8 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
             prev = select_prev or {}
             ctx = keep_rule.build_context(
                 sources, [c for c in candidates if c["id"] not in watch_only_ids], all_clusters,
-                body_candidates, previous_health, prev.get("ids", ()), now, topics_doc.get("hard_news", ()))
+                body_candidates, previous_health, prev.get("ids", ()), now, topics_doc.get("hard_news", ()),
+                jev_cache=prev.get("jev_cache"))
             doc, dropped = keep_rule.run_shadow(list(ctx["by_id"].values()),
                                                 [a["id"] for a in articles if a["id"] not in watch_only_ids],
                                                 ctx, prev.get("dropped"))
@@ -598,7 +599,8 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                 articles, published_urls, exempt, cap_drops = cap_pass(set(doc.pop("_score_ids")))
                 doc["mode"] = "live"
             doc.pop("_score_ids", None)
-            select_out.update(doc=doc, dropped=dropped, ctx=ctx)  # J26: ctx for the reserve
+            triage = doc.pop("_triage", [])  # J28: what Jev reads after this run
+            select_out.update(doc=doc, dropped=dropped, ctx=ctx, triage=triage)  # J26: ctx for the reserve
         except Exception as exc:  # noqa: BLE001 - the trial never stops a publish
             select_out.update(doc={"schema_version": keep_rule.SCHEMA_VERSION, "mode": "shadow", "state": "error",
                                    "error": type(exc).__name__}, dropped=None)
@@ -893,6 +895,14 @@ def watch_log_line(wc, watch_input, seconds):
     return line
 
 
+def _read_json(path):
+    """A JSON file's document, or None when it is missing or unreadable."""
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default="dist/pool.json")
@@ -914,6 +924,9 @@ def main(argv=None):
     # B9: TRUTH_ARCHIVE_URL mirrors RELAY_BASE_URL's pattern, a one-line override with
     # no code change if the archive moves.
     ap.add_argument("--truth-archive-url", default=os.environ.get("TRUTH_ARCHIVE_URL", TRUTH_ARCHIVE_URL))
+    # J28: Jev's answers cache (restored before this step) and where the next Jev reading list goes.
+    ap.add_argument("--jev-cache", default=os.environ.get("JEV_CACHE_PATH", ".cache/jev.json"))
+    ap.add_argument("--jev-triage", default=os.environ.get("JEV_TRIAGE_PATH", ".cache/triage.json"))
     args = ap.parse_args(argv)
 
     dump_path = Path(args.dump_candidates) if args.dump_candidates else None
@@ -980,7 +993,8 @@ def main(argv=None):
     select_history = keep_rule.trim_history(select_history_from(state_bytes), now.timestamp())
     select_live, select_why = keep_rule.decide(os.environ.get("SELECT_MODE", "auto").strip().lower(),
                                                select_history, now.timestamp())
-    select_prev = {"ids": set(first_seen), "dropped": select_dropped_from(state_bytes), "live": select_live}
+    select_prev = {"ids": set(first_seen), "dropped": select_dropped_from(state_bytes), "live": select_live,
+                   "jev_cache": _read_json(args.jev_cache)}  # J28: Jev's earlier answers, read only
 
     def _build(watch):
         return stamp_first_seen(build_pool_fanout(
@@ -1027,6 +1041,15 @@ def main(argv=None):
     if select_out.get("doc"):
         (out.parent / "select.json").write_text(dumps(select_out["doc"]), encoding="utf-8")
         print(keep_rule.log_line(select_out["doc"]))
+    # J28: the articles Jev reads after this run (fetcher/jev_shadow.py --triage), kept
+    # out of dist/ so they never deploy.
+    if select_out.get("triage") is not None:
+        path = Path(args.jev_triage)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(dumps({"generated_at": pool["generated_at"], "items": select_out["triage"]}), encoding="utf-8")
+        jd = select_out["doc"].get("jev", {})
+        print(f"jev keep: read={jd.get('read', 0)} split_off={jd.get('split_off', 0)} counting={jd.get('counting', False)} "
+              f"moved={jd.get('moved', 0)} next={len(select_out['triage'])}")
     # J26: the reserve, the best articles this pool did not keep, one file per topic.
     if select_out.get("ctx"):
         try:

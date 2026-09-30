@@ -482,6 +482,16 @@ def render_jev_articles(doc, pool, now=None):
     return JEV_ARTICLES.format(count=len(read), hint=_esc(hint), groups="\n".join(groups))
 
 
+def _triage_rows(run):
+    """J28: Jev's reading near the keep rule's cut, this run and today."""
+    t = run.get("triage")
+    if not isinstance(t, dict) or not t.get("listed"):
+        return []
+    spend = (f", ${t.get('spent_day', 0):.3f} of ${t.get('budget_day', 0):.2f} today"
+             if run.get("unit") == "usd" else "")
+    return [("Read near the keep cut", f"{t.get('asked', 0)} new, {t.get('cached', 0)} known{spend}")]
+
+
 def _sorted_rows(doc):
     """J22: how many articles Jev read fall in each sorted-by group, when the report
     carries the articles' rule topics (Health's render passes the pool in)."""
@@ -704,6 +714,7 @@ def render_jev(doc):
         ("Last hourly run", f"{state_text}: {run.get('asked', 0)} new articles read, {run.get('cached', 0)} answers reused"
                             + (f", first error {run['first_error']}" if run.get("first_error") else "")),
         ("Articles in your feed Jev has read", _of(r["articles_answered"], r["articles_in_pool"])),
+        *_triage_rows(run),
         *_sorted_rows(doc),
         _budget_row(run),
     ]
@@ -827,6 +838,22 @@ def render_keep(doc, pool):
         ("Outlets with at least one article", f"{doc['floors']['sources_met']} of {doc['floors']['sources_total']}"),
     ]
     body = [LEDGER_ROW.format(label=_esc(label), value=_esc(value)) for label, value in rows]
+    # J28: what Jev adds to the keep rule, facts first.
+    j = doc.get("jev")
+    if isinstance(j, dict):
+        c = j.get("check") or {}
+        share = f"{round(100 * c['share'])}%" if isinstance(c.get("share"), (int, float)) else "none yet"
+        value = ("Counting" if j.get("counting") else "Not counting yet") + f" · read {j.get('read', 0)}"
+        lines = [
+            f"Jev read {j.get('read', 0)} of the articles near the cut: what kind each is (original reporting, analysis, "
+            "opinion, a summary of others, a press release) and whether it names its sources.",
+            f"Its points {'move' if j.get('counting') else 'would move'} {j.get('moved', 0)} articles in or out.",
+            f"Its check: of the articles whose web address marks them opinion, Jev called {c.get('agree', 0)} of "
+            f"{c.get('n', 0)} opinion ({share}). Its points count once that is 80% or more over at least 20.",
+            f"Versions Jev read as a different event no longer count as other outlets covering a story: {j.get('split_off', 0)}.",
+        ]
+        body.append(KEEP_FOLD.format(label="What Jev adds", value=_esc(value),
+                                     lines="".join(JEV_LINE.format(text=_esc(t)) for t in lines)))
     # J27: when it goes live on its own, facts first, each check one tap down.
     if g.get("checks"):
         passed = sum(1 for c in g["checks"] if c["ok"])
