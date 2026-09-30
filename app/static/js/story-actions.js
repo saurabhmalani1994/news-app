@@ -349,7 +349,7 @@ function ruleTopicsOf(id) {
 function analysisContent(result, facts, cached, ruleTopics = null) {
   return renderAnalysis({
     ruleTopics,
-    answers: result.answers, missing: result.missing, headline: facts.title, cached,
+    answers: result.answers, missing: result.missing, headline: facts.title, cached, at: result.at || "",
     fullText: Boolean(result.full_text), model: result.model || "", hourly: result.hourly || 0, liveFailed: result.live_failed || "",
   });
 }

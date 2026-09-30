@@ -10,6 +10,7 @@ import { askJev } from "./client.js";
 import { readingBlocks, readingQuestions, readingView, readingDensity, readCache } from "./read.js";
 // J19: each read and each Skim or Hide marks, recorded on this phone for the Health screen.
 import { recordRead, recordEvent } from "./read-stats.js";
+import { whenRead } from "./story-view.js";
 
 function record(fn, ...args) {
   try {
@@ -133,6 +134,14 @@ export function readBar({ id, body, headline, outlet }) {
   hide.type = "button";
   hide.hidden = true;
   bar.append(read, skim, hide, note);
+  // J30: an article Jev has already read on this phone says so before the tap, so
+  // showing its marks again never looks like a new call.
+  const saved = cache.get(id);
+  if (saved) {
+    read.textContent = "Show Jev's marks";
+    const when = whenRead(saved.at);
+    note.textContent = `Jev has read this article${when ? ` (${when})` : ""}. Showing its marks again asks Jev nothing.`;
+  }
 
   const show = (answers) => {
     const elements = paragraphsOf(body);
@@ -185,8 +194,9 @@ export function readBar({ id, body, headline, outlet }) {
     hide.hidden = true;
     skim.setAttribute("aria-pressed", "false");
     read.hidden = false;
-    read.textContent = "Read with Jev";
-    note.textContent = INTRO;
+    const again = cache.get(id);
+    read.textContent = again ? "Show Jev's marks" : "Read with Jev";
+    note.textContent = again ? "Jev has read this article. Showing its marks again asks Jev nothing." : INTRO;
   });
   return bar;
 }
