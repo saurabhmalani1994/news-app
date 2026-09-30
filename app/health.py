@@ -495,7 +495,7 @@ def _budget_row(run):
     """Today's spend against the day's cap, in the route's own unit."""
     spent, cap = run.get("spent_day", 0) or 0, run.get("budget_day", 0) or 0
     if run.get("unit") == "usd":
-        return ("Spent today (OpenRouter)", f"${spent:.3f} of ${cap:.2f}")
+        return ("Hourly run spent today", f"${spent:.3f} of ${cap:.2f}")
     return ("Free allowance used today", f"{spent:.0f} of {cap:.0f} neurons")
 
 
@@ -506,7 +506,10 @@ JEV_TODAY = """<section class="settings-section" aria-labelledby="jev-label" id=
 <h2 class="settings-label" id="jev-label">Jev today</h2>
 <p class="settings-hint">{hint}</p>
 {rows}
+<div class="setting-row" id="jev-phone-spend" hidden><div class="setting-row-text"><span class="setting-label">Your phone's Jev use today</span></div><span class="setting-value" id="jev-phone-spend-value"></span></div>
 </section>"""
+# J25: the phone row is filled on the page from GET /api/jev (js/jev/spend-view.js): the
+# phone's own lane of the owner's $0.30 a day, which the hourly run cannot see.
 # J23: the Jev area follows one rule (the owner's): the first layer is facts, the second
 # is evidence. Each scoreboard line is a fact; opening it shows the evidence behind it
 # (the aim, what was counted, what the check measures, a real example from the run). A

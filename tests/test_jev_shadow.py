@@ -470,3 +470,13 @@ def test_each_article_keeps_the_time_it_was_first_pulled():
     assert [a["fetched_at"] for a in run2["articles"]] == ["2026-09-30T01:17:00Z", "2026-09-30T02:17:00Z"]
     assert first_seen_from(json.dumps(run2).encode()) == {"a": "2026-09-30T01:17:00Z", "b": "2026-09-30T02:17:00Z"}, "a published pool works too"
     assert first_seen_from(b"<html>login</html>") == {}
+
+
+def test_the_hourly_run_never_spends_the_phones_share(tmp_path):
+    """J25: $0.30 a day in all; the phone keeps $0.05, so the hourly run gets at most
+    $0.25 whatever JEV_DAILY_USD says."""
+    assert js.DAILY_USD_BUDGET == 0.25 and js.TOTAL_DAILY_USD == 0.30
+    doc = js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY, "JEV_DAILY_USD": "0.50"}, cache_path=tmp_path / "j.json",
+                 post=FakeOpenRouter(good_answers).post)
+    assert doc["run"]["budget_day"] == 0.25
+    assert "Hourly run spent today" in render_jev(doc) and 'id="jev-phone-spend"' in render_jev(doc)

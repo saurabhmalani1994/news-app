@@ -11,7 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { handle, onRequest, route, openRouterKey, MAX_BODY_BYTES, OPENROUTER_URL, OPENROUTER_MODEL } from "../../functions/api/jev.js";
+import { handle, onRequest, route, openRouterKey, MAX_BODY_BYTES, OPENROUTER_URL, OPENROUTER_MODEL, callCost, USD_PER_TOKEN } from "../../functions/api/jev.js";
 import { validateQuestions, validateState, normalizeAnswers, scoreIndex, MAX_QUESTIONS, toWire } from "../../app/static/js/jev/contract.js";
 import { mockJev } from "../../app/static/js/jev/mock.js";
 import { STORY_QUESTIONS, askQuestions, askTargets, NONE } from "../../app/static/js/jev/questions.js";
@@ -488,7 +488,8 @@ test("GET /api/jev reports the route and whether the key is set, never the key",
   const env = { ...DEV_ENV, OPENROUTER_API_KEY: " sk-or-v1-secret\n" };
   const res = await handle(new Request(`${LOCAL}/api/jev`, { method: "GET" }), env);
   const body = await res.json();
-  assert.deepEqual(body, { route: "openrouter", model: OPENROUTER_MODEL, key_set: true, key_trimmed: true, key_prefix_ok: true });
+  assert.deepEqual(body, { route: "openrouter", model: OPENROUTER_MODEL, key_set: true, key_trimmed: true, key_prefix_ok: true,
+    phone_budget: { cap_usd: 0.05, unenforced: true } });
   assert.ok(!JSON.stringify(body).includes("secret"));
   const none = await (await handle(new Request(`${LOCAL}/api/jev`, { method: "GET" }), DEV_ENV)).json();
   assert.equal(none.route, "not_set_up");
@@ -728,4 +729,42 @@ test("Jev's read says whether the section comes from the rules, Jev, or both (J2
   assert.match(sortedBy(["world"], sure("Singapore")).sentence, /Rules say World\. Jev says Singapore \(sure\)\./);
   assert.equal(sortedBy(["world"], { label: "Singapore", confidence: 0.2 }).kind, "rules");
   assert.equal(sortedBy(["world"], undefined).sentence, "Rules only: World. Jev has not answered.");
+});
+
+
+// --- J25: one daily budget for the phone's Jev calls ---
+
+function memoryKV() {
+  const m = new Map();
+  return { m, get: async (k) => m.get(k) ?? null, put: async (k, v) => { m.set(k, v); } };
+}
+
+test("the phone's Jev calls share one daily budget, charged by each call's cost", async () => {
+  const kv = memoryKV();
+  const env = { ...DEV_ENV, OPENROUTER_API_KEY: "sk-or-v1-x", INTERESTS: kv };
+  const now = () => Date.parse("2026-09-30T10:00:00Z");
+  const fetch = async () => ({ ok: true, status: 200, json: async () => ({ answers: {}, usage: { cost: 0.02 } }) });
+  const ask = () => handle(post({ v: 1, state: STATE, questions: QUESTIONS }), env, { fetch, now });
+  assert.equal((await ask()).status, 200);
+  assert.equal((await ask()).status, 200);
+  assert.deepEqual(JSON.parse(kv.m.get("jev-spend:phone:2026-09-30")), { usd: 0.04, calls: 2 });
+  assert.equal((await ask()).status, 200, "0.04 is under 0.05, so one more goes");
+  const over = await ask();
+  assert.equal(over.status, 429);
+  assert.equal((await over.json()).reason, "daily_budget");
+  const nextDay = await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), env, { fetch, now: () => Date.parse("2026-10-01T00:05:00Z") });
+  assert.equal(nextDay.status, 200, "a new UTC day starts a new budget");
+  const status = await (await handle(new Request(`${LOCAL}/api/jev`, { method: "GET" }), env, { now })).json();
+  assert.deepEqual(status.phone_budget, { cap_usd: 0.05, usd: 0.06, calls: 3 });
+});
+
+test("a call with no reported cost is charged a doubled estimate", () => {
+  assert.equal(callCost({ usage: { input_tokens: 1000 } }, 0), 1000 * USD_PER_TOKEN);
+  assert.ok(callCost({}, 3000) > 1000 * USD_PER_TOKEN);
+  assert.equal(callCost({ usage: { cost: 0.001 } }, 99999), 0.001);
+});
+
+test("a spent budget reads as its own plain message on the phone", async () => {
+  const fetchImpl = async () => ({ ok: false, status: 429, redirected: false, json: async () => ({ reason: "daily_budget" }) });
+  await assert.rejects(askJev({}, {}, { fetchImpl, online: true }), (e) => e.kind === "budget" && /used up/.test(e.message));
 });

@@ -64,7 +64,9 @@ OPENROUTER_MODEL = "typesafe/jev-1.13"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/systemone"
 OPENROUTER_ENV = "OPENROUTER_API_KEY"
 USD_PER_M_TOKENS = 0.042 * 2  # OpenRouter's listed input price, doubled to err high
-DAILY_USD_BUDGET = 0.30  # owner, 2026-09-30
+TOTAL_DAILY_USD = 0.30  # owner, 2026-09-30: every Jev use together
+PHONE_DAILY_USD = 0.05  # functions/api/jev.js's lane: the Ask bar, Jev's read, Read with Jev
+DAILY_USD_BUDGET = round(TOTAL_DAILY_USD - PHONE_DAILY_USD, 2)  # J25: the hourly run's lane
 QUESTIONS_VERSION = "shadow-v1"
 CACHE_PATH = ".cache/jev.json"
 CACHE_SCHEMA = 1
@@ -640,7 +642,9 @@ def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=e
     elif openrouter_key(env):
         route, model, unit, cost = "openrouter", env.get("JEV_MODEL") or OPENROUTER_MODEL, "usd", usd
         try:
-            budget = max(0.0, float(daily_usd if daily_usd is not None else env.get("JEV_DAILY_USD") or DAILY_USD_BUDGET))
+            # J25: never above the hourly lane, whatever JEV_DAILY_USD asks for, so the
+            # hourly run and the phone together stay within TOTAL_DAILY_USD.
+            budget = min(DAILY_USD_BUDGET, max(0.0, float(daily_usd if daily_usd is not None else env.get("JEV_DAILY_USD") or DAILY_USD_BUDGET)))
         except ValueError:
             budget = DAILY_USD_BUDGET
         client = OpenRouterJev(openrouter_key(env), model=model, post=post)

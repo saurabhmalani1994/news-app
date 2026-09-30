@@ -139,8 +139,9 @@ jobs:
 
       # J3: Jev in shadow mode. It never fails the publish and never changes the page:
       # it writes dist/jev.json, which the Health screen shows. J4: OpenRouter first,
-      # when the OPENROUTER_API_KEY secret is set, under a daily dollar cap (the
-      # JEV_DAILY_USD repository variable, default 0.10). Otherwise Workers AI with the
+      # when the OPENROUTER_API_KEY secret is set, under a daily dollar cap (J25: the
+      # hourly lane, $0.25 of the owner's $0.30 a day, the phone keeping $0.05 in
+      # functions/api/jev.js; JEV_DAILY_USD can lower it, never raise it). Otherwise Workers AI with the
       # pipeline token and B7's zero-charge plan check. With neither, it asks nothing.
       # J20: --apply splits group members Jev reads as a different event out of their
       # group and marks members for the other-side pick; the new pool must pass
