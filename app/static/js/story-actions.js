@@ -53,7 +53,7 @@ import { raisedTopics, loadReserve, mergeReserve, reserveRow, addedMessage } fro
 // labels only, cached per story on this phone, and change nothing in the profile.
 import { askJev } from "./jev/client.js";
 import { storyState, analysisCache, hourlyAnswers, questionsLeft } from "./jev/story.js";
-import { renderAnalysis, readWithJev } from "./jev/story-view.js";
+import { renderAnalysis } from "./jev/story-view.js";
 
 function currentHistoryTerms() {
   return [seenPenaltyTerm(summaryToHistory(readSummary(window.localStorage)))];
@@ -329,14 +329,44 @@ async function doJev({ li, sid, attrs, facts }) {
     h.textContent = facts.title;
     content.push(h);
   }
-  content.push(readWithJev({
-    hasBody: facts.has_body,
-    hourly: Boolean(hourly),
-    onClick: (button) => readLive({ li, sid, facts, hourly, button, opener }),
-  }));
+  // J32 (owner): asking Jev for more happens only with the article open, from its
+  // Jev bar (js/jev/read-view.js); this sheet shows what Jev has already said.
+  content.push(askInArticle(facts.has_body, Boolean(hourly)));
   await sheetClosed();
   openSheet({ title: "Jev's read", content, opener });
 }
+
+/** J32: where to ask Jev more about a story: in the article, when Almanac can open it. */
+function askInArticle(hasBody, hourly) {
+  const p = document.createElement("p");
+  p.className = "why-scale-note jev-note";
+  const first = hourly ? "" : "Jev hasn't read this story in its hourly run yet. ";
+  p.textContent = first + (hasBody
+    ? "To ask Jev more (the kind of story, its significance, the headline's tone), open the article with Read here and tap Ask Jev about this story at the top."
+    : hourly ? "Almanac can't open this outlet's full text, so these hourly answers are what Jev has for it."
+      : "Almanac can't open this outlet's full text, so there is nothing more to ask it about here.");
+  return p;
+}
+
+/** J32: "Ask Jev about this story" from the open article (js/jev/read-view.js): Jev's
+ * saved answers when there are any, else the live read with the article's own text, the
+ * sheet opening over the reader. */
+document.addEventListener("almanac:ask-jev", async (event) => {
+  const { sid, title, text, button } = event.detail || {};
+  if (!sid || !button) return;
+  const input = getInput();
+  const li = document.querySelector(`#section-today li.story[data-sid="${CSS.escape(sid)}"]`)
+    || document.querySelector(`li.story[data-sid="${CSS.escape(sid)}"]`);
+  const facts = li ? cardFacts(li, input) : { title: title || "", url: "", has_body: true, image: null };
+  const saved = jevCache.get(sid);
+  if (saved) {
+    openSheet({ title: "Jev's read", content: analysisContent(saved, facts, true, ruleTopicsOf(sid)), opener: button });
+    return;
+  }
+  const attrs = storyAttributes(input, sid, li?.dataset.face || null);
+  const hourly = hourlyAnswers(await hourlyDoc(), storyArticleIds(sid, attrs));
+  await readLive({ li, sid, facts, hourly, button, opener: button, articleText: text || "" });
+});
 
 /** J22: the rules' topics for an article, from the page's own ranking input. */
 function ruleTopicsOf(id) {
@@ -356,9 +386,10 @@ function analysisContent(result, facts, cached, ruleTopics = null) {
 
 /** The live step: the questions the hourly run left, with the article's text when the
  * reader has it; the sheet then reopens with everything Jev said. */
-async function readLive({ li, sid, facts, hourly, button, opener }) {
+async function readLive({ li, sid, facts, hourly, button, opener, articleText: given = null }) {
   if (button.getAttribute("aria-busy") === "true") return;
   button.setAttribute("aria-busy", "true");
+  const label = button.textContent;
   button.textContent = "Jev is reading…";
   const answers = { ...(hourly?.answers || {}) };
   const left = questionsLeft(answers);
@@ -367,7 +398,7 @@ async function readLive({ li, sid, facts, hourly, button, opener }) {
   let liveFailed = "";
   let fullText = false;
   try {
-    const articleText = facts.has_body ? await bodyText(li) : "";
+    const articleText = given !== null ? given : facts.has_body && li ? await bodyText(li) : "";
     fullText = Boolean(articleText);
     const live = await askJev(storyState(getInput(), sid, facts.title, articleText), left);
     Object.assign(answers, live.answers);
@@ -385,7 +416,13 @@ async function readLive({ li, sid, facts, hourly, button, opener }) {
   const result = { answers, missing, model, full_text: fullText, hourly: hourly ? Object.keys(hourly.answers).length : 0,
     live_failed: liveFailed, at: nowIso() };
   // Kept only when complete and real: a partial answer is asked again next time.
-  if (Object.keys(answers).length && model !== "mock-jev" && !liveFailed) jevCache.put(sid, result);
+  button.removeAttribute("aria-busy");
+  button.textContent = label;
+  if (Object.keys(answers).length && model !== "mock-jev" && !liveFailed) {
+    jevCache.put(sid, result);
+    window.almanacFillTimes?.(); // J31: the card now says Jev read it
+    button.textContent = "Show Jev's answers";
+  }
   closeSheet();
   if (!Object.keys(answers).length) {
     showToast("Jev couldn't read this story.");

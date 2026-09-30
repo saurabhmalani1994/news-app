@@ -53,23 +53,7 @@ function verdictBlock(verdict) {
 /** J12: the button that asks Jev live, under the hourly answers (or alone when the hourly
  * run has not read the story yet). The words say what it costs in time: a read of the
  * full article when Almanac has it, else three more questions about the story. */
-/** J30: the sheet's one button, "Ask Jev about this story" (the owner's words), and what
- * it does. Named apart from the reader's "Read with Jev", which marks the key sentences
- * in the article. */
-export function readWithJev({ hasBody, hourly, onClick }) {
-  const box = el("div", "sheet-form jev-actions");
-  if (!hourly) box.append(el("p", "why-scale-note jev-note", "Jev hasn't read this story in its hourly run yet."));
-  const button = el("button", "sheet-submit jev-read", "Ask Jev about this story");
-  button.type = "button";
-  button.addEventListener("click", () => onClick(button));
-  box.append(button, el("p", "why-scale-note jev-note",
-    hasBody ? "Asks Jev now. Jev reads the whole article and adds the kind of story, its significance and the headline's tone."
-      : "Asks Jev now. Jev reads the headlines and summary (this outlet doesn't share its full text) and adds the kind of story, its significance and the headline's tone."));
-  if (hasBody) box.append(el("p", "why-scale-note jev-note", MARKS_TIP));
-  return box;
-}
 
-const MARKS_TIP = "To see the key sentences marked in the article itself, open it with Read here and tap Read with Jev at the top.";
 
 /** The sheet body for one story's analysis. */
 export function renderAnalysis({ answers, missing = [], headline = "", cached = false, fullText = false, model = "", hourly = 0, liveFailed = "", live = true, ruleTopics = null, at = "" }) {
@@ -108,7 +92,6 @@ export function renderAnalysis({ answers, missing = [], headline = "", cached = 
   if (hourly && live) notes.push(`${hourly} answer${hourly === 1 ? "" : "s"} from the hourly Jev run.`);
   if (liveFailed) notes.push(`Jev couldn't answer the rest just now (${liveFailed}).`);
   if (model === "mock-jev") notes.push("Local test answers from the stand-in, not the real Jev.");
-  if (live && fullText) notes.push(MARKS_TIP);
   nodes.push(el("p", "why-scale-note jev-note", notes.join(" ")));
   return nodes;
 }

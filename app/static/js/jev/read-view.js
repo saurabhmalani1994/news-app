@@ -11,6 +11,7 @@ import { readingBlocks, readingQuestions, readingView, readingDensity, readCache
 // J19: each read and each Skim or Hide marks, recorded on this phone for the Health screen.
 import { recordRead, recordEvent } from "./read-stats.js";
 import { whenRead } from "./story-view.js";
+import { analysisCache } from "./story.js";
 
 function record(fn, ...args) {
   try {
@@ -121,10 +122,21 @@ function applyReading(body, elements, blocks, view, bar) {
 }
 
 /** The bar at the top of a full-text article: "Read with Jev", then Skim and Hide marks. */
-export function readBar({ id, body, headline, outlet }) {
+export function readBar({ id, body, headline, outlet, sid = "" }) {
   const bar = el("div", "jev-read-bar");
   const read = el("button", "jev-read-go", "Read with Jev");
   read.type = "button";
+  // J32 (owner): asking Jev about the story lives here, with the article open. The
+  // story menu's handler (story-actions.js, "almanac:ask-jev") shows Jev's saved answers
+  // or asks with this article's own text, in the Jev's read sheet over the reader.
+  const ask = el("button", "jev-read-go jev-ask-go", analysisCache(window.localStorage).get(sid) ? "Show Jev's answers" : "Ask Jev about this story");
+  ask.type = "button";
+  ask.hidden = !sid;
+  ask.addEventListener("click", () => {
+    if (ask.getAttribute("aria-busy") === "true") return;
+    const text = paragraphsOf(body).map((n) => n.textContent.trim()).join("\n\n");
+    document.dispatchEvent(new CustomEvent("almanac:ask-jev", { detail: { sid, title: headline, text, button: ask } }));
+  });
   const note = el("p", "jev-read-note", INTRO);
   const skim = el("button", "jev-read-toggle", "Skim");
   skim.type = "button";
@@ -133,27 +145,21 @@ export function readBar({ id, body, headline, outlet }) {
   const hide = el("button", "jev-read-toggle", "Hide marks");
   hide.type = "button";
   hide.hidden = true;
-  bar.append(read, skim, hide, note);
-  // J30: an article Jev has already read on this phone says so before the tap, so
-  // showing its marks again never looks like a new call.
-  const saved = cache.get(id);
-  if (saved) {
-    read.textContent = "Show Jev's marks";
-    const when = whenRead(saved.at);
-    note.textContent = `Jev has read this article${when ? ` (${when})` : ""}. Showing its marks again asks Jev nothing.`;
-  }
+  bar.append(read, ask, skim, hide, note);
 
-  const show = (answers) => {
+  const show = (answers, { savedAt = null } = {}) => {
     const elements = paragraphsOf(body);
     const blocks = readingBlocks(elements.map((n) => n.textContent), { headline, outlet });
     const view = readingView(answers, blocks);
     const drawn = applyReading(body, elements, blocks, view, bar);
     const d = readingDensity(view, blocks);
-    record(recordRead, d);
+    if (!savedAt) record(recordRead, d); // J31: a saved reading shown again is not a new read
     const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+    const when = savedAt ? whenRead(savedAt) : "";
+    const again = savedAt ? ` Jev read this article earlier${when ? ` (${when})` : ""}; showing it again asked Jev nothing.` : "";
     note.textContent = drawn
-      ? `Jev marked ${plural(d.marked, "passage")} across ${plural(d.paragraphs, "paragraph")}: ${plural(view.takeaways.length, "takeaway")} above, ${plural(view.points.length, "key point")} in the text. The words are the publisher's.`
-      : "Jev wasn't sure of any takeaway in this article, so nothing is marked.";
+      ? `Jev marked ${plural(d.marked, "passage")} across ${plural(d.paragraphs, "paragraph")}: ${plural(view.takeaways.length, "takeaway")} above, ${plural(view.points.length, "key point")} in the text. The words are the publisher's.${again}`
+      : `Jev wasn't sure of any takeaway in this article, so nothing is marked.${again}`;
     read.hidden = true;
     skim.hidden = !drawn;
     hide.hidden = false;
@@ -162,7 +168,7 @@ export function readBar({ id, body, headline, outlet }) {
   read.addEventListener("click", async () => {
     if (read.getAttribute("aria-busy") === "true") return;
     const saved = cache.get(id);
-    if (saved) { show(saved.answers); return; }
+    if (saved) { show(saved.answers, { savedAt: saved.at || "earlier" }); return; }
     read.setAttribute("aria-busy", "true");
     read.textContent = "Jev is reading…";
     const elements = paragraphsOf(body);
@@ -172,6 +178,7 @@ export function readBar({ id, body, headline, outlet }) {
       const results = await Promise.all(calls.map((questions) => askJev(blocks.state, questions)));
       const answers = Object.assign({}, ...results.map((r) => r.answers));
       if (!results.some((r) => r.model === "mock-jev")) cache.put(id, { answers, at: new Date().toISOString() });
+      globalThis.window?.almanacFillTimes?.(); // J31: the card now says Jev read it
       show(answers);
     } catch (error) {
       record(recordEvent, "error");
@@ -187,6 +194,11 @@ export function readBar({ id, body, headline, outlet }) {
     skim.setAttribute("aria-pressed", String(on));
     if (on) record(recordEvent, "skim");
   });
+  // J31: an article Jev has already read on this phone opens with its marks shown, no
+  // tap and no call; Skim and Hide marks are one tap away. Drawn once the bar is in the
+  // page (the reader adds it right after this returns).
+  const saved = cache.get(id);
+  if (saved) queueMicrotask(() => { if (bar.isConnected) show(saved.answers, { savedAt: saved.at || "earlier" }); });
   hide.addEventListener("click", () => {
     record(recordEvent, "hide");
     clearReading(body);
