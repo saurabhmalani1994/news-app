@@ -598,19 +598,22 @@ STORY = (
     '<span class="story-body">{media}<span class="headline{headline_mod}">{title}</span>{dek}'
     '<span class="meta">{meta}</span>{times}</span>{close}{lean_hit}{acts}{other}</li>'
 )
-# J22: when the card's article was written and when Almanac first pulled the story, as
-# ISO times the phone writes out in its own time zone (js/story-times.js, a classic
-# script right after the lists). The line's height is fixed, so filling it moves nothing.
+# J22, J29: when the card's article was published and when Almanac first added it, as ISO
+# times the phone writes out with their dates in its own time zone (js/story-times.js, a
+# classic script right after the lists). The line's height is fixed, so filling it moves
+# nothing.
 TIMES = '<span class="story-times" data-written="{written}" data-pulled="{pulled}"></span>'
 
 
 def _times(story, article, by_id):
-    """The TIMES line for a row, or '' when the article has no usable time."""
+    """The TIMES line for a row, or '' when the article has no usable time. Both times
+    are the card's own article's (the owner found the story's earliest pull time beside
+    this article's publish time confusing)."""
     written = article.get("published_at")
     if not _parse_time(written):
         return ""
-    pulled = sorted(t for t in ((by_id.get(i) or {}).get("fetched_at") for i in story.article_ids) if _parse_time(t))
-    return TIMES.format(written=escape(written, quote=True), pulled=escape(pulled[0], quote=True) if pulled else "")
+    pulled = article.get("fetched_at") if _parse_time(article.get("fetched_at")) else ""
+    return TIMES.format(written=escape(written, quote=True), pulled=escape(pulled, quote=True))
 # S13 other-side slot: one attached link under a many-outlet card, to the same story as
 # an outlet of the lean least seen on this page tells it (app/static/js/passes.js says
 # which and why). Its own link beside the card's, never inside it. tiers.js draws the
@@ -891,6 +894,8 @@ def face_records(stories, by_id, source_names, now, bv):
             continue
         for article in members:
             record = {"t": smart_quotes(article.get("title", "")), "a": relative_age(article.get("published_at"), now)}
+            if _parse_time(article.get("fetched_at")):
+                record["f"] = article["fetched_at"]  # J29: the face's own added time (tiers.js placeFace)
             deks = _fitted_deks(article)
             if deks:
                 record["d"] = deks
