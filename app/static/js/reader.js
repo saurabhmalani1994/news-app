@@ -392,7 +392,7 @@ function fill(id, facts) {
     const lede = fragment.querySelector("p");
     if (dek && lede && sameText(dek.textContent, lede.textContent)) lede.remove();
     body.replaceChildren(fragment);
-    body.prepend(readBar({ id, body, headline: facts.title || "", outlet: record.source_name || facts.source || "" }));
+    body.prepend(readBar({ id, body, headline: facts.title || "", outlet: record.source_name || facts.source || "", sid: facts.sid || "" }));
     const end = linkOut(record.url || facts.href, record.source_name || facts.source);
     const thumbs = await thumbsRow(id, facts.sid);
     if (mine === token && current?.id === id) article.append(end, thumbs);

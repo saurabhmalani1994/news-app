@@ -175,3 +175,14 @@ export function questionsLeft(answers) {
 }
 
 export { STORY_QUESTIONS };
+
+/** J33: Read with Jev's story line, "Analysis · Important · Calm headline", from the
+ * story questions it adds (kind of story, significance, headline tone): only what Jev was
+ * sure of or leaning towards; "" when there is none. */
+export function aboutLine(answers) {
+  if (!answers) return "";
+  return analysisView(answers).rows
+    .filter((r) => ["story_type", "significance", "tone"].includes(r.key) && ["sure", "lean", "unrated"].includes(r.status))
+    .map((r) => (r.key === "tone" ? `${r.value} headline` : r.value))
+    .join(" \u00b7 ");
+}

@@ -8,15 +8,24 @@
 // lists, so the rows it fills are not yet painted; the line's height is fixed in
 // style.css, so nothing moves. Rows the other tabs clone later carry the text with them;
 // a row the device re-fronts (tiers.js placeFace) calls window.almanacFillTimes on itself.
+// J31: a story the owner has asked Jev about, or read with Jev, on this phone adds
+// "Jev read" to its line (js/jev/story.js CACHE_KEY and js/jev/read.js READ_CACHE_KEY,
+// read here directly: a classic script cannot import them); opening it again shows the
+// saved answers or marks without asking Jev.
 (function () {
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  // "5:15 a.m."
+  function clock(ms) {
+    var d = new Date(ms);
+    var h = d.getHours();
+    return (h % 12 || 12) + ":" + String(d.getMinutes()).padStart(2, "0") + (h < 12 ? " a.m." : " p.m.");
+  }
 
   // "Sep 30, 5:15 a.m."
   function when(ms) {
     var d = new Date(ms);
-    var h = d.getHours();
-    return MONTHS[d.getMonth()] + " " + d.getDate() + ", " + (h % 12 || 12) + ":" +
-      String(d.getMinutes()).padStart(2, "0") + (h < 12 ? " a.m." : " p.m.");
+    return MONTHS[d.getMonth()] + " " + d.getDate() + ", " + clock(ms);
   }
 
   // Keep in step with app/build.py relative_age.
@@ -29,8 +38,24 @@
 
   var AGE_RE = /\d+(?: min|[hd]) ago$/;
 
+  function saved(key) {
+    try {
+      var data = JSON.parse(localStorage.getItem(key) || "{}");
+      return data && typeof data === "object" ? data : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function jevRead() {
+    var asked = {};
+    Object.keys(saved("almanac.jev.story.v1")).forEach(function (k) { asked[k.slice(k.indexOf("|") + 1)] = true; });
+    return { asked: asked, read: saved("almanac.jev.read.v4") };
+  }
+
   function fill(root) {
     var now = Date.now();
+    var jev = jevRead();
     (root || document).querySelectorAll(".story-times").forEach(function (line) {
       var written = Date.parse(line.getAttribute("data-written") || "");
       var added = Date.parse(line.getAttribute("data-pulled") || "");
@@ -39,9 +64,16 @@
         return;
       }
       var parts = ["Published " + when(written)];
-      if (!isNaN(added) && added >= written) parts.push("Added " + when(added));
-      line.textContent = parts.join(" \u00b7 ");
+      // The added day only when it is not the published day, so the line stays short.
+      if (!isNaN(added) && added >= written) {
+        parts.push("Added " + (new Date(added).toDateString() === new Date(written).toDateString() ? clock(added) : when(added)));
+      }
       var li = line.closest("li");
+      var link = li && li.querySelector(".story-link");
+      if (li && (jev.asked[li.getAttribute("data-sid")] || (link && link.getAttribute("data-body") && jev.read[link.getAttribute("data-body")]))) {
+        parts.push("Jev read");
+      }
+      line.textContent = parts.join(" \u00b7 ");
       var age = li && li.querySelector(".meta-age");
       if (age && AGE_RE.test(age.textContent)) age.textContent = age.textContent.replace(AGE_RE, ago(written, now));
       var second = li && li.querySelector(".meta-line--2[data-age]");

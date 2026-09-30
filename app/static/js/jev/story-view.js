@@ -5,6 +5,22 @@
 
 import { sortedBy } from "./sorted-by.js";
 import { analysisView, confidenceText } from "./story.js";
+import { formatPublished } from "../reader/core.js";
+
+/** J30: "Oct 1, 9:05 a.m." for a saved reading's time, or "". */
+export function whenRead(iso) {
+  return formatPublished(iso).replace(/, \d{4},/, ",");
+}
+
+/** J30: the first line of Jev's read: what Jev has already read, and whether showing it
+ * asked Jev anything now, so a second look never looks like a second call. */
+export function readStatus({ live, cached, at, fullText }) {
+  if (!live) return "From Jev's hourly run, which read the headline and summary. Showing this asked Jev nothing new.";
+  const what = fullText ? "the whole article" : "the headlines and summary";
+  const when = whenRead(at);
+  if (cached) return `Jev's answers, saved on this phone (Jev read ${what}${when ? `, ${when}` : ""}). Showing them again asked Jev nothing.`;
+  return `Jev's answers, just now. Jev read ${what}.`;
+}
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -37,23 +53,14 @@ function verdictBlock(verdict) {
 /** J12: the button that asks Jev live, under the hourly answers (or alone when the hourly
  * run has not read the story yet). The words say what it costs in time: a read of the
  * full article when Almanac has it, else three more questions about the story. */
-export function readWithJev({ hasBody, hourly, onClick }) {
-  const box = el("div", "sheet-form jev-actions");
-  if (!hourly) box.append(el("p", "why-scale-note jev-note", "Jev hasn't read this story in its hourly run yet."));
-  const button = el("button", "sheet-submit jev-read", hasBody ? "Read the full article with Jev" : "Ask Jev about this story");
-  button.type = "button";
-  button.addEventListener("click", () => onClick(button));
-  box.append(button, el("p", "why-scale-note jev-note",
-    hasBody ? "Jev reads the article and adds the kind of story, its significance and the headline's tone."
-      : "Jev reads the headlines and summary and adds the kind of story, its significance and the headline's tone."));
-  return box;
-}
+
 
 /** The sheet body for one story's analysis. */
-export function renderAnalysis({ answers, missing = [], headline = "", cached = false, fullText = false, model = "", hourly = 0, liveFailed = "", live = true, ruleTopics = null }) {
+export function renderAnalysis({ answers, missing = [], headline = "", cached = false, fullText = false, model = "", hourly = 0, liveFailed = "", live = true, ruleTopics = null, at = "" }) {
   const view = analysisView(answers, missing);
   const nodes = [];
   if (headline) nodes.push(el("p", "why-headline", headline));
+  nodes.push(el("p", "why-scale-note jev-read-status", readStatus({ live, cached, at, fullText })));
   if (view.verdict) nodes.push(verdictBlock(view.verdict));
   const list = el("div", "why-rows jev-rows");
   for (const r of view.rows) {
@@ -78,15 +85,13 @@ export function renderAnalysis({ answers, missing = [], headline = "", cached = 
   }
   const notes = [];
   if (view.missing) notes.push(`Jev left ${view.missing} question${view.missing === 1 ? "" : "s"} unanswered.`);
-  if (!live) notes.push("From Jev's hourly run, which reads each article's headline and summary.");
-  else notes.push(fullText
+  if (live) notes.push(fullText
     ? "Jev read the full article, the other outlets' headlines and the summary."
     : "Jev read the headlines, outlets and summary only: this outlet doesn't publish its full text.");
   notes.push("A percentage beside an answer is Jev's confidence in it; \u201clikely\u201d means Jev leaned that way, and \u201cA or B\u201d means its top two were too close to call. For an \u201cAbout\u2026\u201d row, the percentage is Jev's probability that the story is about that.");
   if (hourly && live) notes.push(`${hourly} answer${hourly === 1 ? "" : "s"} from the hourly Jev run.`);
   if (liveFailed) notes.push(`Jev couldn't answer the rest just now (${liveFailed}).`);
   if (model === "mock-jev") notes.push("Local test answers from the stand-in, not the real Jev.");
-  if (cached) notes.push("Saved from an earlier analysis on this phone.");
   nodes.push(el("p", "why-scale-note jev-note", notes.join(" ")));
   return nodes;
 }

@@ -4032,6 +4032,16 @@ body {
   background: var(--color-nav-surface);
 }
 
+/* J33: what Jev says the story is, one quiet line above the Takeaways. */
+.jev-about {
+  margin: 0 0 12px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--color-headline);
+}
+
 .jev-takeaways-head {
   margin: 0 0 4px;
   font-family: var(--font-sans);

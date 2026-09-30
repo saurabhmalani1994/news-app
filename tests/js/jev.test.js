@@ -769,3 +769,26 @@ test("a spent budget reads as its own plain message on the phone", async () => {
   const fetchImpl = async () => ({ ok: false, status: 429, redirected: false, json: async () => ({ reason: "daily_budget" }) });
   await assert.rejects(askJev({}, {}, { fetchImpl, online: true }), (e) => e.kind === "budget" && /used up/.test(e.message));
 });
+
+// --- J30: what Jev has already read is said before the tap ---
+
+test("Jev's read says what Jev already read and that showing it again asks nothing", async () => {
+  const { readStatus, whenRead } = await import("../../app/static/js/jev/story-view.js");
+  assert.match(readStatus({ live: false }), /^From Jev's hourly run, which read the headline and summary\. Showing this asked Jev nothing new\.$/);
+  const saved = readStatus({ live: true, cached: true, at: "2026-10-01T01:05:00Z", fullText: true });
+  assert.match(saved, /^Jev's answers, saved on this phone \(Jev read the whole article, [A-Z][a-z]{2,4}\.? \d{1,2}, \d{1,2}:\d\d [ap]\.m\.\)\. Showing them again asked Jev nothing\.$/);
+  assert.doesNotMatch(saved, /\.\./, "never two full stops in a row");
+  assert.equal(readStatus({ live: true, cached: false, fullText: false }), "Jev's answers, just now. Jev read the headlines and summary.");
+  assert.doesNotMatch(whenRead("2026-10-01T01:05:00Z"), /2026/);
+  assert.equal(whenRead("not a time"), "");
+});
+
+test("Read with Jev's story line names only what Jev was sure of or leaning towards (J33)", async () => {
+  const { aboutLine } = await import("../../app/static/js/jev/story.js");
+  const sure = { story_type: { label: "Analysis", confidence: 0.8 }, significance: { label: "Important", confidence: 0.7 },
+    tone: { label: "Calm", confidence: 0.9 } };
+  assert.equal(aboutLine(sure), "Analysis \u00b7 Important \u00b7 Calm headline");
+  assert.equal(aboutLine({ ...sure, significance: { label: "Important", confidence: 0.2 } }), "Analysis \u00b7 Calm headline", "an unsure answer is left out");
+  assert.equal(aboutLine({ sentiment: { label: "Good news", confidence: 0.9 } }), "", "only the three story questions");
+  assert.equal(aboutLine(null), "");
+});
