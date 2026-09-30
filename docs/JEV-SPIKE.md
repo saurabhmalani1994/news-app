@@ -138,3 +138,14 @@ and Cloudflare Workers AI otherwise (to be added later).
   index. The app reads them by index and names them from its own criteria.
 - **Cost and speed:** 453 input tokens cost $0.000019 ($0.042 per million, as listed);
   0.58 s for three questions.
+
+## Known limitations (owner accepted, to fix later)
+
+- **Read with Jev answers live on one phone.** The marks (which sentence numbers Jev
+  picked, `almanac.jev.read.v4`, the last 100 articles) and the story line (kind of
+  story, significance, headline tone, `almanac.jev.story.v1`, the last 300 stories) are
+  saved only in that browser's localStorage. Another device, or cleared site data, asks
+  Jev again on the next tap. A later fix could keep them per reader in the INTERESTS KV
+  namespace, as the watch phrases are.
+- **Read with Jev runs only when tapped.** The hourly run reads headlines and summaries;
+  pre-reading every full-text article there is deferred.
