@@ -178,7 +178,7 @@ def test_the_health_section_escapes_feed_titles(tmp_path, monkeypatch):
     doc = js.run(p, NOW, env=ENV, cache_path=tmp_path / "j.json", post=api.post, get=api.get)
     from app.health import render_jev_articles
     html = render_jev(doc) + render_jev_articles(doc, p)
-    assert "Jev today" in html and "How Jev is doing" in html and "&lt;b&gt;AI&lt;/b&gt; chips &amp; more" in html and "<b>" not in html
+    assert "Jev today" in html and "Jev scoreboard" in html and "&lt;b&gt;AI&lt;/b&gt; chips &amp; more" in html and "<b>" not in html
     assert render_jev(None) == ""
     mock = js.run(pool(), NOW, env={"JEV_MOCK": "1"}, cache_path=tmp_path / "m.json")
     assert "local stand-in" in render_jev(mock)
@@ -320,8 +320,8 @@ def test_a_long_report_value_wraps_under_its_label(tmp_path, monkeypatch):
     doc["report"]["confidence"] = {"sure": 971, "lean": 110, "ambiguous": 89, "unsure": 17, "conflict": 3}
     html = render_jev(doc)
     assert "971 sure · 110 leaning · 89 split · 17 unsure · 3 self-contradicting" in html
-    row = html[html.index("How sure Jev was") - 200:html.index("How sure Jev was")]
-    assert "jev-row-long" in row
+    # J23: the fact is short (the share Jev was sure of); the breakdown is the evidence.
+    assert "Answers Jev was sure of</span></span><span class=\"setting-value\">82%" in html
 
 
 
@@ -418,10 +418,10 @@ def test_health_reports_the_splits(tmp_path):
     doc["report"]["groups"] = {"applied": True, "annotated": 1, "split": 2, "dissolved": 1,
                                "examples": [{"title": "Startup unveils <b>AI</b> chip", "anchor": "Council approves flood barrier", "same": 0.05}]}
     html = render_jev(doc)
-    assert "Story versions Jev split off as a different event" in html and "Split off from: Council approves flood barrier (5% the same event)" in html
+    assert "Stories Jev moved to their own card" in html and "Was on the card for: Council approves flood barrier. Jev was 5% sure they are the same event" in html
     assert "&lt;b&gt;AI&lt;/b&gt;" in html
     doc["report"]["groups"] = {"applied": False, "reason": "$.clusters: bad", "annotated": 0, "split": 0, "dissolved": 0, "examples": []}
-    assert "Story groups: not changed this run" in render_jev(doc)
+    assert "Jev did not change any cards this run" in render_jev(doc)
 
 
 def test_health_groups_each_check_under_its_feature(tmp_path):
@@ -429,10 +429,13 @@ def test_health_groups_each_check_under_its_feature(tmp_path):
     doc = js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=FakeOpenRouter(good_answers).post)
     doc["scorecard"] = js.scorecard(doc)
     html = render_jev(doc)
-    assert html.index("Jev today") < html.index("How Jev is doing") < html.index("More Jev numbers")
+    assert html.index("Jev today") < html.index("Jev scoreboard") < html.index("More Jev numbers")
     feature = html.index("Grouping versions and the other side")
     assert feature < html.index("Keeps copies of one story together") < html.index("Sorting articles into sections")
-    assert "Aim: 90% or more." in html and "Aim: 1.5 seconds or less." in html
+    assert "Aim 90% or more" in html and "Aim 1.5 s or less." in html
+    # J23: facts first, evidence one tap down: each check is a fold with its evidence.
+    assert html.count('<details class="jev-fold jev-check">') == len(doc["scorecard"]["checks"])
+    assert "Nothing needs your review." in html or 'id="jev-review"' in html
     assert "syndicated" not in html.lower() and "bucket" not in html.lower(), "no insider words (J22)"
     assert "Check: " not in html and "Feature: " not in html
     assert "nothing it says changes your feed" not in html
@@ -467,3 +470,13 @@ def test_each_article_keeps_the_time_it_was_first_pulled():
     assert [a["fetched_at"] for a in run2["articles"]] == ["2026-09-30T01:17:00Z", "2026-09-30T02:17:00Z"]
     assert first_seen_from(json.dumps(run2).encode()) == {"a": "2026-09-30T01:17:00Z", "b": "2026-09-30T02:17:00Z"}, "a published pool works too"
     assert first_seen_from(b"<html>login</html>") == {}
+
+
+def test_the_hourly_run_never_spends_the_phones_share(tmp_path):
+    """J25: $0.30 a day in all; the phone keeps $0.05, so the hourly run gets at most
+    $0.25 whatever JEV_DAILY_USD says."""
+    assert js.DAILY_USD_BUDGET == 0.25 and js.TOTAL_DAILY_USD == 0.30
+    doc = js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY, "JEV_DAILY_USD": "0.50"}, cache_path=tmp_path / "j.json",
+                 post=FakeOpenRouter(good_answers).post)
+    assert doc["run"]["budget_day"] == 0.25
+    assert "Hourly run spent today" in render_jev(doc) and 'id="jev-phone-spend"' in render_jev(doc)

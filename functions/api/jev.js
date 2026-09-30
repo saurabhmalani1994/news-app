@@ -18,6 +18,14 @@
 // same origin only, JSON only, a size limit, and the question set and state checked in
 // full before anything reaches the model. Nothing is stored and nothing is logged.
 //
+// J25: one daily budget for everything the phone asks (the Ask bar, Jev's read, Read
+// with Jev): PHONE_DAILY_USD of the owner's $0.30 a day, the hourly run keeping the rest
+// (fetcher/jev_shadow.py HOURLY_DAILY_USD). Today's spend is one record in the INTERESTS
+// KV namespace, "jev-spend:phone:<UTC day>" = {"usd", "calls"}, read before a call (a
+// spent budget answers 429 with reason daily_budget) and written after it with the
+// call's own reported cost, or a doubled estimate when OpenRouter reports none. Only the
+// OpenRouter route costs money; Workers AI runs on the free allowance.
+//
 // Local testing (docs/JEV-SPIKE.md): JEV_MOCK=1 in .dev.vars answers from
 // app/static/js/jev/mock.js instead of the model, so the whole path runs with no
 // account and no key.
@@ -31,6 +39,41 @@ export const OPENROUTER_MODEL = "typesafe/jev-1.13";
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/systemone";
 export const MAX_BODY_BYTES = 98304; // J18: a whole article's state plus its questions
 export const TIMEOUT_MS = 10_000;
+export const TOTAL_DAILY_USD = 0.30; // owner, 2026-09-30
+export const PHONE_DAILY_USD = 0.05;
+export const USD_PER_TOKEN = 0.084 / 1e6; // OpenRouter's list price doubled, as jev_shadow.py
+const SPEND_PREFIX = "jev-spend:phone:";
+
+/** Today's phone spend record key, by UTC day. */
+export function spendKey(now = Date.now()) {
+  return SPEND_PREFIX + new Date(now).toISOString().slice(0, 10);
+}
+
+/** {usd, calls} spent by the phone today, or null when there is no KV to read. */
+export async function phoneSpend(env, now) {
+  if (!env.INTERESTS) return null;
+  try {
+    const doc = JSON.parse((await env.INTERESTS.get(spendKey(now))) || "null");
+    const usd = Number(doc?.usd);
+    return { usd: Number.isFinite(usd) && usd >= 0 ? usd : 0, calls: Number.isInteger(doc?.calls) ? doc.calls : 0 };
+  } catch {
+    return { usd: 0, calls: 0 };
+  }
+}
+
+/** A call's cost in dollars: OpenRouter's own usage.cost, else a doubled estimate from
+ * its input tokens, else from the request's size (about 3 bytes a token). */
+export function callCost(raw, requestBytes) {
+  const usage = isObject(raw) && isObject(raw.usage) ? raw.usage : {};
+  if (typeof usage.cost === "number" && usage.cost >= 0) return usage.cost;
+  const tokens = Number.isInteger(usage.input_tokens) ? usage.input_tokens : Math.ceil(requestBytes / 3) + 8;
+  return tokens * USD_PER_TOKEN;
+}
+
+function phoneCap(env) {
+  const set = Number(env.JEV_PHONE_DAILY_USD);
+  return Math.min(Number.isFinite(set) && set >= 0 ? set : PHONE_DAILY_USD, TOTAL_DAILY_USD);
+}
 
 const HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -168,12 +211,29 @@ export async function handle(request, env = {}, deps = {}) {
   const stateOk = validateState(data.state);
   if (!stateOk.ok) return reply(400, { error: stateOk.error });
 
+  // J25: the phone's daily budget, checked before the call on the paid route.
+  const paid = route(env, deps) === "openrouter";
+  const now = deps.now ? deps.now() : Date.now();
+  const spent = paid ? await phoneSpend(env, now) : null;
+  if (spent && spent.usd >= phoneCap(env)) {
+    return reply(429, { error: "Jev's daily budget is used up", reason: "daily_budget" });
+  }
+
   let raw;
   try {
     raw = await runJev(env, { state: data.state, questions: data.questions }, deps);
   } catch (error) {
     const reason = error instanceof JevCallError ? error.reason : `model_error: ${cleanMessage(error)}`;
     return reply(502, { error: "Jev did not answer", reason });
+  }
+  if (spent) {
+    try {
+      await env.INTERESTS.put(spendKey(now), JSON.stringify({
+        usd: Math.round((spent.usd + callCost(raw, text.length)) * 1e6) / 1e6, calls: spent.calls + 1,
+      }), { expirationTtl: 60 * 60 * 24 * 8 });
+    } catch {
+      // A failed write only undercounts this one call; the answer still goes back.
+    }
   }
   const { answers, missing } = normalizeAnswers(data.questions, raw);
   const fallback = route(env, deps) === "openrouter" ? OPENROUTER_MODEL : JEV_MODEL;
@@ -195,6 +255,8 @@ async function status(request, env, deps) {
     key_set: Boolean(raw),
     key_trimmed: Boolean(raw) && raw !== openRouterKey(env),
     key_prefix_ok: openRouterKey(env).startsWith("sk-or-"),
+    // J25: the phone's spend today against its daily budget (Health shows it).
+    phone_budget: which === "openrouter" ? { cap_usd: phoneCap(env), ...((await phoneSpend(env, deps.now ? deps.now() : Date.now())) || { unenforced: true }) } : null,
   });
 }
 

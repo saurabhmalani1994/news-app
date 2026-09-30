@@ -1043,7 +1043,13 @@ def main(argv=None):
         jev = json.loads(jev_path.read_text(encoding="utf-8")) if jev_path.exists() else None
     except (OSError, ValueError):
         jev = None
-    (out / "health.html").write_text(render_health(pool, jev=jev), encoding="utf-8")
+    # J24: the keep-rule trial's report, when the fetcher wrote one beside the pool.
+    keep_path = pool_path.parent / "select.json"
+    try:
+        keep = json.loads(keep_path.read_text(encoding="utf-8")) if keep_path.exists() else None
+    except (OSError, ValueError):
+        keep = None
+    (out / "health.html").write_text(render_health(pool, jev=jev, keep=keep), encoding="utf-8")
     # U2: the You page's source picker reads names, groups, leans and health from here.
     write_source_catalog(pool, out)
     # S37: the CSP and other security headers, for the pages just written (app.csp).
@@ -1051,6 +1057,9 @@ def main(argv=None):
     (out / "_headers").write_text(headers_file(pages), encoding="utf-8")
     if pool_path.resolve() != (out / "pool.json").resolve():
         shutil.copyfile(pool_path, out / "pool.json")
+        # J26: the reserve files the fetcher wrote beside the pool go with it.
+        if (pool_path.parent / "reserve").is_dir():
+            shutil.copytree(pool_path.parent / "reserve", out / "reserve", dirs_exist_ok=True)
     # S18: the service worker precaches the shell just written above (HTML, CSS, JS,
     # fonts, manifest, icons), under a cache name hashed from those exact bytes.
     write_service_worker(out)

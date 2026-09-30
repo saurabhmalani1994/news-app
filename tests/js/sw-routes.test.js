@@ -59,3 +59,9 @@ test("J11: jev.json, the hourly Jev answers, is network-first like the pool", ()
   assert.equal(strategyFor(req(ORIGIN + "/jev.json"), ORIGIN), STRATEGY.POOL);
   assert.equal(strategyFor(req(ORIGIN + "/notjev.json"), ORIGIN), STRATEGY.SHELL);
 });
+
+test("J26: the reserve files are network-first like the pool", () => {
+  assert.equal(strategyFor(req(ORIGIN + "/reserve/index.json"), ORIGIN), STRATEGY.POOL);
+  assert.equal(strategyFor(req(ORIGIN + "/reserve/singapore.json?v=1"), ORIGIN), STRATEGY.POOL);
+  assert.equal(strategyFor(req(ORIGIN + "/reserve/../pool.json"), ORIGIN), STRATEGY.POOL);
+});

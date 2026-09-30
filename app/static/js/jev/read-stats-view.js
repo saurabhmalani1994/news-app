@@ -4,6 +4,8 @@
 // filling it moves nothing above it. Every value is set as text.
 
 import { readingSummary, MIN_READS } from "./read-stats.js";
+// J25: the phone's Jev spend row sits in the same Jev area of Health.
+import "./spend-view.js";
 
 const section = document.getElementById("jev-reading");
 const rows = document.getElementById("jev-reading-rows");

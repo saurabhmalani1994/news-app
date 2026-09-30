@@ -209,13 +209,18 @@ def _list_keys(http_get, base, ns, token):
             url += f"&cursor={quote(cursor, safe='')}"
         doc = _api_json(_get(http_get, url, token))
         for key in doc.get("result") or []:
-            if isinstance(key, dict) and isinstance(key.get("name"), str):
+            # J25: the Jev spend record (functions/api/jev.js) shares the namespace and
+            # is never a reader's interests.
+            if isinstance(key, dict) and isinstance(key.get("name"), str) and not key["name"].startswith(NOT_INTERESTS):
                 names.append(key["name"])
         info = doc.get("result_info") or {}
         cursor = info.get("cursor") if isinstance(info, dict) else ""
         if not cursor or len(names) >= MAX_KEYS:
             break
     return names[:MAX_KEYS]
+
+
+NOT_INTERESTS = ("jev-spend:",)
 
 
 def _parse_value(raw):

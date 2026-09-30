@@ -215,6 +215,13 @@ def test_kv_read_finds_the_namespace_by_title_and_reads_every_key():
     assert any(path.endswith("/values/user%3Abbb%2Fwith%20space") for path, _ in kv.calls)
 
 
+def test_the_jev_spend_record_is_never_read_as_interests():
+    kv = FakeKV(values={"user:aaa": _value(Q1), "jev-spend:phone:2026-09-30": b'{"usd":0.01,"calls":1}'})
+    values, status, _ = watch.read_interests(ENV, kv)
+    assert status == "ok" and len(values) == 1 and len(values[0]["queries"]) == 1
+    assert not any("jev-spend" in path for path, _ in kv.calls if "/values/" in path)
+
+
 def test_kv_403_on_both_tokens_degrades_to_zero_queries():
     kv = FakeKV(values={"u": _value(Q1)}, forbidden={"tok-pipeline", "tok-pages"})
     assert watch.read_interests(ENV, kv) == ([], "http_403", None)

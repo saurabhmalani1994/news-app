@@ -48,6 +48,7 @@ import { standingForm, standingMessage } from "./standing-form.js";
 import { scheduleSync, startSync } from "./interests-sync.js";
 import { pageInput } from "./page-input.js";
 import { orderToday, readOrder } from "./today-order.js";
+import { raisedTopics, loadReserve, mergeReserve, reserveRow, addedMessage } from "./reserve.js";
 // J1: "Analyse with Jev", a typed read of the story (js/jev/*): answers are the app's own
 // labels only, cached per story on this phone, and change nothing in the profile.
 import { askJev } from "./jev/client.js";
@@ -444,6 +445,14 @@ function applyPanel(panel, stories, input, faces = {}, trust = {}) {
   for (const [sid, li] of cache) if (!rows.has(sid)) rows.set(sid, li);
   const order = stories.map((s) => s.id);
   const onPage = new Set(order);
+  // J26: a story pulled in from the reserve has no card yet; it gets one, cloned from
+  // one of the page's own cards (reserve.js reserveRow).
+  const template = document.querySelector("#section-today li.story[data-sid]:not([data-reserve])");
+  for (const sid of order) {
+    if (rows.has(sid) || !input.reserve?.[sid]) continue;
+    const li = reserveRow(sid, input, template);
+    if (li) rows.set(sid, li);
+  }
   for (const [sid, li] of rows) {
     if (onPage.has(sid)) { cache.delete(sid); continue; }
     if (li.isConnected) li.remove();
@@ -468,7 +477,12 @@ function applyPanel(panel, stories, input, faces = {}, trust = {}) {
  * nothing: it builds fresh from window.almanacProfile the first time it is opened. */
 export function rerenderAfterProfileChange(profile, sourcePanel) {
   const input = getInput();
+  // The page shows the default profile until a stored one re-ranks it (rank-gate.js).
+  const before = window.almanacProfile || buildDefaultProfile(input.now);
   window.almanacProfile = profile;
+  // J26: raising a topic also pulls its reserve in (after this render, then once more).
+  const raised = raisedTopics(before, profile);
+  if (raised.length) pullReserve(raised, profile);
   const pages = rankPages(input.pool, profile, input.now, pageOptions(input, { terms: currentHistoryTerms() }));
   // J22: Today in the reader's chosen order (today-order.js); the tabs keep theirs.
   const order = window.almanacTodayOrder || readOrder(window.localStorage);
@@ -480,6 +494,22 @@ export function rerenderAfterProfileChange(profile, sourcePanel) {
     if (panel === sourcePanel) anchoredRerender(panel, run);
     else run();
   }
+}
+
+/** J26: loads the reserve files for `topics`, merges what the page lacks, re-ranks
+ * every built panel once more and says how many stories came in. Quiet when there is
+ * nothing to add or the files cannot be read (offline, another edition). */
+async function pullReserve(topics, profile) {
+  const input = getInput();
+  const { records } = await loadReserve(topics, input.now);
+  const added = mergeReserve(input, records);
+  if (!added.length || window.almanacProfile !== profile) return;
+  // The panel on screen keeps its place (its selected tab names it, tabs.js).
+  const tab = document.querySelector('.tab[role="tab"][aria-selected="true"]');
+  const panel = tab ? document.getElementById(tab.getAttribute("aria-controls")) : null;
+  rerenderAfterProfileChange(profile, panel);
+  const labels = topics.map((t) => profile.topics?.[t]?.label || t);
+  showToast(addedMessage(added.length, labels), { keepAction: true });
 }
 
 async function runProfileAction(li, build, message) {

@@ -297,6 +297,7 @@ PAGE = """<!doctype html>
 <p class="notice-text">{summary_line}</p>{watch_line}
 </section>
 {ledger}
+{keep}
 <section class="settings-section" aria-labelledby="sources-label">
 <h2 class="settings-label" id="sources-label">Sources</h2>
 <p class="settings-hint">Unhealthy and failing sources first, then the rest grouped by bucket.</p>
@@ -481,6 +482,16 @@ def render_jev_articles(doc, pool, now=None):
     return JEV_ARTICLES.format(count=len(read), hint=_esc(hint), groups="\n".join(groups))
 
 
+def _triage_rows(run):
+    """J28: Jev's reading near the keep rule's cut, this run and today."""
+    t = run.get("triage")
+    if not isinstance(t, dict) or not t.get("listed"):
+        return []
+    spend = (f", ${t.get('spent_day', 0):.3f} of ${t.get('budget_day', 0):.2f} today"
+             if run.get("unit") == "usd" else "")
+    return [("Read near the keep cut", f"{t.get('asked', 0)} new, {t.get('cached', 0)} known{spend}")]
+
+
 def _sorted_rows(doc):
     """J22: how many articles Jev read fall in each sorted-by group, when the report
     carries the articles' rule topics (Health's render passes the pool in)."""
@@ -494,7 +505,7 @@ def _budget_row(run):
     """Today's spend against the day's cap, in the route's own unit."""
     spent, cap = run.get("spent_day", 0) or 0, run.get("budget_day", 0) or 0
     if run.get("unit") == "usd":
-        return ("Spent today (OpenRouter)", f"${spent:.3f} of ${cap:.2f}")
+        return ("Hourly run spent today", f"${spent:.3f} of ${cap:.2f}")
     return ("Free allowance used today", f"{spent:.0f} of {cap:.0f} neurons")
 
 
@@ -505,29 +516,45 @@ JEV_TODAY = """<section class="settings-section" aria-labelledby="jev-label" id=
 <h2 class="settings-label" id="jev-label">Jev today</h2>
 <p class="settings-hint">{hint}</p>
 {rows}
+<div class="setting-row" id="jev-phone-spend" hidden><div class="setting-row-text"><span class="setting-label">Your phone's Jev use today</span></div><span class="setting-value" id="jev-phone-spend-value"></span></div>
 </section>"""
+# J25: the phone row is filled on the page from GET /api/jev (js/jev/spend-view.js): the
+# phone's own lane of the owner's $0.30 a day, which the hourly run cannot see.
+# J23: the Jev area follows one rule (the owner's): the first layer is facts, the second
+# is evidence. Each scoreboard line is a fact; opening it shows the evidence behind it
+# (the aim, what was counted, what the check measures, a real example from the run). A
+# check that missed its aim also appears under To review, closed, with the example to
+# look at and what either answer would mean.
 JEV_FEATURES = """<section class="settings-section" aria-labelledby="jev-features-label" id="jev-features">
-<h2 class="settings-label" id="jev-features-label">How Jev is doing</h2>
-<p class="settings-hint">How well Jev is doing at each job. A job is Good when all of its checks are Good. The aims were set before any results came in.</p>
+<h2 class="settings-label" id="jev-features-label">Jev scoreboard</h2>
+<p class="settings-hint jev-score-summary">{summary}</p>
 {features}
+</section>{review}"""
+JEV_FEATURE_ROW = ('<div class="setting-row jev-job"><div class="setting-row-text"><span class="setting-label">{name}</span></div>'
+                   '<span class="setting-value jev-grade jev-grade--{status}">{verdict}</span></div>')
+JEV_CHECK = ('<details class="jev-fold jev-check"><summary class="setting-row"><span class="setting-row-text">'
+             '<span class="setting-label">{label}</span></span>'
+             '<span class="setting-value jev-grade jev-grade--{status}">{value}</span></summary>'
+             '<div class="jev-evidence">{evidence}</div></details>')
+JEV_LINE = '<p class="jev-evidence-line">{text}</p>'
+JEV_REVIEW = """<section class="settings-section" aria-labelledby="jev-review-label" id="jev-review">
+<h2 class="settings-label" id="jev-review-label">To review</h2>
+<p class="settings-hint">Optional. Nothing here changes your feed. Open one to see the example.</p>
+{rows}
 </section>"""
-JEV_FEATURE = """<div class="jev-feature">
-<div class="setting-row"><div class="setting-row-text"><span class="setting-label">{name}</span><span class="setting-sublabel">{about}</span></div><span class="setting-value">{status}</span></div>
-{checks}
-</div>"""
-JEV_CHECK = ('<div class="setting-row setting-row--stack jev-check"><div class="setting-row-text">'
-             '<span class="setting-label">{label}</span>'
-             '<span class="jev-verdict jev-verdict--{status}">{verdict}</span>'
-             '<span class="setting-sublabel jev-check-result">{result}</span>'
-             '<span class="setting-sublabel">{meaning}</span>{examples}</div></div>')
-JEV_EXAMPLE = '<span class="setting-sublabel jev-example"><span class="jev-example-tag">{tag}</span> {text}</span>'
+JEV_REVIEW_ROW = ('<details class="jev-fold jev-review"><summary class="setting-row"><span class="setting-row-text">'
+                  '<span class="setting-label">{label}</span></span><span class="setting-value">1 example</span></summary>'
+                  '<div class="jev-evidence">{evidence}</div></details>')
+JEV_EXAMPLES = ('<details class="jev-fold jev-moved"><summary class="setting-row"><span class="setting-row-text">'
+                '<span class="setting-label">Examples of stories moved</span></span><span class="setting-value">{count}</span></summary>'
+                '<div class="jev-evidence">{rows}</div></details>')
 JEV_NUMBERS = """<details class="settings-section jev-accordion" id="jev-numbers">
 <summary class="settings-label jev-accordion-head">More Jev numbers</summary>
 {rows}
 </details>"""
-JEV_MEANING_ROW = ('<div class="setting-row setting-row--stack jev-row-long"><div class="setting-row-text">'
-                   '<span class="setting-label">{label}: {value}</span>'
-                   '<span class="setting-sublabel">{meaning}</span></div></div>')
+JEV_MEANING_ROW = ('<details class="jev-fold"><summary class="setting-row"><span class="setting-row-text">'
+                   '<span class="setting-label">{label}</span></span><span class="setting-value">{value}</span></summary>'
+                   '<div class="jev-evidence"><p class="jev-evidence-line">{meaning}</p></div></details>')
 
 # J22: each feature (fetcher/jev_shadow.py CHECKS) as the job it does for the reader.
 FEATURE_NAMES = {
@@ -572,52 +599,66 @@ BUCKET_WORDS = {"singapore": "Singapore", "us_politics": "US politics", "ai": "A
                 "europe": "Europe", "latin_america": "Latin America"}
 RUN_STATES = {"ok": "finished", "budget": "stopped at today's spending cap", "time_cap": "stopped at its time limit",
               "api_errors": "finished with errors"}
-STATUS_WORD = {"pass": "Good", "fail": "Needs work", "not_enough_data": "Too early to tell"}
-FEATURE_WORD = {"ready": "Good", "not_ready": "Needs work", "not_enough_data": "Too early to tell"}
+STATUS_WORD = {"pass": "Good", "fail": "Needs work", "not_enough_data": "Too early"}
+FEATURE_WORD = {"ready": "Good", "not_ready": "Needs work", "not_enough_data": "Too early"}
 
 
-def _check_result(c, counted):
-    """A check's value against its aim, in everyday words: "10 of 11 copy pairs kept
-    together. Aim: 90% or more." """
-    more = c["direction"] == ">="
+def _score(c):
+    """A check's value, short: "91%", "1.2 s", "$0.21", or "none yet"."""
+    if c["value"] is None or (c["key"] not in ("latency", "cost") and not c["n"]):
+        return "none yet"
     if c["key"] == "latency":
-        aim = f"Aim: {c['target'] / 1000:.1f} seconds or less."
-        if c["value"] is None:
-            return f"No timings yet. {aim}"
-        return f"The slowest 1 in 10 answers took {c['value'] / 1000:.1f} seconds. {aim}"
+        return f"{c['value'] / 1000:.1f} s"
     if c["key"] == "cost":
-        aim = f"Aim: ${c['target']:.2f} or less."
-        return f"${c['value']:.2f} per 1,000 articles. {aim}" if c["value"] is not None else f"No spending yet. {aim}"
-    aim = f"Aim: {round(100 * c['target'])}% or {'more' if more else 'less'}."
-    if c["value"] is None or not c["n"]:
-        return f"Nothing to count yet. {aim}"
-    part = round(c["value"] * c["n"])
-    return f"{part} of {c['n']} {counted} ({round(100 * c['value'])}%). {aim}"
+        return f"${c['value']:.2f}"
+    if c["key"] == "contradictions":
+        return f"{round(c['value'] * c['n'])} found"
+    return f"{round(100 * c['value'])}%"
+
+
+def _aim(c):
+    """The check's aim and sample, short: "aim 90% or more · 11 pairs"."""
+    more = "or more" if c["direction"] == ">=" else "or less"
+    if c["key"] == "latency":
+        return f"aim {c['target'] / 1000:.1f} s {more}"
+    if c["key"] == "cost":
+        return f"aim ${c['target']:.2f} {more} per 1,000 articles"
+    return f"aim {round(100 * c['target'])}% {more} · {c['n']} counted"
 
 
 def _quote(ref):
     return f"“{ref.get('title', '')}” ({ref.get('source', '')})"
 
 
-def _check_examples(c):
-    """J22: a real article or pair Jev got right and one it missed, from this run."""
-    ex = c.get("examples") or {}
-    out = []
-    for slot, tag in (("hit", "Got right:"), ("miss", "Missed:")):
-        e = ex.get(slot)
-        if not e:
-            continue
-        if c["key"] in ("same_event", "different_event"):
-            text = f"{_quote(e['a'])} and {_quote(e['b'])}. Jev: {round(100 * e.get('p', 0))}% sure they are the same event."
-        else:
-            feed = BUCKET_WORDS.get(e.get("bucket"), e.get("bucket", ""))
-            text = f"{_quote(e)}, from a {feed} feed. Jev said {e.get('got', '')}."
-        out.append(JEV_EXAMPLE.format(tag=_esc(tag), text=_esc(text)))
-    return "".join(out)
+def _miss_text(c):
+    """A failing check's missed example, as the owner would check it, or ''."""
+    e = (c.get("examples") or {}).get("miss")
+    if not e:
+        return ""
+    if c["key"] == "same_event":
+        return (f"{_quote(e['a'])} and {_quote(e['b'])} are the same story from two outlets. "
+                f"Jev was only {round(100 * e.get('p', 0))}% sure they are one event.")
+    if c["key"] == "different_event":
+        return (f"{_quote(e['a'])} and {_quote(e['b'])} are different stories. "
+                f"Jev was {round(100 * e.get('p', 0))}% sure they are one event.")
+    feed = BUCKET_WORDS.get(e.get("bucket"), e.get("bucket", ""))
+    kind = "section" if c["key"] == "section" else "region"
+    return f"{_quote(e)} comes from a {feed} feed, so the check expects {e.get('expected', '')}. Jev's {kind}: {e.get('got', '')}."
+
+
+def _hit_text(c):
+    """A check's example Jev got right, or ''."""
+    e = (c.get("examples") or {}).get("hit")
+    if not e:
+        return ""
+    if c["key"] in ("same_event", "different_event"):
+        return f"Got right: {_quote(e['a'])} and {_quote(e['b'])}. Jev was {round(100 * e.get('p', 0))}% sure they are one event."
+    feed = BUCKET_WORDS.get(e.get("bucket"), e.get("bucket", ""))
+    return f"Got right: {_quote(e)}, from a {feed} feed. Jev said {e.get('got', '')}."
 
 
 def _jev_features(card):
-    """The features section: each feature, its status, then each of its checks."""
+    """The scoreboard (a fact per line, its evidence inside) and To review."""
     checks = card.get("checks") or []
     if not checks:
         return ""
@@ -625,19 +666,33 @@ def _jev_features(card):
     for c in checks:
         if c["feature"] not in order:
             order.append(c["feature"])
-    out = []
+    rows = []
     for feature in order:
-        rows = []
+        state = (card.get("features") or {}).get(feature, "")
+        rows.append(JEV_FEATURE_ROW.format(name=_esc(FEATURE_NAMES.get(feature, feature)), status=_esc(state).replace("_", "-"),
+                                           verdict=_esc(FEATURE_WORD.get(state, ""))))
         for c in (c for c in checks if c["feature"] == feature):
-            label, counted, meaning = CHECK_WORDS.get(c["key"], (c["label"], "", ""))
+            label, _, meaning = CHECK_WORDS.get(c["key"], (c["label"], "", ""))
+            miss = _miss_text(c)
+            early = f"Too early: it needs more answers to judge ({c['n']} so far)." if c["status"] == "not_enough_data" else ""
+            lines = [early, _aim(c).capitalize() + ".", meaning, _hit_text(c), f"Missed: {miss}" if miss else ""]
             rows.append(JEV_CHECK.format(label=_esc(label), status=_esc(c["status"]).replace("_", "-"),
-                                         verdict=_esc(STATUS_WORD.get(c["status"], "")),
-                                         result=_esc(_check_result(c, counted)), meaning=_esc(meaning),
-                                         examples=_check_examples(c)))
-        out.append(JEV_FEATURE.format(name=_esc(FEATURE_NAMES.get(feature, feature)), about=_esc(FEATURE_ABOUT.get(feature, "")),
-                                      status=_esc(FEATURE_WORD.get((card.get("features") or {}).get(feature), "")),
-                                      checks="\n".join(rows)))
-    return JEV_FEATURES.format(features="\n".join(out))
+                                         value=_esc(STATUS_WORD["not_enough_data"] if c["status"] == "not_enough_data"
+                                                    else f"{_score(c)} · {STATUS_WORD.get(c['status'], '')}"),
+                                         evidence="".join(JEV_LINE.format(text=_esc(t)) for t in lines if t)))
+    review = []
+    for c in checks:
+        miss = _miss_text(c) if c["status"] == "fail" else ""
+        if miss:
+            what = ("If Jev's answer looks right to you, the check's answer key is wrong, not Jev. "
+                    "If it looks wrong, Jev needs work here.")
+            review.append(JEV_REVIEW_ROW.format(label=_esc(CHECK_WORDS.get(c["key"], (c["label"],))[0]),
+                                                evidence=JEV_LINE.format(text=_esc(miss)) + JEV_LINE.format(text=_esc(what))))
+    counts = {k: sum(1 for c in checks if c["status"] == k) for k in ("pass", "fail", "not_enough_data")}
+    summary = f"{counts['pass']} good, {counts['fail']} need work, {counts['not_enough_data']} too early to tell. "
+    summary += (f"To review (optional): {len(review)}, listed below." if review else "Nothing needs your review.")
+    return JEV_FEATURES.format(summary=_esc(summary), features="\n".join(rows),
+                               review="\n" + JEV_REVIEW.format(rows="\n".join(review)) if review else "")
 
 
 def render_jev(doc):
@@ -659,6 +714,7 @@ def render_jev(doc):
         ("Last hourly run", f"{state_text}: {run.get('asked', 0)} new articles read, {run.get('cached', 0)} answers reused"
                             + (f", first error {run['first_error']}" if run.get("first_error") else "")),
         ("Articles in your feed Jev has read", _of(r["articles_answered"], r["articles_in_pool"])),
+        *_triage_rows(run),
         *_sorted_rows(doc),
         _budget_row(run),
     ]
@@ -666,19 +722,22 @@ def render_jev(doc):
     if isinstance(groups, dict):
         if groups.get("applied"):
             rows += [
-                ("Story versions Jev split off as a different event", str(groups.get("split", 0))),
-                ("Story groups dissolved (no two left on one event)", str(groups.get("dissolved", 0))),
-                ("Versions marked for the other-side pick", str(groups.get("annotated", 0))),
+                ("Stories Jev moved to their own card", str(groups.get("split", 0))),
+                ("Cards left with one story, so no longer a group", str(groups.get("dissolved", 0))),
+                ("Versions Jev compared for the Other side pick", str(groups.get("annotated", 0))),
             ]
         else:
-            rows.append(("Story groups: not changed this run", groups.get("reason") or "no answers yet"))
+            rows.append(("Jev did not change any cards this run", groups.get("reason") or "no answers yet"))
     # C4: a long value (a run with its first error) wraps under its label instead of
     # running off a phone's screen.
     body = [(LEDGER_ROW_STACKED if len(value) > 28 else LEDGER_ROW).format(label=_esc(label), value=_esc(value))
             for label, value in rows]
-    for ex in (groups or {}).get("examples", [])[:4] if isinstance(groups, dict) else []:
-        body.append(LEDGER_ROW_STACKED.format(label=_esc(ex.get("title", "")),
-                                              value=_esc(f"Split off from: {ex.get('anchor', '')} ({round(100 * ex.get('same', 0))}% the same event)")))
+    moved = (groups or {}).get("examples", [])[:4] if isinstance(groups, dict) else []
+    if moved:  # J23: evidence, one layer down
+        body.append(JEV_EXAMPLES.format(count=len(moved), rows="".join(
+            JEV_LINE.format(text=_esc(f"{ex.get('title', '')}. Was on the card for: {ex.get('anchor', '')}. "
+                                      f"Jev was {round(100 * ex.get('same', 0))}% sure they are the same event, so it moved to its own card."))
+            for ex in moved)))
     hint = ("Every hour Jev reads the new articles and answers the same fixed questions about each one. "
             "Its answers change your feed in two places only: splitting a story group whose versions are not one event, "
             "and choosing the other-side version. Sections, tags and the order of your feed still come from the rules and your profile.")
@@ -691,8 +750,9 @@ def render_jev(doc):
          "The rules tagged AI, and Jev thinks it is unlikely to be about AI. Listed in Articles Jev read."),
         ("AI tag: Jev only", str(ai["jev_only"]),
          "Jev thinks it is likely about AI, and the rules missed it. Listed in Articles Jev read."),
-        ("How sure Jev was", conf_text,
-         "Every multiple-choice answer: sure (top pick clearly ahead), leaning (ahead, less clearly), split (top two nearly tied), unsure (no pick stands out)."),
+        ("Answers Jev was sure of", f"{round(100 * conf.get('sure', 0) / sum(conf.values()))}%" if sum(conf.values()) else "none yet",
+         f"All answers: {conf_text}. Sure means the top pick is clearly ahead, leaning ahead less clearly, "
+         "split the top two nearly tied, unsure no pick stands out."),
     ]
     more = JEV_NUMBERS.format(rows="\n".join(JEV_MEANING_ROW.format(label=_esc(a), value=_esc(b), meaning=_esc(c))
                                               for a, b, c in numbers))
@@ -723,7 +783,116 @@ def _with_sorted_counts(jev, pool):
     return {**jev, "_sorted_counts": counts}
 
 
-def render(pool, sources_path=None, now=None, jev=None):
+# J24: the keep-rule trial (fetcher/keep_rule.py, dist/select.json). Facts first: what
+# the new rule would change, today's number then the new rule's; the evidence (which
+# articles differ and why, how points are earned, the balance by outlet group and lean)
+# is folded underneath.
+KEEP_SECTION = """<section class="settings-section" aria-labelledby="keep-label" id="keep-trial">
+<h2 class="settings-label" id="keep-label">Keep rule trial</h2>
+<p class="settings-hint">{summary}</p>
+{rows}
+</section>"""
+KEEP_FOLD = ('<details class="jev-fold"><summary class="setting-row"><span class="setting-row-text">'
+             '<span class="setting-label">{label}</span></span><span class="setting-value">{value}</span></summary>'
+             '<div class="jev-evidence">{lines}</div></details>')
+KEEP_TERM_WORDS = (
+    ("corroboration", "Covered by other outlets: up to 36 points, more for more independent outlets."),
+    ("lean_span", "Covered across the left-right spread: 8 points."),
+    ("original", "Original reporting, not a wire copy: 10 points."),
+    ("complete", "Full text in the feed: 6 points; a real summary: 3."),
+    ("health", "Outlet failing 3 or more runs in a row: minus 10."),
+    ("paywall", "Paywalled with no full text: minus 6."),
+    ("hard", "Hard news (world, politics, economy, science, conflict): 10 points."),
+    ("recency", "Freshness: 20 points when new, half that at 12 hours old."),
+    ("incumbent", "Already in the last edition: 6 points, so the feed does not churn."),
+)
+
+
+def render_keep(doc, pool):
+    """The Keep rule trial section, or '' without a report."""
+    if not isinstance(doc, dict):
+        return ""
+    if doc.get("state") != "ok":
+        return KEEP_SECTION.format(summary=_esc(f"The trial could not run this hour ({doc.get('error', 'unknown')}). "
+                                                 "Your feed was not affected."), rows="")
+    cap, new = doc["rules"]["cap"], doc["rules"]["score"]
+    names = source_names(pool)
+    g = doc.get("gate") or {}
+    decided = g.get("decided")
+    if doc.get("mode") == "live":
+        how = "you set SELECT_MODE to score" if decided == "forced" else "a week of the trial passed every check"
+        summary = (f"Live: the new rule chose this edition's {new['kept']} articles, because {how}. "
+                   "Numbers read the old rule, then the new one.")
+    else:
+        held = " You set SELECT_MODE to cap, so it stays on the old rule." if decided == "held" else ""
+        summary = (f"Trial only: your feed still uses today's rule (each outlet's first 5 items in feed order). "
+                   f"At the same size, the new rule would keep {new['kept']} articles; {doc['differ']['only_score']} of them are different. "
+                   f"Numbers read today, then the new rule.{held}")
+    m = doc.get("missed") or {}
+    rows = [
+        ("Older than 36 hours", f"{cap['over_36h']} → {new['over_36h']}"),
+        ("In stories 2 or more outlets cover", f"{cap['corroborated']} → {new['corroborated']}"),
+        ("From Singapore outlets", f"{cap['singapore']['outlets']} → {new['singapore']['outlets']}"),
+        ("Tagged Singapore", f"{cap['singapore']['tag']} → {new['singapore']['tag']}"),
+        ("Missed stories last hour", f"{m['cap']} → {m['score']}" if m.get("status") == "ok" else "from next run"),
+        ("Outlets with at least one article", f"{doc['floors']['sources_met']} of {doc['floors']['sources_total']}"),
+    ]
+    body = [LEDGER_ROW.format(label=_esc(label), value=_esc(value)) for label, value in rows]
+    # J28: what Jev adds to the keep rule, facts first.
+    j = doc.get("jev")
+    if isinstance(j, dict):
+        c = j.get("check") or {}
+        share = f"{round(100 * c['share'])}%" if isinstance(c.get("share"), (int, float)) else "none yet"
+        value = ("Counting" if j.get("counting") else "Not counting yet") + f" · read {j.get('read', 0)}"
+        lines = [
+            f"Jev read {j.get('read', 0)} of the articles near the cut: what kind each is (original reporting, analysis, "
+            "opinion, a summary of others, a press release) and whether it names its sources.",
+            f"Its points {'move' if j.get('counting') else 'would move'} {j.get('moved', 0)} articles in or out.",
+            f"Its check: of the articles whose web address marks them opinion, Jev called {c.get('agree', 0)} of "
+            f"{c.get('n', 0)} opinion ({share}). Its points count once that is 80% or more over at least 20.",
+            f"Versions Jev read as a different event no longer count as other outlets covering a story: {j.get('split_off', 0)}.",
+        ]
+        body.append(KEEP_FOLD.format(label="What Jev adds", value=_esc(value),
+                                     lines="".join(JEV_LINE.format(text=_esc(t)) for t in lines)))
+    # J27: when it goes live on its own, facts first, each check one tap down.
+    if g.get("checks"):
+        passed = sum(1 for c in g["checks"] if c["ok"])
+        value = "Live now" if doc.get("mode") == "live" else ("Held on the old rule" if decided == "held"
+                                                              else f"{passed} of {len(g['checks'])} checks pass")
+        lines = "".join(JEV_LINE.format(text=_esc(f"{'Pass' if c['ok'] else 'Not yet'}: {c['label']} ({c['detail']}).")) for c in g["checks"])
+        lines += JEV_LINE.format(text=_esc("It goes live on its own once every check passes over the last 7 days, and goes back "
+                                           "to the old rule on its own if they stop passing. The repository variable "
+                                           "SELECT_MODE=cap holds the old rule."))
+        body.append(KEEP_FOLD.format(label="Going live", value=_esc(value), lines=lines))
+
+    def examples(key):
+        out = []
+        for e in doc["examples"].get(key, []):
+            points = sum(e["terms"].values())
+            out.append(JEV_LINE.format(text=_esc(
+                f"“{e['title']}” ({names.get(e['source_id'], e['source_id'])}, {round(e['age_h'])}h old): {points} points.")))
+        return "".join(out) or JEV_LINE.format(text="None.")
+
+    body.append(KEEP_FOLD.format(label="Articles only the new rule keeps", value=doc["differ"]["only_score"],
+                                 lines=examples("only_score")))
+    body.append(KEEP_FOLD.format(label="Articles only today's rule keeps", value=doc["differ"]["only_cap"],
+                                 lines=examples("only_cap")))
+    body.append(KEEP_FOLD.format(label="How an article earns points", value="9 ways",
+                                 lines="".join(JEV_LINE.format(text=_esc(t)) for _k, t in KEEP_TERM_WORDS)
+                                 + JEV_LINE.format(text=_esc("Nothing about you counts: your topics, trust and reading stay on your phone. "
+                                                             "Each outlet group (Singapore, AI, biotech ...) keeps the same space it has today; "
+                                                             "the rule picks better articles inside it."))))
+    body.append(KEEP_FOLD.format(label="Missed stories: what the count means", value="",
+                                 lines=JEV_LINE.format(text=_esc(
+                                     "A fresh story only one outlet had, which a rule dropped, and which 2 or more outlets "
+                                     "carried an hour later. Fewer is better. No one labels anything: the next hour's coverage decides."))))
+    balance = [JEV_LINE.format(text=_esc(f"{b.replace('_', ' ')}: {c} → {n}")) for b, (c, n) in sorted(doc.get("buckets", {}).items())]
+    leans = [JEV_LINE.format(text=_esc(f"Lean {l}: {c} → {n}")) for l, (c, n) in sorted(doc.get("lean", {}).items())]
+    body.append(KEEP_FOLD.format(label="Balance by outlet group and lean", value="", lines="".join(balance + leans)))
+    return KEEP_SECTION.format(summary=_esc(summary), rows="\n".join(body))
+
+
+def render(pool, sources_path=None, now=None, jev=None, keep=None):
     """The Health screen for this pool. `now` defaults to the pool's own generated_at
     (build time has nothing else to compare against); js/health-age.js immediately
     replaces the age line with the device's real clock, before first paint, the same
@@ -751,6 +920,7 @@ def render(pool, sources_path=None, now=None, jev=None):
         summary_line=_esc(", ".join(bits) + "."),
         watch_line=f'\n<p class="notice-text notice-text--watch" id="watch-counts">{_esc(watch_text)}</p>' if watch_text else "",
         ledger=_render_ledger(counts),
+        keep=render_keep(keep, pool),
         sources=_render_sources(pool, sources_path),
         jev=render_jev(_with_sorted_counts(jev, pool)) + ("\n" + render_jev_articles(jev, pool) if jev else ""),
     )

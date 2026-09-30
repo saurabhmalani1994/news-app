@@ -95,7 +95,9 @@ from fetcher.geo import tag_countries, tag_geo
 from fetcher import best_version, locality
 from fetcher.topics import hard_news_topics, load_topics, tag_article
 from fetcher.health import compute_source_health, fetch_previous_pool, parse_previous_health
-from fetcher.state import DEFAULT_STATE_PATH, embed_budget_from, first_seen_from, load_state, stamp_first_seen, write_state
+from fetcher import keep_rule
+from fetcher.state import (DEFAULT_STATE_PATH, embed_budget_from, first_seen_from, load_state, select_dropped_from,
+                           select_history_from, stamp_first_seen, write_state)
 from fetcher.truth_archive import TRUTH_ARCHIVE_URL, link_clusters, load_archive
 from fetcher import watch as wsearch
 from fetcher import workwatch as wwork
@@ -357,7 +359,8 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                       previous_health=None, previous_pool_status="absent", bodies_out=None,
                       previous_events=None, candidates_out=None, watch=None,
                       watch_budget=wsearch.BUDGET_BYTES, embedder=None, work_budget=wwork.BUDGET_BYTES,
-                      truth_archive_posts=None, truth_archive_status="disabled"):
+                      truth_archive_posts=None, truth_archive_status="disabled", select_out=None,
+                      select_prev=None):
     """Turn fetch results for every source into one pool dict. Pure: no network, no clock.
 
     timings, if a dict is passed, receives the clustering wall time in seconds.
@@ -392,6 +395,12 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
     {id: vector} for the clusterer's embedding term (fetcher.embed.run, wrapped by
     main(), is the only network in it). None, or an empty answer, clusters exactly as
     B2. timings also receives embed_seconds.
+
+    J24: select_out, if a dict is passed, receives {"doc", "dropped"} from the keep-rule
+    trial (fetcher/keep_rule.py), run on the same candidates beside the cap loop in
+    shadow; select_prev is {"ids": the previous pool's article ids, "dropped": the
+    previous run's dropped fresh singletons}. The trial never changes the pool, and an
+    error in it only sets doc.state to "error".
 
     B9: truth_archive_posts is fetcher.truth_archive.load_archive's post list (never
     None from a real run; main() passes [] on a down or broken archive), read as a
@@ -536,27 +545,66 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
         if len({by_id[i]["source_id"] for i in cl["article_ids"]}) > 1:
             multi_source.update(cl["article_ids"])
 
-    articles = []
-    published_urls = set()
-    exempt = []  # W2: watch-tagged articles past the cap, budgeted below
-    for source in sources:
-        kept = extra = 0
-        for article in per_source.get(source["id"], []):
-            if article["url"] in published_urls:
-                drops["duplicate_url"] += 1
-                continue
-            if kept < per_source_cap:
-                kept += 1
-            elif article["id"] in multi_source and extra < cluster_extra_cap:
-                extra += 1
-            elif article.get("watch"):
-                exempt.append(article)
-                continue
-            else:
-                drops["over_cap"] += 1
-                continue
-            published_urls.add(article["url"])
-            articles.append(article)
+    def cap_pass(keep_ids=None):
+        """(articles, urls, exempt, drops) of one pass over every source's items: the cap
+        rule, or (J27) exactly the ids in keep_ids when the keep rule is live. Either way
+        a watch-tagged item not kept is exempt (W2 budgets it below) and every other one
+        not kept is over_cap, so fetched == published + drops still holds."""
+        arts, urls, ex, d = [], set(), [], Counter()
+        for source in sources:
+            kept = extra = 0
+            for article in per_source.get(source["id"], []):
+                if article["url"] in urls:
+                    d["duplicate_url"] += 1
+                    continue
+                if keep_ids is not None:
+                    keep = article["id"] in keep_ids
+                elif kept < per_source_cap:
+                    kept += 1
+                    keep = True
+                elif article["id"] in multi_source and extra < cluster_extra_cap:
+                    extra += 1
+                    keep = True
+                else:
+                    keep = False
+                if not keep:
+                    if article.get("watch"):
+                        ex.append(article)  # W2: watch-tagged articles past the cap, budgeted below
+                    else:
+                        d["over_cap"] += 1
+                    continue
+                urls.add(article["url"])
+                arts.append(article)
+        return arts, urls, ex, d
+
+    articles, published_urls, exempt, cap_drops = cap_pass()
+
+    # J24: the keep-rule trial, on the same candidates (watch-only items left out, as the
+    # cap loop leaves them out), against the cap's own picks. Shadow only.
+    if select_out is not None:
+        try:
+            prev = select_prev or {}
+            ctx = keep_rule.build_context(
+                sources, [c for c in candidates if c["id"] not in watch_only_ids], all_clusters,
+                body_candidates, previous_health, prev.get("ids", ()), now, topics_doc.get("hard_news", ()),
+                jev_cache=prev.get("jev_cache"))
+            doc, dropped = keep_rule.run_shadow(list(ctx["by_id"].values()),
+                                                [a["id"] for a in articles if a["id"] not in watch_only_ids],
+                                                ctx, prev.get("dropped"))
+            doc["generated_at"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+            # J27: the keep rule is live (select_prev["live"], decided in main from a
+            # week of this trial): the same pass, keeping exactly its ids. The old rule
+            # becomes the trial's other side.
+            if prev.get("live") and doc.get("state") == "ok":
+                articles, published_urls, exempt, cap_drops = cap_pass(set(doc.pop("_score_ids")))
+                doc["mode"] = "live"
+            doc.pop("_score_ids", None)
+            triage = doc.pop("_triage", [])  # J28: what Jev reads after this run
+            select_out.update(doc=doc, dropped=dropped, ctx=ctx, triage=triage)  # J26: ctx for the reserve
+        except Exception as exc:  # noqa: BLE001 - the trial never stops a publish
+            select_out.update(doc={"schema_version": keep_rule.SCHEMA_VERSION, "mode": "shadow", "state": "error",
+                                   "error": type(exc).__name__}, dropped=None)
+    drops.update(cap_drops)
 
     # W2: the watch byte budget. Tags on articles that publish anyway count first; then
     # watch-only items and tagged articles past the cap, round robin across queries
@@ -847,6 +895,14 @@ def watch_log_line(wc, watch_input, seconds):
     return line
 
 
+def _read_json(path):
+    """A JSON file's document, or None when it is missing or unreadable."""
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default="dist/pool.json")
@@ -868,6 +924,9 @@ def main(argv=None):
     # B9: TRUTH_ARCHIVE_URL mirrors RELAY_BASE_URL's pattern, a one-line override with
     # no code change if the archive moves.
     ap.add_argument("--truth-archive-url", default=os.environ.get("TRUTH_ARCHIVE_URL", TRUTH_ARCHIVE_URL))
+    # J28: Jev's answers cache (restored before this step) and where the next Jev reading list goes.
+    ap.add_argument("--jev-cache", default=os.environ.get("JEV_CACHE_PATH", ".cache/jev.json"))
+    ap.add_argument("--jev-triage", default=os.environ.get("JEV_TRIAGE_PATH", ".cache/triage.json"))
     args = ap.parse_args(argv)
 
     dump_path = Path(args.dump_candidates) if args.dump_candidates else None
@@ -929,6 +988,13 @@ def main(argv=None):
         return vectors
 
     first_seen = first_seen_from(previous_bytes)  # J22: when each article was first pulled
+    select_out = {}  # J24: the keep-rule trial's report
+    # J27: whether the keep rule chooses this pool: SELECT_MODE, then a week of trial.
+    select_history = keep_rule.trim_history(select_history_from(state_bytes), now.timestamp())
+    select_live, select_why = keep_rule.decide(os.environ.get("SELECT_MODE", "auto").strip().lower(),
+                                               select_history, now.timestamp())
+    select_prev = {"ids": set(first_seen), "dropped": select_dropped_from(state_bytes), "live": select_live,
+                   "jev_cache": _read_json(args.jev_cache)}  # J28: Jev's earlier answers, read only
 
     def _build(watch):
         return stamp_first_seen(build_pool_fanout(
@@ -937,6 +1003,7 @@ def main(argv=None):
             bodies_out=bodies_out, previous_events=previous_events, candidates_out=candidates_out,
             watch=watch, embedder=_embedder,
             truth_archive_posts=truth_posts, truth_archive_status=truth_status,
+            select_out=select_out, select_prev=select_prev,
         ), first_seen)
 
     # W2: a pool that watch items broke (an exception, or a pool that fails the
@@ -962,7 +1029,36 @@ def main(argv=None):
     write_bodies(bodies_out.get("bodies", {}), out.parent / "bodies")
     # F6: only ever written from a pool that already passed validate() above, so a
     # bad run can never hand the next run bad state either.
-    write_state(pool, args.state_path, embed_run["budget"])
+    entry = keep_rule.history_entry(select_out.get("doc"))
+    if entry:
+        select_history.append(entry)
+    if select_out.get("doc"):
+        # J27: the gate as this run saw it, for Health, and why this pool used the rule it did.
+        select_out["doc"]["gate"] = {**keep_rule.gate(select_history, now.timestamp()), "decided": select_why}
+    write_state(pool, args.state_path, embed_run["budget"], select_out.get("dropped"), select_history)
+    # J24: the trial's report beside the pool (behind Access with the site); the log
+    # gets counts only.
+    if select_out.get("doc"):
+        (out.parent / "select.json").write_text(dumps(select_out["doc"]), encoding="utf-8")
+        print(keep_rule.log_line(select_out["doc"]))
+    # J28: the articles Jev reads after this run (fetcher/jev_shadow.py --triage), kept
+    # out of dist/ so they never deploy.
+    if select_out.get("triage") is not None:
+        path = Path(args.jev_triage)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(dumps({"generated_at": pool["generated_at"], "items": select_out["triage"]}), encoding="utf-8")
+        jd = select_out["doc"].get("jev", {})
+        print(f"jev keep: read={jd.get('read', 0)} split_off={jd.get('split_off', 0)} counting={jd.get('counting', False)} "
+              f"moved={jd.get('moved', 0)} next={len(select_out['triage'])}")
+    # J26: the reserve, the best articles this pool did not keep, one file per topic.
+    if select_out.get("ctx"):
+        try:
+            shards = keep_rule.reserve_shards(select_out["ctx"], {a["id"] for a in pool["articles"]},
+                                              {a["url"] for a in pool["articles"]})
+            index = keep_rule.write_reserve(shards, out.parent, pool["generated_at"])
+            print(f"reserve: shards={len(index['shards'])} articles={len({r['id'] for v in shards.values() for r in v})}")
+        except Exception as exc:  # noqa: BLE001 - the reserve never stops a publish
+            print(f"reserve: failed ({type(exc).__name__})")
     if dump_path is not None:
         dump = dumps(candidates_out["dump"]).encode("utf-8")
         dump_path.parent.mkdir(parents=True, exist_ok=True)

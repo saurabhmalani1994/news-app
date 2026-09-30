@@ -943,21 +943,25 @@ input.switch:focus-visible {
 }
 
 /* J21: a feature's checks sit under it, set in from the edge so they read as its parts. */
-.jev-check {
-  padding-left: calc(var(--space-gutter) * 2);
+/* J23: a check sits a step in from its job; its name gets the room, its value stays on
+   one line. */
+.jev-check > summary,
+.jev-check > .jev-evidence {
+  padding-left: calc(var(--space-gutter) + 14px);
 }
 
-.jev-check .setting-sublabel {
-  white-space: normal;
+.jev-check .setting-row-text {
+  flex: 1 1 auto;
 }
 
-.jev-check-result {
-  color: var(--color-headline);
+.jev-check .setting-value,
+.jev-fold .setting-value {
+  white-space: nowrap;
 }
 
 /* J22: each check's verdict in words, set apart from the numbers, and its real
    examples, each led by what happened. */
-.jev-verdict {
+.jev-grade {
   font-family: var(--font-sans);
   font-size: 13px;
   line-height: 18px;
@@ -965,7 +969,7 @@ input.switch:focus-visible {
   color: var(--color-headline);
 }
 
-.jev-verdict--pass {
+.jev-grade--pass {
   font-weight: 600;
   color: var(--color-meta);
 }
@@ -983,4 +987,52 @@ input.switch:focus-visible {
 .jev-sorted {
   font-weight: 700;
   color: var(--color-headline);
+}
+
+/* J23: facts first, evidence one tap down. A fold's summary is an ordinary setting row
+   with a chevron; its evidence is quiet text under it. */
+.jev-fold {
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.jev-fold > summary {
+  border-top: none;
+  cursor: pointer;
+  list-style: none;
+}
+
+.jev-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.jev-fold > summary::after {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: 4px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  color: var(--color-meta);
+}
+
+.jev-fold[open] > summary::after {
+  transform: rotate(-135deg);
+}
+
+.jev-evidence {
+  padding: 0 var(--space-gutter) 14px;
+}
+
+.jev-evidence-line {
+  margin: 0 0 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-meta);
+}
+
+.jev-job .setting-label {
+  font-weight: 700;
 }
