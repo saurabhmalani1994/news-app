@@ -1057,6 +1057,9 @@ def main(argv=None):
     (out / "_headers").write_text(headers_file(pages), encoding="utf-8")
     if pool_path.resolve() != (out / "pool.json").resolve():
         shutil.copyfile(pool_path, out / "pool.json")
+        # J26: the reserve files the fetcher wrote beside the pool go with it.
+        if (pool_path.parent / "reserve").is_dir():
+            shutil.copytree(pool_path.parent / "reserve", out / "reserve", dirs_exist_ok=True)
     # S18: the service worker precaches the shell just written above (HTML, CSS, JS,
     # fonts, manifest, icons), under a cache name hashed from those exact bytes.
     write_service_worker(out)

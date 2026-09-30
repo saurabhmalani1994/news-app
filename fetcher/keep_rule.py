@@ -374,3 +374,74 @@ def log_line(doc):
     return (f"select shadow: kept={c['kept']}/{s['kept']} differ={doc['differ']['only_score']} "
             f"stale={c['over_36h']}/{s['over_36h']} corroborated={c['corroborated']}/{s['corroborated']} "
             f"missed={missed}")
+
+
+# --- J26: the reserve ------------------------------------------------------------------
+# The best articles the pool did not keep, from the last RESERVE_HOURS, written as one
+# small file per topic tag beside the pool (dist/reserve/<tag>.json) with an index. The
+# phone loads a topic's file when the owner raises that topic (a Boost, the Ask bar, the
+# You tab), merges it into the page's own pool and re-ranks, so "more Singapore" can show
+# Singapore stories the hourly cut left out, at once, with no new fetch. Facts only, as
+# the keep rule: which ones the owner sees is decided on the phone by their own profile.
+RESERVE_HOURS = 48
+RESERVE_PER_SOURCE = 25
+RESERVE_PER_SHARD = 300
+RESERVE_DEK_CHARS = 160
+RESERVE_FIELDS = ("id", "source_id", "title", "url", "published_at", "topics", "geo")
+
+
+def _cut(text, n):
+    text = " ".join(str(text or "").split())
+    if len(text) <= n:
+        return text
+    cut = text[:n + 1]
+    return (cut.rsplit(" ", 1)[0] if " " in cut else text[:n]).rstrip()
+
+
+def reserve_shards(ctx, published_ids, published_urls=frozenset()):
+    """{tag: [record, ...]} for the reserve: candidates not published (by id or url), no
+    watch-only item, RESERVE_HOURS old or newer, at most RESERVE_PER_SOURCE per source,
+    best fact score first, each in the shard of every topic tag it carries, at most
+    RESERVE_PER_SHARD per shard."""
+    pool = [a for a in ctx["by_id"].values()
+            if a["id"] not in published_ids and a["url"] not in published_urls and not a.get("_watch_only")
+            and a.get("topics") and age_hours(a, ctx) <= RESERVE_HOURS]
+    score = {a["id"]: sum(fact_terms(a, ctx).values()) for a in pool}
+    pool.sort(key=lambda a: (-score[a["id"]], -(_epoch(a.get("published_at")) or 0), a["id"]))
+    per_source, shards, seen_urls = Counter(), {}, set()
+    for a in pool:
+        if per_source[a["source_id"]] >= RESERVE_PER_SOURCE or a["url"] in seen_urls:
+            continue
+        per_source[a["source_id"]] += 1
+        seen_urls.add(a["url"])
+        record = {k: a[k] for k in RESERVE_FIELDS if k in a}
+        if a.get("dek"):
+            record["dek"] = _cut(a["dek"], RESERVE_DEK_CHARS)
+        for tag in sorted(set(a["topics"])):
+            shard = shards.setdefault(tag, [])
+            if len(shard) < RESERVE_PER_SHARD:
+                shard.append(record)
+    return shards
+
+
+def write_reserve(shards, out_dir, generated_at):
+    """Writes out_dir/reserve/<tag>.json and index.json; returns the index. A tag is a
+    topics.json id (lowercase letters, digits, underscores), so it is a safe file name;
+    anything else is skipped."""
+    import re
+    from pathlib import Path
+    root = Path(out_dir) / "reserve"
+    root.mkdir(parents=True, exist_ok=True)
+    for old in root.glob("*.json"):
+        old.unlink()
+    counts = {}
+    for tag, records in sorted(shards.items()):
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,40}", tag):
+            continue
+        (root / f"{tag}.json").write_text(json.dumps({"schema_version": 1, "generated_at": generated_at, "tag": tag,
+                                                      "articles": records}, ensure_ascii=False, separators=(",", ":")),
+                                          encoding="utf-8")
+        counts[tag] = len(records)
+    index = {"schema_version": 1, "generated_at": generated_at, "shards": counts}
+    (root / "index.json").write_text(json.dumps(index, separators=(",", ":")), encoding="utf-8")
+    return index

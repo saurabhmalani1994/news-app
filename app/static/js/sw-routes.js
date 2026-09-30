@@ -29,6 +29,8 @@ export function strategyFor(request, origin) {
   // J11: jev.json (the hourly Jev answers) is as fresh as the pool: network first, the
   // cached copy offline.
   if (sameOrigin && /(?:^|\/)(?:pool|jev)\.json$/.test(url.pathname)) return STRATEGY.POOL;
+  // J26: the reserve files change every hour with the pool: network first too.
+  if (sameOrigin && /^\/reserve\/[a-z0-9_]+\.json$/.test(url.pathname)) return STRATEGY.POOL;
   if (sameOrigin && request.mode === "navigate") return STRATEGY.PAGE;
   // H2: article photos (cross-origin) are never intercepted. The worker runs under the
   // site's own CSP, whose connect-src is 'self', so its fetch() of another origin's photo

@@ -191,3 +191,25 @@ def _fake_fetch(url, timeout=None):
         if f"{s}.example" in url:
             return FEED.replace("{s}", s).encode()
     return b'<rss version="2.0"><channel></channel></rss>'
+
+
+def test_the_reserve_holds_fresh_unkept_articles_by_topic_with_nothing_private(tmp_path):
+    """J26: the best articles the pool did not keep, per topic tag, fresh only, no watch
+    tags, a safe file per tag and an index the phone checks against its edition."""
+    cands = candidates()
+    secret = art("w1", "left1", 1)
+    secret["watch"] = ["w:0123456789"]
+    cands.append(secret)
+    ctx = ctx_for(cands)
+    published = {a["id"] for a in cands[:10]}
+    shards = keep_rule.reserve_shards(ctx, published)
+    ids = {r["id"] for v in shards.values() for r in v}
+    assert not ids & published and "stale_only" not in ids, "nothing published, nothing older than 48 hours"
+    assert all("watch" not in r for v in shards.values() for r in v)
+    assert set(shards) <= {"world", "ai"}
+    index = keep_rule.write_reserve({**shards, "../evil": [{"id": "x"}]}, tmp_path, "2026-09-30T12:00:00Z")
+    assert index["generated_at"] == "2026-09-30T12:00:00Z" and "../evil" not in index["shards"]
+    files = sorted(p.name for p in (tmp_path / "reserve").iterdir())
+    assert files == sorted([f"{t}.json" for t in shards] + ["index.json"])
+    doc = json.loads((tmp_path / "reserve" / "world.json").read_text())
+    assert doc["tag"] == "world" and len(doc["articles"]) == index["shards"]["world"]

@@ -11,18 +11,25 @@ const DURATION_MS = 5000;
 let hideTimer = 0;
 let dismissTimer = 0;
 
-/** Shows `message`, with an "Undo" button when `onAction` is given. */
-export function showToast(message, { actionLabel = "Undo", onAction = null } = {}) {
+/** Shows `message`, with an "Undo" button when `onAction` is given. J26: keepAction
+ * keeps the showing toast's own button (a follow-up line, such as the reserve's "Added 6
+ * stories", never takes away the Undo of the action it follows). */
+export function showToast(message, { actionLabel = "Undo", onAction = null, keepAction = false } = {}) {
+  const kept = keepAction && !root.hidden && !action.hidden ? action.onclick : null;
   clearTimeout(hideTimer);
   clearTimeout(dismissTimer);
   root.classList.remove("is-open");
   text.textContent = message;
-  action.hidden = !onAction;
-  action.textContent = actionLabel;
-  action.onclick = () => {
-    hideToast();
-    onAction?.();
-  };
+  if (kept) {
+    action.hidden = false;
+  } else {
+    action.hidden = !onAction;
+    action.textContent = actionLabel;
+    action.onclick = () => {
+      hideToast();
+      onAction?.();
+    };
+  }
   root.hidden = false;
   void root.offsetWidth; // restarts the transition if a toast is already showing
   root.classList.add("is-open");

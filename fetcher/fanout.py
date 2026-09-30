@@ -579,7 +579,7 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                                                 [a["id"] for a in articles if a["id"] not in watch_only_ids],
                                                 ctx, prev.get("dropped"))
             doc["generated_at"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-            select_out.update(doc=doc, dropped=dropped)
+            select_out.update(doc=doc, dropped=dropped, ctx=ctx)  # J26: ctx for the reserve
         except Exception as exc:  # noqa: BLE001 - the trial never stops a publish
             select_out.update(doc={"schema_version": keep_rule.SCHEMA_VERSION, "mode": "shadow", "state": "error",
                                    "error": type(exc).__name__}, dropped=None)
@@ -997,6 +997,15 @@ def main(argv=None):
     if select_out.get("doc"):
         (out.parent / "select.json").write_text(dumps(select_out["doc"]), encoding="utf-8")
         print(keep_rule.log_line(select_out["doc"]))
+    # J26: the reserve, the best articles this pool did not keep, one file per topic.
+    if select_out.get("ctx"):
+        try:
+            shards = keep_rule.reserve_shards(select_out["ctx"], {a["id"] for a in pool["articles"]},
+                                              {a["url"] for a in pool["articles"]})
+            index = keep_rule.write_reserve(shards, out.parent, pool["generated_at"])
+            print(f"reserve: shards={len(index['shards'])} articles={len({r['id'] for v in shards.values() for r in v})}")
+        except Exception as exc:  # noqa: BLE001 - the reserve never stops a publish
+            print(f"reserve: failed ({type(exc).__name__})")
     if dump_path is not None:
         dump = dumps(candidates_out["dump"]).encode("utf-8")
         dump_path.parent.mkdir(parents=True, exist_ok=True)
