@@ -420,10 +420,10 @@ def sorted_by(article, ans):
     word = _sure_word(a) if isinstance(a, dict) and a.get("t") == "choice" else ""
     if word not in ("sure", "leaning"):
         why = "Jev was not sure" if word else "Jev has not answered"
-        return "rules", f"Rules only: {rule_words}. {why}."
+        return "rules", f"Rules say {rule_words}; {why}."
     if set(SECTION_TOPICS.get(a["v"], ())) & set(rules):
-        return "both", f"Rules + Jev: both say {a['v']}."
-    return "jev", f"Rules say {rule_words}. Jev says {a['v']} ({word})."
+        return "both", f"Both say {a['v']}."
+    return "jev", f"Rules say {rule_words}; Jev says {a['v']} ({word})."
 
 
 def render_jev_articles(doc, pool, now=None):

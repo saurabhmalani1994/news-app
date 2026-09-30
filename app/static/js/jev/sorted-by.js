@@ -26,10 +26,10 @@ export function sortedBy(ruleTopics, sectionAnswer) {
   const word = read.status === "sure" ? "sure" : read.status === "lean" ? "leaning" : "";
   if (!word) {
     const why = read.status === "missing" ? "Jev has not answered" : "Jev was not sure";
-    return { kind: "rules", label: SORTED_BY.rules, sentence: `Rules only: ${words}. ${why}.` };
+    return { kind: "rules", label: SORTED_BY.rules, sentence: `Rules say ${words}; ${why}.` };
   }
   if ((SECTION_TOPICS[read.pick] || []).some((t) => rules.includes(t))) {
-    return { kind: "both", label: SORTED_BY.both, sentence: `Rules + Jev: both say ${read.pick}.` };
+    return { kind: "both", label: SORTED_BY.both, sentence: `Both say ${read.pick}.` };
   }
-  return { kind: "jev", label: SORTED_BY.jev, sentence: `Rules say ${words}. Jev says ${read.pick} (${word}).` };
+  return { kind: "jev", label: SORTED_BY.jev, sentence: `Rules say ${words}; Jev says ${read.pick} (${word}).` };
 }
