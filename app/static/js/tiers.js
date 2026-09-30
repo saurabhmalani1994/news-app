@@ -146,6 +146,7 @@ export function placeFace(li, faceId, buildFace, input) {
   const times = li.querySelector(".story-times");
   if (times && article.published_at) {
     times.setAttribute("data-written", article.published_at);
+    times.setAttribute("data-pulled", front.f || ""); // J29: the face's own added time
     globalThis.window?.almanacFillTimes?.(li);
   }
   const second = li.querySelector(".meta-line--2");
