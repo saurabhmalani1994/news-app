@@ -776,9 +776,9 @@ test("Jev's read says what Jev already read and that showing it again asks nothi
   const { readStatus, whenRead } = await import("../../app/static/js/jev/story-view.js");
   assert.match(readStatus({ live: false }), /^From Jev's hourly run, which read the headline and summary\. Showing this asked Jev nothing new\.$/);
   const saved = readStatus({ live: true, cached: true, at: "2026-10-01T01:05:00Z", fullText: true });
-  assert.match(saved, /^Jev's full analysis, saved on this phone \(Jev read the whole article, [A-Z][a-z]{2,4}\.? \d{1,2}, \d{1,2}:\d\d [ap]\.m\.\)\. Showing it again asked Jev nothing\.$/);
+  assert.match(saved, /^Jev's answers, saved on this phone \(Jev read the whole article, [A-Z][a-z]{2,4}\.? \d{1,2}, \d{1,2}:\d\d [ap]\.m\.\)\. Showing them again asked Jev nothing\.$/);
   assert.doesNotMatch(saved, /\.\./, "never two full stops in a row");
-  assert.equal(readStatus({ live: true, cached: false, fullText: false }), "Jev's full analysis, just now. Jev read the headlines and summary.");
+  assert.equal(readStatus({ live: true, cached: false, fullText: false }), "Jev's answers, just now. Jev read the headlines and summary.");
   assert.doesNotMatch(whenRead("2026-10-01T01:05:00Z"), /2026/);
   assert.equal(whenRead("not a time"), "");
 });

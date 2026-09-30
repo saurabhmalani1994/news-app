@@ -18,8 +18,8 @@ export function readStatus({ live, cached, at, fullText }) {
   if (!live) return "From Jev's hourly run, which read the headline and summary. Showing this asked Jev nothing new.";
   const what = fullText ? "the whole article" : "the headlines and summary";
   const when = whenRead(at);
-  if (cached) return `Jev's full analysis, saved on this phone (Jev read ${what}${when ? `, ${when}` : ""}). Showing it again asked Jev nothing.`;
-  return `Jev's full analysis, just now. Jev read ${what}.`;
+  if (cached) return `Jev's answers, saved on this phone (Jev read ${what}${when ? `, ${when}` : ""}). Showing them again asked Jev nothing.`;
+  return `Jev's answers, just now. Jev read ${what}.`;
 }
 
 function el(tag, className, text) {
@@ -53,12 +53,13 @@ function verdictBlock(verdict) {
 /** J12: the button that asks Jev live, under the hourly answers (or alone when the hourly
  * run has not read the story yet). The words say what it costs in time: a read of the
  * full article when Almanac has it, else three more questions about the story. */
-/** J30: the sheet's one button, "Get Jev's full analysis", and what it does. Named apart
- * from the reader's "Read with Jev", which marks the key sentences in the article. */
+/** J30: the sheet's one button, "Ask Jev about this story" (the owner's words), and what
+ * it does. Named apart from the reader's "Read with Jev", which marks the key sentences
+ * in the article. */
 export function readWithJev({ hasBody, hourly, onClick }) {
   const box = el("div", "sheet-form jev-actions");
   if (!hourly) box.append(el("p", "why-scale-note jev-note", "Jev hasn't read this story in its hourly run yet."));
-  const button = el("button", "sheet-submit jev-read", "Get Jev's full analysis");
+  const button = el("button", "sheet-submit jev-read", "Ask Jev about this story");
   button.type = "button";
   button.addEventListener("click", () => onClick(button));
   box.append(button, el("p", "why-scale-note jev-note",
