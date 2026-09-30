@@ -213,3 +213,68 @@ def test_the_reserve_holds_fresh_unkept_articles_by_topic_with_nothing_private(t
     assert files == sorted([f"{t}.json" for t in shards] + ["index.json"])
     doc = json.loads((tmp_path / "reserve" / "world.json").read_text())
     assert doc["tag"] == "world" and len(doc["articles"]) == index["shards"]["world"]
+
+
+# --- J27: going live on its own ---
+
+def _history(days, *, missed=(3, 2), sg=(10, 12), stale=(90, 70), floors=True, every_h=1):
+    out = []
+    t = NOW.timestamp() - days * 86400
+    while t <= NOW.timestamp():
+        at = datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        out.append({"at": at, "floors": floors, "missed": list(missed), "sg": list(sg), "stale": list(stale), "budget": True})
+        t += every_h * 3600
+    return out
+
+
+def test_the_rule_goes_live_only_after_a_week_that_passes_every_check():
+    now = NOW.timestamp()
+    assert not keep_rule.gate(_history(3), now)["pass"], "three days is not a week"
+    good = keep_rule.gate(_history(7.5), now)
+    assert good["pass"] and good["runs"] >= keep_rule.GATE_MIN_RUNS
+    assert not keep_rule.gate(_history(7.5, missed=(2, 3)), now)["pass"], "misses more stories"
+    assert not keep_rule.gate(_history(7.5, sg=(12, 10)), now)["pass"], "fewer Singapore stories"
+    assert not keep_rule.gate(_history(7.5, stale=(70, 90)), now)["pass"], "more old articles"
+    assert not keep_rule.gate(_history(7.5, floors=False), now)["pass"], "an outlet left out"
+    assert not keep_rule.gate(_history(7.5, every_h=4), now)["pass"], "too few runs in the week"
+    assert keep_rule.decide("auto", _history(7.5), now) == (True, "gate")
+    assert keep_rule.decide("auto", _history(3), now) == (False, "trial")
+    assert keep_rule.decide("cap", _history(7.5), now) == (False, "held"), "SELECT_MODE=cap always holds the old rule"
+    assert keep_rule.decide("score", [], now) == (True, "forced")
+    assert keep_rule.decide("nonsense", _history(3), now) == (False, "trial")
+    assert len(keep_rule.trim_history(_history(12), now)) < len(_history(12))
+
+
+def test_a_live_rule_publishes_its_own_picks_and_the_ledger_still_adds_up():
+    def run(live):
+        out = {}
+        pool = build_pool_fanout(_sources(), fetch_all(_sources(), fetch_fn=_fake_fetch, timeout=1, retries=1), NOW,
+                                 per_source_cap=3, select_out=out, select_prev={"ids": set(), "dropped": None, "live": live})
+        return pool, out["doc"]
+    old, doc_old = run(False)
+    new, doc_new = run(True)
+    assert doc_old["mode"] == "shadow" and doc_new["mode"] == "live"
+    assert "_score_ids" not in doc_old and "_score_ids" not in doc_new
+    for pool in (old, new):
+        c = pool["counts"]
+        assert c["fetched"] == c["published"] + sum(c["drops"].values())
+    assert {a["id"] for a in old["articles"]} != {a["id"] for a in new["articles"]}, "the fixture's newest items differ from its first ones"
+    assert {a["source_id"] for a in new["articles"]} == {"aa", "bb"}, "every outlet still kept"
+    assert len(new["articles"]) <= len(old["articles"]) + 1
+
+
+def test_state_carries_the_trial_history_and_health_says_where_it_stands():
+    from app.health import render_keep
+    state = build_state({"generated_at": ts(0), "source_health": {}, "clusters": [], "events": [], "articles": []},
+                        select_history=_history(2))
+    assert validate_state(state) == [] and len(state["select_history"]) == len(_history(2))
+    assert validate_state({**state, "select_history": [{"no": "at"}]}) != []
+    cands = candidates()
+    doc, _ = keep_rule.run_shadow(cands, [a["id"] for a in cands[:20]], ctx_for(cands))
+    doc["gate"] = {**keep_rule.gate(_history(2), NOW.timestamp()), "decided": "trial"}
+    html = render_keep(doc, {"sources": SOURCES})
+    assert "Going live" in html and "checks pass" in html and "Not yet: A full week of trial runs" in html
+    doc["mode"], doc["gate"]["decided"] = "live", "gate"
+    assert "Live: the new rule chose this edition" in render_keep(doc, {"sources": SOURCES})
+    doc["mode"], doc["gate"]["decided"] = "shadow", "held"
+    assert "SELECT_MODE to cap" in render_keep(doc, {"sources": SOURCES})

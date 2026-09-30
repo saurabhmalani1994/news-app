@@ -39,7 +39,7 @@ SCHEMA_VERSION = 1
 DEFAULT_STATE_PATH = ".cache/state.json"
 
 STATE_FIELDS = frozenset({"schema_version", "generated_at", "source_health", "clusters", "events"})
-OPTIONAL_STATE_FIELDS = frozenset({"embed_budget", "first_seen", "select_dropped"})
+OPTIONAL_STATE_FIELDS = frozenset({"embed_budget", "first_seen", "select_dropped", "select_history"})
 CLUSTER_FIELDS = frozenset({"id", "article_ids"})
 EVENT_REQUIRED_FIELDS = frozenset({"id", "cluster_ids", "live"})
 EVENT_ALL_FIELDS = EVENT_REQUIRED_FIELDS | {"live_since"}
@@ -52,7 +52,7 @@ def _state_event(e):
     return out
 
 
-def build_state(pool, embed_budget=None, select_dropped=None):
+def build_state(pool, embed_budget=None, select_dropped=None, select_history=None):
     """The next run's input, built from this run's own freshly published pool.
     Pure: no network, no clock, no filesystem. Only what S06 and S32 read back
     (fetcher.health.parse_previous_health, fetcher.events.parse_previous_events)
@@ -78,6 +78,9 @@ def build_state(pool, embed_budget=None, select_dropped=None):
     # run checks for its missed-stories count (fetcher/keep_rule.py).
     if select_dropped:
         doc["select_dropped"] = {k: list(select_dropped.get(k, []))[:1500] for k in ("cap", "score")}
+    # J27: the keep-rule trial's run summaries, which decide when it goes live.
+    if select_history:
+        doc["select_history"] = list(select_history)[-400:]
     return doc
 
 
@@ -143,11 +146,26 @@ def validate_state(doc):
         if (not isinstance(d, dict) or set(d) - {"cap", "score"}
                 or not all(isinstance(v, list) and all(isinstance(i, str) for i in v) for v in d.values())):
             errors.append("state.select_dropped: must map cap and score to lists of article ids")
+    if "select_history" in doc:
+        h = doc["select_history"]
+        if not isinstance(h, list) or not all(isinstance(e, dict) and isinstance(e.get("at"), str) for e in h):
+            errors.append("state.select_history: must be a list of run summaries")
     if "first_seen" in doc:
         f = doc["first_seen"]
         if not isinstance(f, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in f.items()):
             errors.append("state.first_seen: must map article ids to timestamps")
     return errors
+
+
+def select_history_from(state_bytes):
+    """J27: the keep-rule trial's run summaries from a validated state.json, or []."""
+    if state_bytes is None:
+        return []
+    try:
+        h = json.loads(state_bytes).get("select_history")
+    except (ValueError, TypeError, AttributeError):
+        return []
+    return [e for e in h if isinstance(e, dict)] if isinstance(h, list) else []
 
 
 def select_dropped_from(state_bytes):
@@ -222,10 +240,10 @@ def load_state(path):
     return data, "hit"
 
 
-def write_state(pool, path=DEFAULT_STATE_PATH, embed_budget=None, select_dropped=None):
+def write_state(pool, path=DEFAULT_STATE_PATH, embed_budget=None, select_dropped=None, select_history=None):
     """Write this run's state.json for actions/cache to pick up and restore ahead of
     the next run. Returns the bytes written."""
-    body = dumps_state(build_state(pool, embed_budget, select_dropped)).encode("utf-8")
+    body = dumps_state(build_state(pool, embed_budget, select_dropped, select_history)).encode("utf-8")
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(body)

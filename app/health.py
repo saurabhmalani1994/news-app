@@ -806,9 +806,17 @@ def render_keep(doc, pool):
                                                  "Your feed was not affected."), rows="")
     cap, new = doc["rules"]["cap"], doc["rules"]["score"]
     names = source_names(pool)
-    summary = (f"Trial only: your feed still uses today's rule (each outlet's first 5 items in feed order). "
-               f"At the same size, the new rule would keep {new['kept']} articles; {doc['differ']['only_score']} of them are different. "
-               "Numbers read today, then the new rule.")
+    g = doc.get("gate") or {}
+    decided = g.get("decided")
+    if doc.get("mode") == "live":
+        how = "you set SELECT_MODE to score" if decided == "forced" else "a week of the trial passed every check"
+        summary = (f"Live: the new rule chose this edition's {new['kept']} articles, because {how}. "
+                   "Numbers read the old rule, then the new one.")
+    else:
+        held = " You set SELECT_MODE to cap, so it stays on the old rule." if decided == "held" else ""
+        summary = (f"Trial only: your feed still uses today's rule (each outlet's first 5 items in feed order). "
+                   f"At the same size, the new rule would keep {new['kept']} articles; {doc['differ']['only_score']} of them are different. "
+                   f"Numbers read today, then the new rule.{held}")
     m = doc.get("missed") or {}
     rows = [
         ("Older than 36 hours", f"{cap['over_36h']} → {new['over_36h']}"),
@@ -819,6 +827,16 @@ def render_keep(doc, pool):
         ("Outlets with at least one article", f"{doc['floors']['sources_met']} of {doc['floors']['sources_total']}"),
     ]
     body = [LEDGER_ROW.format(label=_esc(label), value=_esc(value)) for label, value in rows]
+    # J27: when it goes live on its own, facts first, each check one tap down.
+    if g.get("checks"):
+        passed = sum(1 for c in g["checks"] if c["ok"])
+        value = "Live now" if doc.get("mode") == "live" else ("Held on the old rule" if decided == "held"
+                                                              else f"{passed} of {len(g['checks'])} checks pass")
+        lines = "".join(JEV_LINE.format(text=_esc(f"{'Pass' if c['ok'] else 'Not yet'}: {c['label']} ({c['detail']}).")) for c in g["checks"])
+        lines += JEV_LINE.format(text=_esc("It goes live on its own once every check passes over the last 7 days, and goes back "
+                                           "to the old rule on its own if they stop passing. The repository variable "
+                                           "SELECT_MODE=cap holds the old rule."))
+        body.append(KEEP_FOLD.format(label="Going live", value=_esc(value), lines=lines))
 
     def examples(key):
         out = []

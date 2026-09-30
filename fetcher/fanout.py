@@ -97,7 +97,7 @@ from fetcher.topics import hard_news_topics, load_topics, tag_article
 from fetcher.health import compute_source_health, fetch_previous_pool, parse_previous_health
 from fetcher import keep_rule
 from fetcher.state import (DEFAULT_STATE_PATH, embed_budget_from, first_seen_from, load_state, select_dropped_from,
-                           stamp_first_seen, write_state)
+                           select_history_from, stamp_first_seen, write_state)
 from fetcher.truth_archive import TRUTH_ARCHIVE_URL, link_clusters, load_archive
 from fetcher import watch as wsearch
 from fetcher import workwatch as wwork
@@ -545,27 +545,39 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
         if len({by_id[i]["source_id"] for i in cl["article_ids"]}) > 1:
             multi_source.update(cl["article_ids"])
 
-    articles = []
-    published_urls = set()
-    exempt = []  # W2: watch-tagged articles past the cap, budgeted below
-    for source in sources:
-        kept = extra = 0
-        for article in per_source.get(source["id"], []):
-            if article["url"] in published_urls:
-                drops["duplicate_url"] += 1
-                continue
-            if kept < per_source_cap:
-                kept += 1
-            elif article["id"] in multi_source and extra < cluster_extra_cap:
-                extra += 1
-            elif article.get("watch"):
-                exempt.append(article)
-                continue
-            else:
-                drops["over_cap"] += 1
-                continue
-            published_urls.add(article["url"])
-            articles.append(article)
+    def cap_pass(keep_ids=None):
+        """(articles, urls, exempt, drops) of one pass over every source's items: the cap
+        rule, or (J27) exactly the ids in keep_ids when the keep rule is live. Either way
+        a watch-tagged item not kept is exempt (W2 budgets it below) and every other one
+        not kept is over_cap, so fetched == published + drops still holds."""
+        arts, urls, ex, d = [], set(), [], Counter()
+        for source in sources:
+            kept = extra = 0
+            for article in per_source.get(source["id"], []):
+                if article["url"] in urls:
+                    d["duplicate_url"] += 1
+                    continue
+                if keep_ids is not None:
+                    keep = article["id"] in keep_ids
+                elif kept < per_source_cap:
+                    kept += 1
+                    keep = True
+                elif article["id"] in multi_source and extra < cluster_extra_cap:
+                    extra += 1
+                    keep = True
+                else:
+                    keep = False
+                if not keep:
+                    if article.get("watch"):
+                        ex.append(article)  # W2: watch-tagged articles past the cap, budgeted below
+                    else:
+                        d["over_cap"] += 1
+                    continue
+                urls.add(article["url"])
+                arts.append(article)
+        return arts, urls, ex, d
+
+    articles, published_urls, exempt, cap_drops = cap_pass()
 
     # J24: the keep-rule trial, on the same candidates (watch-only items left out, as the
     # cap loop leaves them out), against the cap's own picks. Shadow only.
@@ -579,10 +591,18 @@ def build_pool_fanout(sources, fetch_results, now, per_source_cap=PER_SOURCE_CAP
                                                 [a["id"] for a in articles if a["id"] not in watch_only_ids],
                                                 ctx, prev.get("dropped"))
             doc["generated_at"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+            # J27: the keep rule is live (select_prev["live"], decided in main from a
+            # week of this trial): the same pass, keeping exactly its ids. The old rule
+            # becomes the trial's other side.
+            if prev.get("live") and doc.get("state") == "ok":
+                articles, published_urls, exempt, cap_drops = cap_pass(set(doc.pop("_score_ids")))
+                doc["mode"] = "live"
+            doc.pop("_score_ids", None)
             select_out.update(doc=doc, dropped=dropped, ctx=ctx)  # J26: ctx for the reserve
         except Exception as exc:  # noqa: BLE001 - the trial never stops a publish
             select_out.update(doc={"schema_version": keep_rule.SCHEMA_VERSION, "mode": "shadow", "state": "error",
                                    "error": type(exc).__name__}, dropped=None)
+    drops.update(cap_drops)
 
     # W2: the watch byte budget. Tags on articles that publish anyway count first; then
     # watch-only items and tagged articles past the cap, round robin across queries
@@ -956,7 +976,11 @@ def main(argv=None):
 
     first_seen = first_seen_from(previous_bytes)  # J22: when each article was first pulled
     select_out = {}  # J24: the keep-rule trial's report
-    select_prev = {"ids": set(first_seen), "dropped": select_dropped_from(state_bytes)}
+    # J27: whether the keep rule chooses this pool: SELECT_MODE, then a week of trial.
+    select_history = keep_rule.trim_history(select_history_from(state_bytes), now.timestamp())
+    select_live, select_why = keep_rule.decide(os.environ.get("SELECT_MODE", "auto").strip().lower(),
+                                               select_history, now.timestamp())
+    select_prev = {"ids": set(first_seen), "dropped": select_dropped_from(state_bytes), "live": select_live}
 
     def _build(watch):
         return stamp_first_seen(build_pool_fanout(
@@ -991,7 +1015,13 @@ def main(argv=None):
     write_bodies(bodies_out.get("bodies", {}), out.parent / "bodies")
     # F6: only ever written from a pool that already passed validate() above, so a
     # bad run can never hand the next run bad state either.
-    write_state(pool, args.state_path, embed_run["budget"], select_out.get("dropped"))
+    entry = keep_rule.history_entry(select_out.get("doc"))
+    if entry:
+        select_history.append(entry)
+    if select_out.get("doc"):
+        # J27: the gate as this run saw it, for Health, and why this pool used the rule it did.
+        select_out["doc"]["gate"] = {**keep_rule.gate(select_history, now.timestamp()), "decided": select_why}
+    write_state(pool, args.state_path, embed_run["budget"], select_out.get("dropped"), select_history)
     # J24: the trial's report beside the pool (behind Access with the site); the log
     # gets counts only.
     if select_out.get("doc"):

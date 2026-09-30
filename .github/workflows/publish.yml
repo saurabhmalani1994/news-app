@@ -119,6 +119,10 @@ jobs:
           # new items for the story term after its own plan check (fetcher/embed.py).
           CF_PIPELINE_TOKEN: ${{ secrets.CLOUDFLARE_PIPELINE_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
+          # J27: which rule keeps the articles. Unset (auto): the keep rule once a week of
+          # its trial passes every check on Health, the old rule until then. The repository
+          # variable SELECT_MODE=cap holds the old rule; SELECT_MODE=score forces the new.
+          SELECT_MODE: ${{ vars.SELECT_MODE || 'auto' }}
         run: python3 -m fetcher.fanout --out dist/pool.json --sources sources.json
 
       # F6: saved right after Fetch, unconditionally, so this run's state reaches

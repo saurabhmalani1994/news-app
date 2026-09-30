@@ -60,6 +60,9 @@ EXAMPLES = 8
 FULL_BODY_CHARS = 600
 DEK_CHARS = 80
 RECORD_OVERHEAD = 60
+# J27: the keep rule keeps more multi-outlet stories, and each adds a cluster record the
+# per-article estimate does not see; a live run came to 597KB of the ~600KB pool budget.
+SIZE_MARGIN = 0.96
 PUBLISHED_DEK_CHARS = 600  # fetcher.fanout's, kept equal by tests/test_select.py
 
 WHY = ("floor_source", "floor_story", "floor_bucket", "fill")
@@ -353,11 +356,12 @@ def run_shadow(candidates, cap_ids, ctx, previous_dropped=None):
     """(doc, dropped) for this run: the trial's report, and the fresh single-outlet items
     each rule dropped, which the next run checks for the missed-stories count."""
     kept = [ctx["by_id"][i] for i in cap_ids if i in ctx["by_id"]]
-    budget = sum(est_bytes(a) for a in kept)
+    budget = int(sum(est_bytes(a) for a in kept) * SIZE_MARGIN)
     bucket_budget = Counter(_bucket(a, ctx) for a in kept)
     score_ids, why = select_pool(candidates, ctx, budget, dict(bucket_budget))
     doc = compare(cap_ids, score_ids, why, candidates, ctx, previous_dropped)
     doc["budget_bytes"] = budget
+    doc["_score_ids"] = score_ids  # J27: taken out by the caller, never written
     all_ids = {a["id"] for a in candidates}
     dropped = {"cap": fresh_singletons(all_ids - set(cap_ids), ctx),
                "score": fresh_singletons(all_ids - set(score_ids), ctx)}
@@ -445,3 +449,79 @@ def write_reserve(shards, out_dir, generated_at):
     index = {"schema_version": 1, "generated_at": generated_at, "shards": counts}
     (root / "index.json").write_text(json.dumps(index, separators=(",", ":")), encoding="utf-8")
     return index
+
+
+# --- J27: going live on its own --------------------------------------------------------
+# The owner approved switching to the keep rule once a week of this trial shows it is at
+# least as good. Every run adds one small summary to state.json (history_entry); each
+# run then reads the last GATE_DAYS of them (gate) and the keep rule chooses the pool
+# while they pass, the old rule while they do not. SELECT_MODE=cap (a repository
+# variable) holds the old rule whatever the trial says; SELECT_MODE=score forces the new.
+GATE_DAYS = 7
+GATE_MIN_RUNS = 84  # half of a week's hourly runs; the scheduler sometimes skips hours
+GATE_FLOORS_SHARE = 0.95
+HISTORY_DAYS = 8
+MODES = ("auto", "cap", "score")
+
+
+def history_entry(doc):
+    """This run's line for the gate, or None when the trial did not run."""
+    if not isinstance(doc, dict) or doc.get("state") != "ok":
+        return None
+    cap, new = doc["rules"]["cap"], doc["rules"]["score"]
+    m = doc.get("missed") or {}
+    f = doc.get("floors") or {}
+    return {
+        "at": doc.get("generated_at", ""),
+        "floors": f.get("sources_met", 0) >= f.get("sources_total", 0) and not f.get("buckets_unmet"),
+        "missed": [m.get("cap"), m.get("score")] if m.get("status") == "ok" else None,
+        "sg": [cap["singapore"]["tag"], new["singapore"]["tag"]],
+        "stale": [cap["over_36h"], new["over_36h"]],
+        "budget": new["bytes"] <= doc.get("budget_bytes", new["bytes"]),
+    }
+
+
+def trim_history(history, now_ts):
+    return [h for h in history if (_epoch(h.get("at")) or 0) >= now_ts - HISTORY_DAYS * 86400]
+
+
+def gate(history, now_ts):
+    """{"pass", "days", "runs", "checks": [{key, label, detail, ok}]}: whether the last
+    GATE_DAYS of the trial show the keep rule at least as good as the old one."""
+    times = [t for t in (_epoch(h.get("at")) for h in history) if t is not None]
+    window = [h for h in history if (_epoch(h.get("at")) or 0) >= now_ts - GATE_DAYS * 86400]
+    days = round((now_ts - min(times)) / 86400, 1) if times else 0.0
+    missed = [h["missed"] for h in window if h.get("missed") and None not in h["missed"]]
+    floors_share = sum(1 for h in window if h.get("floors")) / len(window) if window else 0.0
+    mean = lambda rows, i: sum(r[i] for r in rows) / len(rows) if rows else 0.0  # noqa: E731
+    sg = [h["sg"] for h in window if h.get("sg")]
+    stale = [h["stale"] for h in window if h.get("stale")]
+    checks = [
+        {"key": "week", "label": "A full week of trial runs",
+         "detail": f"{days} of {GATE_DAYS} days, {len(window)} runs (at least {GATE_MIN_RUNS})",
+         "ok": days >= GATE_DAYS and len(window) >= GATE_MIN_RUNS},
+        {"key": "floors", "label": "Every outlet and outlet group kept",
+         "detail": f"in {round(100 * floors_share)}% of runs (at least {round(100 * GATE_FLOORS_SHARE)}%)",
+         "ok": floors_share >= GATE_FLOORS_SHARE},
+        {"key": "budget", "label": "Never bigger than today's pool",
+         "detail": "every run" if all(h.get("budget", True) for h in window) else "some runs went over",
+         "ok": all(h.get("budget", True) for h in window)},
+        {"key": "missed", "label": "Misses no more stories than today's rule",
+         "detail": f"{sum(m[1] for m in missed)} vs {sum(m[0] for m in missed)} over {len(missed)} runs",
+         "ok": bool(missed) and sum(m[1] for m in missed) <= sum(m[0] for m in missed)},
+        {"key": "singapore", "label": "At least as many Singapore stories",
+         "detail": f"{mean(sg, 1):.1f} vs {mean(sg, 0):.1f} a run", "ok": bool(sg) and mean(sg, 1) >= mean(sg, 0)},
+        {"key": "fresh", "label": "No more old articles (over 36 hours)",
+         "detail": f"{mean(stale, 1):.1f} vs {mean(stale, 0):.1f} a run", "ok": bool(stale) and mean(stale, 1) <= mean(stale, 0)},
+    ]
+    return {"pass": all(c["ok"] for c in checks), "days": days, "runs": len(window), "checks": checks}
+
+
+def decide(mode, history, now_ts):
+    """(live, why) for this run: SELECT_MODE, then the gate."""
+    mode = mode if mode in MODES else "auto"
+    if mode == "cap":
+        return False, "held"
+    if mode == "score":
+        return True, "forced"
+    return (True, "gate") if gate(history, now_ts)["pass"] else (False, "trial")
