@@ -77,7 +77,7 @@ def test_the_evaluation_reads_the_notices_back_into_facts_and_verdicts():
     assert verdicts["New keep rule (rules, not Jev)"][0] == "clear benefit"
     assert verdicts["Cost and speed"][0] == "fine"
     text = ev.render(result, rows[0]["at"], rows[-1]["at"])
-    assert text.startswith("Jev evaluation over 2 hourly runs") and "Facts" in text and "Verdicts" in text and "—" not in text
+    assert text.startswith("Jev evaluation over 2 hourly runs") and "Facts" in text and "Verdicts" in text and "\u2014" not in text
 
 
 def test_stand_in_runs_and_runs_before_the_notices_are_never_counted():
