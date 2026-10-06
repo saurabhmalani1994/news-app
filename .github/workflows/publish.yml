@@ -160,6 +160,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
         run: python3 -m fetcher.jev_shadow --pool dist/pool.json --out dist/jev.json --apply
 
+      # J34: the run's Jev and keep-rule numbers as two public notices, so they can be
+      # read back without a sign-in (scripts/jev_eval.py). Counts and statuses only, the
+      # same kind of line the log already prints: no headline, no url, no watch tag.
+      - name: Publish Jev and keep-rule numbers as notices (J34)
+        if: always()
+        continue-on-error: true
+        run: python3 scripts/eval_notice.py dist
+
       - name: Save Jev answers (J3)
         if: always() && hashFiles('.cache/jev.json') != ''
         uses: actions/cache/save@v4
