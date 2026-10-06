@@ -754,6 +754,20 @@ def render_jev(doc):
          f"All answers: {conf_text}. Sure means the top pick is clearly ahead, leaning ahead less clearly, "
          "split the top two nearly tied, unsure no pick stands out."),
     ]
+    # J35: the two trials, facts first, what they mean one tap down.
+    mt = r.get("merge_trial")
+    if isinstance(mt, dict):
+        examples = " ".join(f"“{e['a']['title']}” ({e['a']['source']}) and “{e['b']['title']}” ({e['b']['source']})."
+                            for e in mt.get("examples", [])[:3])
+        numbers.append(("Trial: stories Jev would join", f"{mt.get('same', 0)} of {mt.get('pairs', 0)}",
+                        "Story pairs the rules left apart whose headlines look alike. Jev is asked whether each pair is one event. "
+                        "Nothing is joined yet: this only counts." + (f" Would join: {examples}" if examples else "")))
+    for topic, v in sorted((r.get("topic_trial") or {}).items()):
+        own, other = v.get("own") or [0, 0], v.get("other") or [0, 0]
+        numbers.append((f"Trial: Jev tagging {topic}", f"{_of(own[0], own[1])}",
+                        f"Of articles from {topic} outlets, how many Jev says are about {topic} (aim 80% or more). "
+                        f"False alarms: {_of(other[0], other[1])} of articles from unrelated outlets (aim 5% or less). "
+                        f"If Jev set this tag it would add it to {v.get('adds', 0)} articles and drop it from {v.get('drops', 0)}. No tag is changed yet."))
     more = JEV_NUMBERS.format(rows="\n".join(JEV_MEANING_ROW.format(label=_esc(a), value=_esc(b), meaning=_esc(c))
                                               for a, b, c in numbers))
     return "\n".join(x for x in (JEV_TODAY.format(hint=_esc(hint), rows="\n".join(body)),

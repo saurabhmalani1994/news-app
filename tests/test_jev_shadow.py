@@ -481,3 +481,76 @@ def test_the_hourly_run_never_spends_the_phones_share(tmp_path):
                  post=FakeOpenRouter(good_answers).post)
     assert doc["run"]["budget_day"] == 0.25
     assert "Hourly run spent today" in render_jev(doc) and 'id="jev-phone-spend"' in render_jev(doc)
+
+
+# --- J35: the two trials, which only measure ---
+
+def trial_pool():
+    p = pool()
+    p["sources"] += [{"id": "bb", "name": "BBC"}, {"id": "af", "name": "AllAfrica"}]
+    p["articles"] += [
+        _article("m1", "bb", 3, "Supreme Court lets Trump resume third-country deportations", ["politics"]),
+        _article("m2", "ap", 4, "Supreme Court allows third-country deportations to resume", ["politics"]),
+        _article("m3", "bb", 5, "Spain bans evictions after protests over housing", ["world"]),
+        _article("m4", "ap", 6, "Housing protests grow in Spain as evictions rise", ["world"]),
+        _article("old", "bb", 200, "Supreme Court lets Trump resume third-country deportations plan", ["politics"]),
+        _article("t1", "tc", 3, "New AI model beats benchmark", []),
+        _article("t2", "tc", 4, "Chip maker ships AI accelerator", ["ai"]),
+        _article("f1", "af", 5, "Floods displace thousands in Sudan", ["world"]),
+    ]
+    return p
+
+
+def trial_answers(payload):
+    qs = payload["questions"]
+    if "same_event" in qs:
+        a, b = payload["state"]["headline_a"], payload["state"]["headline_b"]
+        return {"same_event": {"noul": 0.9 if a == b or ("Supreme Court" in a and "Supreme Court" in b) else 0.1}}
+    text = payload["state"]["headline"]
+    return {"section": {"choice": "World", "confidence": 0.8}, "region": {"choice": "Global", "confidence": 0.7},
+            "sentiment": {"choice": "Bad news", "probabilities": {"Bad news": 0.7, "Good news": 0.2}},
+            "ai": {"noul": 0.9 if ("AI" in text or "Chip" in text) else 0.05}, "clinical": {"noul": 0.05},
+            "industrial_biotech": {"noul": 0.05}, "hard_news": {"noul": 0.6}}
+
+
+def test_near_misses_are_look_alike_stories_the_rules_left_apart():
+    pairs = js.near_miss_pairs(trial_pool())
+    keys = [k for k, *_ in pairs]
+    assert "m:m1|m2" in keys, "two outlets on one ruling, never grouped"
+    assert not any("a2" in k and "a3" in k for k in keys), "a pair the rules already grouped is not a near miss"
+    assert not any("old" in k for k in keys), "outside the 48 hour window"
+    assert all(shared >= js.MERGE_MIN_SHARED for *_, shared in pairs) and pairs == sorted(pairs, key=lambda t: (-t[3], t[0]))
+
+
+def test_the_merge_trial_counts_what_jev_would_join_and_joins_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(js, "load_buckets", lambda path="sources.json": {**BUCKETS, "bb": "general", "af": "africa"})
+    p = trial_pool()
+    before = json.dumps(p["clusters"])
+    api = FakeOpenRouter(trial_answers)
+    doc = js.run(p, NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=api.post)
+    mt = doc["report"]["merge_trial"]
+    assert mt["pairs"] >= 1 and mt["same"] >= 1 and mt["same"] + mt["different"] + mt["unsure"] == mt["pairs"]
+    assert mt["examples"][0]["a"]["title"].startswith("Supreme Court") and mt["examples"][0]["p"] == 0.9
+    assert json.dumps(p["clusters"]) == before, "the trial never changes a group"
+    assert any(k.startswith("m:") for k in doc["_cache"]["pairs"]), "answers are cached, so a pair is asked once"
+    by_id = {a["id"]: a for a in p["articles"]}
+    near = {(by_id[a]["title"], by_id[b]["title"]) for _k, a, b, _s in js.near_miss_pairs(p)}
+    states = [c[2]["state"] for c in api.calls]
+    first_near = min(i for i, st in enumerate(states) if (st.get("headline_a"), st.get("headline_b")) in near)
+    last_article = max(i for i, st in enumerate(states) if "headline" in st)
+    assert last_article < first_near, "near misses are asked last, with whatever budget is left"
+
+
+def test_the_topic_trial_checks_jevs_yes_or_no_against_single_subject_outlets(tmp_path, monkeypatch):
+    monkeypatch.setattr(js, "load_buckets", lambda path="sources.json": {**BUCKETS, "bb": "general", "af": "africa"})
+    doc = js.run(trial_pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=FakeOpenRouter(trial_answers).post)
+    ai = doc["report"]["topic_trial"]["ai"]
+    assert ai["own"] == [3, 3], "all three TechCrunch (AI outlet) articles read as AI"
+    assert ai["other"] == [0, 1], "the Sudan flood story is not"
+    assert ai["adds"] == 1 and ai["drops"] == 0, "one AI article the rules did not tag"
+    html = render_jev({**doc, "scorecard": js.scorecard(doc)})
+    assert "Trial: stories Jev would join" in html and "Trial: Jev tagging ai" in html and "No tag is changed yet." in html
+
+
+def test_the_triage_share_leaves_the_main_lane_room():
+    assert js.TRIAGE_SHARE == 0.3

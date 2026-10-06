@@ -111,6 +111,30 @@ def evaluate(rows):
                 verdicts.append((name, "works" if status == "pass" else "not clear yet",
                                  f"matches single-subject feeds {round(100 * value)}% of the time over {n} articles "
                                  "(measured only: tabs still use the rules)"))
+        # J35: the two trials. Each sums over the fetched runs (a pair or an article can
+        # recur across runs, so these are run totals, not distinct counts).
+        mt = [j["merge"] for j in jev if isinstance(j.get("merge"), dict)]
+        if mt:
+            pairs, same, diff = (sum(m.get(k, 0) for m in mt) for k in ("pairs", "same", "different"))
+            latest = mt[-1]
+            facts.append(f"Merge trial: of {latest.get('pairs', 0)} look-alike story pairs the rules left apart this run, "
+                         f"Jev reads {latest.get('same', 0)} as the same event and {latest.get('different', 0)} as different.")
+            if pairs < 10:
+                verdicts.append(("Jev joining stories the rules left apart (trial)", "cannot tell yet", f"only {pairs} pairs answered so far"))
+            else:
+                verdicts.append(("Jev joining stories the rules left apart (trial)", "would help" if same else "little to add",
+                                 f"across these runs Jev would join {same} of {pairs} look-alike pairs and keep {diff} apart"))
+        tt = last.get("topics") or {}
+        for topic, v in sorted(tt.items()):
+            own, other = v.get("own") or [0, 0], v.get("other") or [0, 0]
+            facts.append(f"Topic trial, {topic}: Jev says yes for {own[0]} of {own[1]} articles from {topic} outlets, and for "
+                         f"{other[0]} of {other[1]} from unrelated outlets; it would add the tag to {v.get('adds', 0)} articles and drop it from {v.get('drops', 0)}.")
+            if own[1] < 20 or other[1] < 20:
+                verdicts.append((f"Jev tagging {topic} (trial)", "cannot tell yet", f"only {own[1]} articles from {topic} outlets this run"))
+            else:
+                good = own[0] / own[1] >= 0.8 and other[0] / other[1] <= 0.05
+                verdicts.append((f"Jev tagging {topic} (trial)", "ready to try" if good else "not clear yet",
+                                 f"finds it in {_pct(*own)} of {topic} outlets' articles (aim 80%), false alarms {_pct(*other)} (aim 5% or less)"))
         conf = last.get("conf") or {}
         total = sum(conf.values())
         facts.append(f"How sure Jev was: {_pct(conf.get('sure', 0), total)} sure, {_pct(conf.get('ambiguous', 0), total)} split, over {total} answers.")
