@@ -414,7 +414,8 @@ SORTED_BY = {"both": "Rules + Jev", "rules": "Rules only", "jev": "Jev suggests 
 def sorted_by(article, ans):
     """("both" | "rules" | "jev", sentence): whether the rules' tags and Jev's section
     agree. Jev counts only when it was sure or leaning; otherwise the rules stand alone."""
-    rules = [t for t in (article.get("topics") or [])]
+    added = set((article.get("jev") or {}).get("tags") or [])  # J36: a tag Jev added is Jev's, not the rules'
+    rules = [t for t in (article.get("topics") or []) if t not in added]
     rule_words = ", ".join(TOPIC_WORDS.get(t, t) for t in rules) or "none"
     a = (ans or {}).get("section")
     word = _sure_word(a) if isinstance(a, dict) and a.get("t") == "choice" else ""
@@ -480,6 +481,20 @@ def render_jev_articles(doc, pool, now=None):
     if (doc or {}).get("mock"):
         hint += " These answers come from the local stand-in, not the real Jev."
     return JEV_ARTICLES.format(count=len(read), hint=_esc(hint), groups="\n".join(groups))
+
+
+FEATURE_OFF = {"off: setting": "off (JEV_FEATURES)", "off: check": "off this run: its check did not pass"}
+
+
+def _change_rows(groups):
+    """J36: stories Jev joined and AI tags it added this run, or why each is off."""
+    feats = groups.get("features") or {}
+    rows = []
+    for key, label, count in (("join", "Stories Jev joined", "joined"), ("ai", "AI tags Jev added", "ai_tagged")):
+        if key not in feats:
+            continue
+        rows.append((label, str(groups.get(count, 0)) if feats[key] == "on" else FEATURE_OFF.get(feats[key], feats[key])))
+    return rows
 
 
 def _triage_rows(run):
@@ -725,6 +740,7 @@ def render_jev(doc):
                 ("Stories Jev moved to their own card", str(groups.get("split", 0))),
                 ("Cards left with one story, so no longer a group", str(groups.get("dissolved", 0))),
                 ("Versions Jev compared for the Other side pick", str(groups.get("annotated", 0))),
+                *_change_rows(groups),
             ]
         else:
             rows.append(("Jev did not change any cards this run", groups.get("reason") or "no answers yet"))
@@ -738,9 +754,16 @@ def render_jev(doc):
             JEV_LINE.format(text=_esc(f"{ex.get('title', '')}. Was on the card for: {ex.get('anchor', '')}. "
                                       f"Jev was {round(100 * ex.get('same', 0))}% sure they are the same event, so it moved to its own card."))
             for ex in moved)))
+    if isinstance(groups, dict) and (groups.get("join_examples") or groups.get("ai_examples")):
+        lines = [f"Joined: “{e['a']}” and “{e['b']}” ({round(100 * e.get('p', 0))}% sure they are one event)."
+                 for e in groups.get("join_examples", [])[:4]]
+        lines += [f"AI tag added: “{t}”." for t in groups.get("ai_examples", [])[:4]]
+        body.append(KEEP_FOLD.format(label="Examples of stories joined and AI tags added", value=len(lines),
+                                     lines="".join(JEV_LINE.format(text=_esc(t)) for t in lines)))
     hint = ("Every hour Jev reads the new articles and answers the same fixed questions about each one. "
-            "Its answers change your feed in two places only: splitting a story group whose versions are not one event, "
-            "and choosing the other-side version. Sections, tags and the order of your feed still come from the rules and your profile.")
+            "Its answers change your feed in four places: splitting a story group whose versions are not one event, joining two "
+            "stories it is very sure are one event, adding the AI tag where the rules missed it, and choosing the other-side version. "
+            "Every other tag, and the order of your feed, still come from the rules and your profile.")
     if doc.get("mock"):
         hint += " These answers come from the local stand-in, not the real Jev."
     numbers = [
@@ -819,6 +842,7 @@ KEEP_TERM_WORDS = (
     ("hard", "Hard news (world, politics, economy, science, conflict): 10 points."),
     ("recency", "Freshness: 20 points when new, half that at 12 hours old."),
     ("incumbent", "Already in the last edition: 6 points, so the feed does not churn."),
+    ("early", "Only one outlet has it and it is under 6 hours old: 12 points (6 up to 12 hours), since others have not had time to cover it."),
 )
 
 
@@ -891,7 +915,7 @@ def render_keep(doc, pool):
                                  lines=examples("only_score")))
     body.append(KEEP_FOLD.format(label="Articles only today's rule keeps", value=doc["differ"]["only_cap"],
                                  lines=examples("only_cap")))
-    body.append(KEEP_FOLD.format(label="How an article earns points", value="9 ways",
+    body.append(KEEP_FOLD.format(label="How an article earns points", value=f"{len(KEEP_TERM_WORDS)} ways",
                                  lines="".join(JEV_LINE.format(text=_esc(t)) for _k, t in KEEP_TERM_WORDS)
                                  + JEV_LINE.format(text=_esc("Nothing about you counts: your topics, trust and reading stay on your phone. "
                                                              "Each outlet group (Singapore, AI, biotech ...) keeps the same space it has today; "

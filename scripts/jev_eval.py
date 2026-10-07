@@ -111,6 +111,12 @@ def evaluate(rows):
                 verdicts.append((name, "works" if status == "pass" else "not clear yet",
                                  f"matches single-subject feeds {round(100 * value)}% of the time over {n} articles "
                                  "(measured only: tabs still use the rules)"))
+        # J36: what Jev changed for real: stories joined and AI tags added.
+        live = [j["groups"] for j in jev if j["groups"].get("features")]
+        if live:
+            feats = live[-1]["features"]
+            facts.append(f"Live changes per run: {_avg([g.get('joined', 0) for g in live]):.1f} stories joined ({feats.get('join')}), "
+                         f"{_avg([g.get('ai_tagged', 0) for g in live]):.1f} AI tags added ({feats.get('ai')}).")
         # J35: the two trials. Each sums over the fetched runs (a pair or an article can
         # recur across runs, so these are run totals, not distinct counts).
         mt = [j["merge"] for j in jev if isinstance(j.get("merge"), dict)]

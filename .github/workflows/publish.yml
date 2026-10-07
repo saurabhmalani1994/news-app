@@ -156,6 +156,10 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           JEV_DAILY_USD: ${{ vars.JEV_DAILY_USD }}
+          # J36: what Jev may change in the pool: split, join, ai (default all three,
+          # each only while its own check passes that run). The repository variable
+          # JEV_FEATURES=split turns joining stories and the AI tag off.
+          JEV_FEATURES: ${{ vars.JEV_FEATURES || 'split,join,ai' }}
           CF_PIPELINE_TOKEN: ${{ secrets.CLOUDFLARE_PIPELINE_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNTID }}
         run: python3 -m fetcher.jev_shadow --pool dist/pool.json --out dist/jev.json --apply

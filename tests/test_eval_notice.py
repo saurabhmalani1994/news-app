@@ -125,3 +125,12 @@ def test_the_trials_are_published_as_counts_and_judged():
     assert any(f.startswith("Merge trial: of 12 look-alike story pairs") for f in result["facts"])
     # A run from before the trials (no merge or topics in its notice) still evaluates.
     assert "Fixing story groups" in {job for job, *_ in ev.evaluate([_row("2026-10-06T17:17:00Z")])["verdicts"]}
+
+
+def test_live_changes_reach_the_notice_and_the_facts():
+    doc = json.loads(json.dumps(JEV))
+    doc["report"]["groups"].update(features={"split": "on", "join": "on", "ai": "on"}, joined=5, ai_tagged=27)
+    summary = notice.jev_summary(doc)
+    assert summary["groups"]["joined"] == 5 and summary["groups"]["ai_tagged"] == 27 and summary["groups"]["features"]["ai"] == "on"
+    facts = ev.evaluate([_row("2026-10-08T01:17:00Z", jev=summary)])["facts"]
+    assert any(f.startswith("Live changes per run: 5.0 stories joined (on), 27.0 AI tags added (on).") for f in facts)

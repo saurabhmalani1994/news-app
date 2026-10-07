@@ -222,7 +222,8 @@ def _history(days, *, missed=(3, 2), sg=(10, 12), stale=(90, 70), floors=True, e
     t = NOW.timestamp() - days * 86400
     while t <= NOW.timestamp():
         at = datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        out.append({"at": at, "floors": floors, "missed": list(missed), "sg": list(sg), "stale": list(stale), "budget": True})
+        out.append({"at": at, "rv": keep_rule.RULE_VERSION, "floors": floors, "missed": list(missed), "sg": list(sg),
+                    "stale": list(stale), "budget": True})
         t += every_h * 3600
     return out
 
@@ -243,6 +244,11 @@ def test_the_rule_goes_live_only_after_a_week_that_passes_every_check():
     assert keep_rule.decide("score", [], now) == (True, "forced")
     assert keep_rule.decide("nonsense", _history(3), now) == (False, "trial")
     assert len(keep_rule.trim_history(_history(12), now)) < len(_history(12))
+    # J36: a changed rule earns a fresh week; the last version's runs do not count.
+    old = [{**h, "rv": keep_rule.RULE_VERSION - 1} for h in _history(7.5)]
+    assert not keep_rule.gate(old, now)["pass"] and keep_rule.gate(old, now)["runs"] == 0
+    unversioned = [{k: v for k, v in h.items() if k != "rv"} for h in _history(7.5)]
+    assert keep_rule.gate(unversioned, now)["runs"] == 0, "runs from before versions were version 1"
 
 
 def test_a_live_rule_publishes_its_own_picks_and_the_ledger_still_adds_up():
@@ -349,3 +355,27 @@ def test_jev_reads_next_the_articles_nearest_the_cut_and_nothing_private():
     assert "sg1_0" not in ids and "w9" not in ids and ids
     assert set(items[0]) == {"id", "headline", "summary", "outlet"}
     assert doc["jev"]["read"] == 1 and doc["jev"]["counting"] is False
+
+
+# --- J36: version 2 of the rule ---
+
+def test_a_fresh_story_one_outlet_has_is_not_held_back_for_lacking_coverage():
+    cands = candidates()
+    ctx = ctx_for(cands)
+    by = {a["id"]: a for a in cands}
+    assert keep_rule.fact_terms(by["left1_1"], ctx)["early"] == 6, "9 hours old, one outlet"
+    assert keep_rule.fact_terms(art("new1", "left1", 2), ctx)["early"] == 12
+    assert keep_rule.fact_terms(art("old1", "left1", 20), ctx)["early"] == 0
+    assert keep_rule.fact_terms(by["left1_0"], ctx)["early"] == 0, "already covered by others: corroboration speaks instead"
+
+
+def test_a_tag_keeps_at_least_the_old_rules_count():
+    cands = candidates()
+    for a in cands:
+        if a["id"] in ("left1_6", "left1_7", "right1_7"):
+            a["topics"] = ["singapore"]
+    ctx = ctx_for(cands)
+    without, _ = keep_rule.select_pool(cands, ctx, 10 ** 9, {"general": 6, "singapore": 4, "ai": 2})
+    with_floor, why = keep_rule.select_pool(cands, ctx, 10 ** 9, {"general": 6, "singapore": 4, "ai": 2}, {"singapore": 3})
+    assert sum(1 for i in with_floor if why[i] == "floor_tag") >= 1
+    assert all(i in with_floor for i in ("left1_6", "left1_7", "right1_7"))

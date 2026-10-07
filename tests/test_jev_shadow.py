@@ -554,3 +554,88 @@ def test_the_topic_trial_checks_jevs_yes_or_no_against_single_subject_outlets(tm
 
 def test_the_triage_share_leaves_the_main_lane_room():
     assert js.TRIAGE_SHARE == 0.3
+
+
+# --- J36: joining stories and the AI tag, each behind its own check ---
+
+def _cache_for(p, answers):
+    cache = {"articles": {}, "pairs": {}, "triage": {}}
+    for a in p["articles"]:
+        cache["articles"][a["id"]] = [js.clean_answers(js.ARTICLE_QUESTIONS, {"answers": answers({"questions": js.ARTICLE_QUESTIONS,
+                                                                                                 "state": {"headline": a["title"]}})}), 0]
+    return cache
+
+
+FACTS5 = {"st": ("center", "st"), "ap": ("center", "ap"), "tc": ("center", "tc"), "bb": ("left", "bb"), "af": ("center", "af")}
+
+
+def test_jev_joins_two_stories_only_when_it_is_very_sure():
+    p = trial_pool()
+    merges = js.near_miss_pairs(p)
+    key = next(k for k, a, b, _s in merges if {a, b} == {"m1", "m2"})
+    other = next(k for k, a, b, _s in merges if {a, b} == {"m3", "m4"})
+    cache = _cache_for(p, trial_answers)
+    cache["pairs"][key] = [{"same_event": {"t": "noul", "v": 0.95}}, 0]
+    cache["pairs"][other] = [{"same_event": {"t": "noul", "v": 0.8}}, 0]  # likely, not sure enough
+    new, summary = js.apply_to_pool(p, cache, FACTS5, features=("split", "join"), merges=merges)
+    joined = next(c for c in new["clusters"] if set(c["article_ids"]) == {"m1", "m2"})
+    assert joined["id"] == "c_m2", "named for its earliest version, as every group is"
+    assert joined["independent_sources"] == 2 and joined["lean_buckets"] == ["center", "left"] and joined["method"] == "cosine_entity"
+    assert not any(set(c["article_ids"]) >= {"m3", "m4"} for c in new["clusters"]), "0.8 is not sure enough to join"
+    assert summary["joined"] == [{"cluster": "c_m2", "members": 2, "a": "m1", "b": "m2", "p": 0.95}]
+    by = {a["id"]: a for a in new["articles"]}
+    assert sum(1 for i in ("m1", "m2") if by[i].get("jev", {}).get("joined")) == 1
+    ids = [i for c in new["clusters"] for i in c["article_ids"]]
+    assert len(ids) == len(set(ids)), "no version sits in two stories"
+    plain, _ = js.apply_to_pool(p, cache, FACTS5, features=("split",), merges=merges)
+    assert not any(set(c["article_ids"]) == {"m1", "m2"} for c in plain["clusters"]), "off unless asked for"
+
+
+def test_a_live_events_group_and_an_oversized_group_are_never_joined():
+    p = trial_pool()
+    p["clusters"].append({"id": "c_m1", "article_ids": ["m1", "t1"], "near_duplicates": [], "method": "cosine_entity"})
+    p["events"] = [{"id": "e1", "cluster_ids": ["c_m1"], "live": True}]
+    merges = [("m:m1|m2", "m1", "m2", 0.5)]
+    cache = _cache_for(p, trial_answers)
+    cache["pairs"]["m:m1|m2"] = [{"same_event": {"t": "noul", "v": 0.99}}, 0]
+    new, summary = js.apply_to_pool(p, cache, FACTS5, features=("join",), merges=merges)
+    assert summary["joined"] == [] and any(c["id"] == "c_m1" and c["article_ids"] == ["m1", "t1"] for c in new["clusters"])
+
+
+def test_jev_adds_the_ai_tag_and_never_removes_one():
+    p = trial_pool()
+    cache = _cache_for(p, trial_answers)
+    new, summary = js.apply_to_pool(p, cache, FACTS5, features=("ai",), merges=[])
+    by = {a["id"]: a for a in new["articles"]}
+    assert summary["ai_tagged"] == ["t1"], "the one AI article the rules had not tagged"
+    assert by["t1"]["topics"] == ["ai"] and by["t1"]["jev"]["tags"] == ["ai"]
+    assert by["t2"]["topics"] == ["ai"] and "tags" not in by["t2"].get("jev", {}), "a rule tag is the rules', not Jev's"
+    assert by["a4"]["topics"] == ["ai"], "the rules' AI tag stays even where Jev says no"
+    off, _ = js.apply_to_pool(p, cache, FACTS5, features=("split",), merges=[])
+    assert {a["id"]: a for a in off["articles"]}["t1"]["topics"] == []
+
+
+def test_each_feature_needs_its_own_check_to_pass_this_run():
+    doc = {"scorecard": {"checks": [{"key": "same_event", "status": "pass"}, {"key": "different_event", "status": "pass"}]},
+           "report": {"topic_trial": {"ai": {"own": [25, 26], "other": [2, 141]}}}}
+    assert js.allowed_features(doc) == {"split": "on", "join": "on", "ai": "on"}
+    assert js.allowed_features(doc, ["split"]) == {"split": "on", "join": "off: setting", "ai": "off: setting"}
+    doc["scorecard"]["checks"][0]["status"] = "fail"
+    doc["report"]["topic_trial"]["ai"]["other"] = [20, 141]
+    assert js.allowed_features(doc) == {"split": "on", "join": "off: check", "ai": "off: check"}
+    doc["report"]["topic_trial"]["ai"] = {"own": [5, 5], "other": [0, 141]}
+    assert js.allowed_features(doc)["ai"] == "off: check", "too few AI-outlet articles to judge"
+
+
+def test_health_says_what_jev_joined_and_tagged_or_why_it_is_off(tmp_path, monkeypatch):
+    monkeypatch.setattr(js, "load_buckets", lambda path="sources.json": BUCKETS)
+    doc = js.run(pool(), NOW, env={"OPENROUTER_API_KEY": OR_KEY}, cache_path=tmp_path / "j.json", post=FakeOpenRouter(good_answers).post)
+    doc.pop("_cache")
+    doc["report"]["groups"] = {"applied": True, "annotated": 3, "split": 1, "dissolved": 0, "examples": [],
+                               "features": {"split": "on", "join": "on", "ai": "off: check"}, "joined": 4, "ai_tagged": 0,
+                               "join_examples": [{"a": "Court <b>rules</b>", "b": "Ruling lands", "p": 0.95}], "ai_examples": []}
+    html = render_jev(doc)
+    assert "Stories Jev joined" in html and ">4<" in html
+    assert "AI tags Jev added" in html and "off this run: its check did not pass" in html
+    assert "Joined: “Court &lt;b&gt;rules&lt;/b&gt;” and “Ruling lands” (95% sure they are one event)." in html
+    assert "four places" in html

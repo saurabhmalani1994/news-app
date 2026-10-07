@@ -33,6 +33,7 @@ import { bodyCache } from "./reader/cache.js";
 import { loadBody } from "./reader/core.js";
 import { toggleThumb, undoThumb } from "./actions/thumbs.js";
 import { withSourceMuted, withTopicMuted, withTopicBoosted } from "./actions/mute-boost.js";
+import { topicLabel } from "./actions/topic-resolve.js";
 import { anchoredRerender } from "./actions/scroll-anchor.js";
 import { explainLead, renderWhyContent } from "./why-this.js";
 // S15: "opened" (R17, R23), and the seen-penalty term (history/penalty.js) so the
@@ -261,6 +262,7 @@ async function doWhy({ li, sid, facts }) {
   const nowMs = typeof input.now === "number" ? input.now : Date.parse(input.now) || Date.now();
   const lead = explainLead(input, sid, profile);
   const content = renderWhyContent({ story, profile, nowMs, names: input.names || {}, headline: facts.title, lead });
+  content.push(...jevChangeNote(sid)); // J36: a tag Jev added or versions it joined feed these numbers
   await sheetClosed();
   openSheet({ title: "Why this", content, opener });
 }
@@ -303,7 +305,7 @@ async function doJev({ li, sid, attrs, facts }) {
     const merged = { ...full, answers: { ...(hourly?.answers || {}), ...full.answers },
       hourly: full.hourly || (hourly ? Object.keys(hourly.answers).length : 0) };
     await sheetClosed();
-    openSheet({ title: "Jev's read", content: analysisContent(merged, facts, true, ruleTopicsOf(attrs.article_id || sid)), opener });
+    openSheet({ title: "Jev's read", content: [...analysisContent(merged, facts, true, ruleTopicsOf(attrs.article_id || sid)), ...jevChangeNote(sid)], opener });
     return;
   }
   const content = [];
@@ -318,6 +320,7 @@ async function doJev({ li, sid, attrs, facts }) {
   }
   // J32 (owner): asking Jev for more happens only with the article open, from its
   // Jev bar (js/jev/read-view.js); this sheet shows what Jev has already said.
+  content.push(...jevChangeNote(sid));
   content.push(askInArticle(facts.has_body, Boolean(hourly)));
   await sheetClosed();
   openSheet({ title: "Jev's read", content, opener });
@@ -340,7 +343,35 @@ function ruleTopicsOf(id) {
   const pool = getInput().pool || {};
   const lead = (pool.clusters || []).find((c) => c.id === id)?.lead || id;
   const article = (pool.articles || []).find((a) => a.id === lead);
-  return article ? article.topics || [] : null;
+  // J36: a tag Jev added is Jev's, not the rules'.
+  const added = new Set(article?.jev?.tags || []);
+  return article ? (article.topics || []).filter((t) => !added.has(t)) : null;
+}
+
+/** J36: what Jev changed about a story in the hourly run, as plain lines for the Why
+ * this and Jev's read sheets: a tag it added (the rules gave none), versions it joined
+ * from a story the rules had left apart. [] when it changed nothing. */
+function jevChangeLines(sid) {
+  const pool = getInput().pool || {};
+  const cluster = (pool.clusters || []).find((c) => c.id === sid);
+  const ids = new Set(cluster ? cluster.article_ids : [sid]);
+  const members = (pool.articles || []).filter((x) => ids.has(x.id));
+  const lead = members.find((x) => x.id === (cluster?.lead || sid));
+  const lines = [];
+  const tags = (lead?.jev?.tags || []).map((t) => topicLabel(t));
+  if (tags.length) lines.push(`Jev added the ${tags.join(" and ")} tag to this story: the rules had not tagged it. It counts for your ${tags.join(" and ")} setting and tab.`);
+  const joined = members.filter((x) => x.jev?.joined).length;
+  if (joined) lines.push(`Jev joined ${joined} version${joined === 1 ? "" : "s"} to this story that the rules had left as a separate card, so it counts ${joined === 1 ? "that outlet" : "those outlets"} too.`);
+  return lines;
+}
+
+function jevChangeNote(sid) {
+  const lines = jevChangeLines(sid);
+  if (!lines.length) return [];
+  const p = document.createElement("p");
+  p.className = "why-scale-note jev-note jev-changed";
+  p.textContent = lines.join(" ");
+  return [p];
 }
 
 function analysisContent(result, facts, cached, ruleTopics = null) {

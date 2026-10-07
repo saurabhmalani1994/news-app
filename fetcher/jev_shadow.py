@@ -913,10 +913,105 @@ def load_source_facts(path="sources.json"):
     return {r["id"]: (r.get("lean"), r.get("syndication_group") or r["id"]) for r in rows if isinstance(r, dict) and "id" in r}
 
 
-def apply_to_pool(pool, cache, facts=None):
+# J36: what --apply may change, after a day of trials (owner, 2026-10-07). JEV_FEATURES (a
+# repository variable) names them, default all; each also needs its own check to pass in
+# the same run (allowed_features), so a bad hour turns it off by itself.
+#   split  J20: a group member Jev reads as a different event leaves its group.
+#   join   two stories the rules left apart become one when Jev is JOIN_ABOVE sure they
+#          are one event (the merge trial's pairs), never into a Live event's group and
+#          never past JOIN_MAX_MEMBERS versions.
+#   ai     an article Jev reads as about AI (likely, as the topic trial measured) gains
+#          the ai tag when the rules gave none. A tag is only ever added.
+FEATURES = ("split", "join", "ai")
+JOIN_ABOVE = 0.9
+JOIN_MAX_MEMBERS = 12
+AI_TAG = "ai"
+TOPIC_OWN_MIN, TOPIC_OTHER_MAX, TOPIC_MIN_N = 0.8, 0.05, 20
+
+
+def allowed_features(doc, wanted=FEATURES):
+    """{feature: "on" | "off: <why>"} for this run: asked for, and its check passing."""
+    checks = {c["key"]: c["status"] for c in (doc.get("scorecard") or {}).get("checks", [])}
+    events_ok = checks.get("same_event") == "pass" and checks.get("different_event") == "pass"
+    ai = ((doc.get("report") or {}).get("topic_trial") or {}).get(AI_TAG) or {}
+    own, other = ai.get("own") or [0, 0], ai.get("other") or [0, 0]
+    ai_ok = (own[1] >= TOPIC_MIN_N and other[1] >= TOPIC_MIN_N
+             and own[0] / own[1] >= TOPIC_OWN_MIN and other[0] / other[1] <= TOPIC_OTHER_MAX)
+    passing = {"split": True, "join": events_ok, "ai": ai_ok}
+    return {f: ("off: setting" if f not in wanted else "on" if passing[f] else "off: check") for f in FEATURES}
+
+
+def _join_stories(new, by_id, cache, merges, facts, in_events):
+    """J36: joins the stories of each near miss Jev is JOIN_ABOVE sure is one event.
+    Returns [{"cluster", "members", "a", "b", "p"}] for what it joined."""
+    from contract.validate import _cluster_method
+    story_of = {m: c["id"] for c in new["clusters"] for m in c["article_ids"]}
+    clusters = {c["id"]: c for c in new["clusters"]}
+    parent = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    why = {}
+    for key, a, b, _shared in merges:
+        ans = (cache["pairs"].get(key) or [{}])[0].get("same_event")
+        if not ans or ans.get("v", 0) < JOIN_ABOVE or a not in by_id or b not in by_id:
+            continue
+        ua, ub = story_of.get(a, a), story_of.get(b, b)
+        if ua == ub or ua in in_events or ub in in_events:
+            continue
+        ra, rb = find(ua), find(ub)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+            why[min(ra, rb)] = (a, b, ans["v"])
+    groups = {}
+    for unit in list(parent):
+        groups.setdefault(find(unit), []).append(unit)
+    joined = []
+    for root, units in sorted(groups.items()):
+        if len(units) < 2:
+            continue
+        units.sort(key=lambda u: (-len(clusters[u]["article_ids"]) if u in clusters else -1, u))
+        members = [m for u in units for m in (clusters[u]["article_ids"] if u in clusters else [u])]
+        if len(members) > JOIN_MAX_MEMBERS:
+            continue
+        dups = [list(g) for u in units if u in clusters for g in clusters[u]["near_duplicates"]]
+        in_dups = {i for g in dups for i in g}
+        n_units = len(dups) + len(set(members) - in_dups)
+        srcs = {by_id[i]["source_id"] for i in members}
+        base = _cluster_method(n_units, bool(dups))
+        embedded = any(u in clusters and str(clusters[u].get("method", "")).endswith("+embedding") for u in units)
+        seed = min(members, key=lambda i: (by_id[i].get("published_at", ""), i))
+        merged = {
+            "id": f"c_{seed}", "method": base + "+embedding" if embedded and n_units > 1 else base,
+            "article_ids": members, "near_duplicates": dups,
+            "independent_sources": len({facts.get(sid, (None, sid))[1] for sid in srcs}),
+            "lean_buckets": sorted({facts[sid][0] for sid in srcs if sid in facts and facts[sid][0]}),
+        }
+        countries = sorted({c for u in units if u in clusters for c in clusters[u].get("story_countries", [])})
+        if countries:
+            merged["story_countries"] = countries
+        first = set(clusters[units[0]]["article_ids"]) if units[0] in clusters else {units[0]}
+        for m in members:
+            if m not in first:
+                by_id[m].setdefault("jev", {})["joined"] = True
+        new["clusters"] = [c for c in new["clusters"] if c["id"] not in units] + [merged]
+        a, b, pr = why.get(root) or (members[0], members[-1], JOIN_ABOVE)
+        joined.append({"cluster": merged["id"], "members": len(members), "a": a, "b": b, "p": pr})
+    new["clusters"].sort(key=lambda c: c["id"])
+    return joined
+
+
+def apply_to_pool(pool, cache, facts=None, features=("split",), merges=None):
     """(new pool, summary): members Jev reads as a different event split out of their
     group (a group left with one member dissolves, unless a Live event holds it), and
-    every answered member annotated with jev {same, framing}. The input is not changed."""
+    every answered member annotated with jev {same, framing}. J36: with "join" in
+    `features`, near misses Jev is sure of become one story; with "ai", an article Jev
+    reads as about AI gains that tag. The input is not changed."""
     from contract.validate import _cluster_method
     facts = facts if facts is not None else load_source_facts()
     new = json.loads(json.dumps(pool))
@@ -932,7 +1027,7 @@ def apply_to_pool(pool, cache, facts=None):
                 continue
             ans = (cache["pairs"].get(f"c:{anchor}|{m}") or [{}])[0]
             same, framing = ans.get("same_event"), ans.get("framing")
-            if same and same["v"] < SPLIT_BELOW:
+            if same and same["v"] < SPLIT_BELOW and "split" in features:
                 drop.append(m)
                 continue
             rec = {}
@@ -973,19 +1068,30 @@ def apply_to_pool(pool, cache, facts=None):
         hard = ((cache["articles"].get(aid) or [{}])[0] or {}).get("hard_news")
         if isinstance(hard, dict) and hard.get("t") == "noul" and isinstance(hard.get("v"), (int, float)):
             a.setdefault("jev", {})["hard"] = round(min(1.0, max(0.0, float(hard["v"]))), 3)
-    return new, {"splits": splits, "dissolved": dissolved, "annotated": annotated}
+    joined = _join_stories(new, by_id, cache, merges if merges is not None else near_miss_pairs(pool), facts,
+                           in_events) if "join" in features else []
+    tagged = []
+    if "ai" in features:
+        for aid in sorted(by_id):
+            a = by_id[aid]
+            ans = ((cache["articles"].get(aid) or [{}])[0] or {}).get(AI_TAG)
+            if band(ans) == "likely" and AI_TAG not in (a.get("topics") or []):
+                a["topics"] = sorted(set(a.get("topics") or []) | {AI_TAG})
+                a.setdefault("jev", {})["tags"] = [AI_TAG]
+                tagged.append(aid)
+    return new, {"splits": splits, "dissolved": dissolved, "annotated": annotated, "joined": joined, "ai_tagged": tagged}
 
 
-def apply_and_write(pool_path, pool, cache, facts=None):
+def apply_and_write(pool_path, pool, cache, facts=None, features=("split",), merges=None):
     """Applies the group answers and replaces the pool file, only if the new pool passes
     contract.validate; written to a temporary file, then renamed. Returns the summary
     with "applied": True, or "applied": False and the reason."""
     from contract.validate import validate
     try:
-        new, summary = apply_to_pool(pool, cache, facts)
+        new, summary = apply_to_pool(pool, cache, facts, features, merges)
         errors = validate(new)
     except Exception as exc:  # never lose the report, never touch the pool
-        return {"splits": [], "dissolved": [], "annotated": 0, "applied": False,
+        return {"splits": [], "dissolved": [], "annotated": 0, "joined": [], "ai_tagged": [], "applied": False,
                 "reason": f"{type(exc).__name__}: {str(exc)[:160]}"}
     if errors:
         return {**summary, "applied": False, "reason": errors[0][:200]}
@@ -1150,11 +1256,21 @@ def main(argv=None):
               max_articles=args.max_articles, daily_usd=args.daily_usd, triage_path=args.triage)
     cache = doc.pop("_cache")
     if args.apply:
-        applied = apply_and_write(args.pool, pool, cache)
+        # J36: what may change this run: asked for (JEV_FEATURES), and its own check passing.
+        asked = [f.strip() for f in (os.environ.get("JEV_FEATURES") or ",".join(FEATURES)).lower().split(",")]
+        gates = allowed_features(doc, [f for f in asked if f in FEATURES])
+        features = tuple(f for f, state in gates.items() if state == "on")
+        applied = apply_and_write(args.pool, pool, cache, features=features)
         by_id = {a["id"]: a for a in pool["articles"]}
         doc["report"]["groups"] = {
             "applied": applied["applied"], "reason": applied.get("reason"), "annotated": applied["annotated"],
             "split": len(applied["splits"]), "dissolved": len(applied["dissolved"]),
+            "features": gates, "joined": len(applied.get("joined", [])),
+            "joined_versions": sum(j["members"] for j in applied.get("joined", [])),
+            "ai_tagged": len(applied.get("ai_tagged", [])),
+            "join_examples": [{"a": by_id[j["a"]].get("title", "")[:140], "b": by_id[j["b"]].get("title", "")[:140], "p": j["p"]}
+                              for j in applied.get("joined", [])[:6] if j["a"] in by_id and j["b"] in by_id],
+            "ai_examples": [by_id[i].get("title", "")[:140] for i in applied.get("ai_tagged", [])[:6]],
             "examples": [{"title": by_id[x["article"]].get("title", "")[:140], "anchor": by_id[x["anchor"]].get("title", "")[:140],
                           "same": x["same"]} for x in applied["splits"][:8]],
         }
@@ -1162,7 +1278,8 @@ def main(argv=None):
     print(log_line(doc))
     if "groups" in doc["report"]:
         g = doc["report"]["groups"]
-        print(f"jev groups applied={g['applied']} annotated={g['annotated']} split={g['split']} dissolved={g['dissolved']}")
+        print(f"jev groups applied={g['applied']} annotated={g['annotated']} split={g['split']} dissolved={g['dissolved']} "
+              f"joined={g.get('joined', 0)} ai_tagged={g.get('ai_tagged', 0)} features={json.dumps(g.get('features', {}))}")
     if args.scorecard:
         print(scorecard_text(doc["scorecard"]))
     return 0
