@@ -57,7 +57,10 @@ def jev_summary(doc):
         "contra": rep.get("clinical_and_industrial_both_likely", 0),
         "ai": {k: ai.get(k, 0) for k in ("both", "rules_only", "jev_only", "neither")},
         "groups": {"applied": bool(groups.get("applied")), "split": groups.get("split", 0),
-                   "dissolved": groups.get("dissolved", 0), "annotated": groups.get("annotated", 0)},
+                   "dissolved": groups.get("dissolved", 0), "annotated": groups.get("annotated", 0),
+                   # J36: stories joined and AI tags added this run, and whether each is on.
+                   "joined": groups.get("joined", 0), "ai_tagged": groups.get("ai_tagged", 0),
+                   "features": groups.get("features") or {}},
         "checks": checks,
         # J35: the two trials, as counts.
         "merge": {k: (rep.get("merge_trial") or {}).get(k, 0) for k in ("near_misses", "pairs", "same", "different", "unsure")},

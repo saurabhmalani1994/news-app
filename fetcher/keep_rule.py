@@ -30,6 +30,9 @@ Fact terms, whole points (the same style as fetcher/best_version.py):
   hard           10 when any topic tag is hard news (topics.json hard_news)
   recency        20 x 2^(-age / 12 hours)
   incumbent      6 when the previous pool had it (steadier hour to hour)
+  early          J36: 12 for a story only one outlet has that is EARLY_FULL_H old or
+                 newer, 6 up to EARLY_HALF_H: it has not had time to be covered by
+                 others, so lacking coverage is not held against it yet
   jev            J28: from Jev's reading of the article, when Jev has read it and its
                  check passes (see JEV_KIND_POINTS and jev_check): original reporting
                  and named sources up, press releases and summaries of others down
@@ -49,7 +52,7 @@ from fetcher.fetch import _plain
 from fetcher.jev_shadow import SPLIT_BELOW, band, choice_status
 
 SCHEMA_VERSION = 1
-TERMS = ("corroboration", "lean_span", "original", "complete", "health", "paywall", "hard", "recency", "incumbent", "jev")
+TERMS = ("corroboration", "lean_span", "original", "complete", "health", "paywall", "hard", "recency", "incumbent", "early", "jev")
 
 FLOOR_PER_SOURCE = 2
 SOURCE_CEIL = 12
@@ -68,10 +71,22 @@ DEK_CHARS = 80
 RECORD_OVERHEAD = 60
 # J27: the keep rule keeps more multi-outlet stories, and each adds a cluster record the
 # per-article estimate does not see; a live run came to 597KB of the ~600KB pool budget.
-SIZE_MARGIN = 0.96
+SIZE_MARGIN = 0.975
+
+# J36: a week of the trial (2026-09-30 to 10-07) showed version 1 keeping fresher, better
+# covered articles but missing more stories than the old rule (185 to 154 over 23 runs)
+# and fewer Singapore ones. Version 2: the early term above; a floor per TAG_FLOOR_TAGS
+# tag at the old rule's own count; 2.5% less room, not 4% (a forced live run was 2.6%
+# over the old pool at none). A changed rule earns a fresh week: the gate reads only
+# this version's runs.
+RULE_VERSION = 2
+EARLY_POINTS = 12
+EARLY_FULL_H = 6
+EARLY_HALF_H = 12
+TAG_FLOOR_TAGS = ("singapore",)
 PUBLISHED_DEK_CHARS = 600  # fetcher.fanout's, kept equal by tests/test_select.py
 
-WHY = ("floor_source", "floor_story", "floor_bucket", "fill")
+WHY = ("floor_source", "floor_story", "floor_bucket", "floor_tag", "fill")
 
 # J28: each outlet's newest item from the last FRESH_H hours is always kept, so a story
 # only one outlet has so far (a scoop, breaking local news) is not cut for lacking
@@ -205,6 +220,14 @@ def jev_check(candidates, ctx):
             "passed": len(marked) >= JEV_CHECK_MIN and share is not None and share >= JEV_CHECK_SHARE}
 
 
+def _early(article, cl, ctx):
+    """J36: points for a story one outlet has that is too new to have been covered."""
+    if cl["n"] >= 2:
+        return 0
+    age = age_hours(article, ctx)
+    return EARLY_POINTS if age <= EARLY_FULL_H else EARLY_POINTS // 2 if age <= EARLY_HALF_H else 0
+
+
 def fact_terms(article, ctx):
     """{term: points} for one candidate, facts only."""
     source = ctx["sources"].get(article["source_id"]) or {"id": article["source_id"]}
@@ -221,6 +244,7 @@ def fact_terms(article, ctx):
         "hard": 10 if any(t in ctx["hard"] for t in article.get("topics", ())) else 0,
         "recency": round(20 * 2 ** (-age_hours(article, ctx) / 12)),
         "incumbent": 6 if article["id"] in ctx["previous_ids"] else 0,
+        "early": _early(article, cl, ctx),
         # J28: Jev's points, counted only once its check passes (ctx["jev"]["counts"]).
         "jev": jev_points(article, ctx) if ctx.get("jev", {}).get("counts") else 0,
     }
@@ -239,7 +263,7 @@ def _bucket(article, ctx):
     return (ctx["sources"].get(article["source_id"]) or {}).get("bucket") or "none"
 
 
-def select_pool(candidates, ctx, budget, bucket_budget=None):
+def select_pool(candidates, ctx, budget, bucket_budget=None, tag_floor=None):
     """(ids in selection order, {id: why}) within `budget` bytes, and within each
     bucket's article count (`bucket_budget`, {bucket: articles}) during the fill; room a
     bucket cannot use goes to a last fill across all buckets.
@@ -258,6 +282,7 @@ def select_pool(candidates, ctx, budget, bucket_budget=None):
     score = {a["id"]: sum(fact_terms(a, ctx).values()) for a in cands}
     order = sorted(cands, key=lambda a: (-score[a["id"]], -(_epoch(a.get("published_at")) or 0), a["id"]))
     size = {a["id"]: est_bytes(a) for a in cands}
+    by_id_all = {a["id"]: a for a in cands}
 
     chosen, why = [], {}
     used = {"bytes": 0}
@@ -334,6 +359,17 @@ def select_pool(candidates, ctx, budget, bucket_budget=None):
                 break
             if fits(a, ceilings="source"):
                 take(a, "floor_bucket")
+    # Floor 4 (J36): each tag in tag_floor ({tag: articles}) keeps at least that many,
+    # the best first; a topic tag follows the article's own subject, not its outlet.
+    for tag in sorted(tag_floor or {}):
+        have = sum(1 for i in chosen if tag in by_id_all[i].get("topics", ()))
+        for a in order:
+            if have >= tag_floor[tag]:
+                break
+            if tag in a.get("topics", ()) and fits(a, ceilings="source"):
+                take(a, "floor_tag")
+                have += 1
+
     def best_of(pool_items):
         """The best remaining item by score, an extra version of a kept story paying
         CLUSTER_EXTRA_PENALTY per version before it (pool_items is in score order)."""
@@ -487,7 +523,8 @@ def run_shadow(candidates, cap_ids, ctx, previous_dropped=None):
     check = jev_check(candidates, ctx)
     ctx.setdefault("jev", {"triage": {}, "split": set()})["counts"] = check["passed"]
     bucket_budget = Counter(_bucket(a, ctx) for a in kept)
-    score_ids, why = select_pool(candidates, ctx, budget, dict(bucket_budget))
+    tag_floor = {t: sum(1 for a in kept if t in a.get("topics", ())) for t in TAG_FLOOR_TAGS}
+    score_ids, why = select_pool(candidates, ctx, budget, dict(bucket_budget), tag_floor)
     doc = compare(cap_ids, score_ids, why, candidates, ctx, previous_dropped)
     doc["budget_bytes"] = budget
     doc["_score_ids"] = score_ids  # J27: taken out by the caller, never written
@@ -496,7 +533,7 @@ def run_shadow(candidates, cap_ids, ctx, previous_dropped=None):
     moved = 0
     if read:
         ctx["jev"]["counts"] = not check["passed"]
-        other_ids, _ = select_pool(candidates, ctx, budget, dict(bucket_budget))
+        other_ids, _ = select_pool(candidates, ctx, budget, dict(bucket_budget), tag_floor)
         ctx["jev"]["counts"] = check["passed"]
         moved = len(set(other_ids) ^ set(score_ids)) // 2
     doc["jev"] = {"read": read, "split_off": len(ctx["jev"]["split"]), "check": check,
@@ -613,6 +650,7 @@ def history_entry(doc):
     f = doc.get("floors") or {}
     return {
         "at": doc.get("generated_at", ""),
+        "rv": RULE_VERSION,
         "floors": f.get("sources_met", 0) >= f.get("sources_total", 0) and not f.get("buckets_unmet"),
         "missed": [m.get("cap"), m.get("score")] if m.get("status") == "ok" else None,
         "sg": [cap["singapore"]["tag"], new["singapore"]["tag"]],
@@ -628,6 +666,7 @@ def trim_history(history, now_ts):
 def gate(history, now_ts):
     """{"pass", "days", "runs", "checks": [{key, label, detail, ok}]}: whether the last
     GATE_DAYS of the trial show the keep rule at least as good as the old one."""
+    history = [h for h in history if h.get("rv", 1) == RULE_VERSION]  # J36: this version's runs only
     times = [t for t in (_epoch(h.get("at")) for h in history) if t is not None]
     window = [h for h in history if (_epoch(h.get("at")) or 0) >= now_ts - GATE_DAYS * 86400]
     days = round((now_ts - min(times)) / 86400, 1) if times else 0.0
