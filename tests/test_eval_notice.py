@@ -102,3 +102,26 @@ def test_fetch_asks_github_for_runs_jobs_and_annotations_only():
         raise AssertionError(url)
     rows = ev.fetch(1, "o/r", get)
     assert len(calls) == 3 and rows[0]["keep"]["mode"] == "shadow" and "jev" not in rows[0]
+
+
+# --- J35: the two trials reach the notice and the evaluation ---
+
+def test_the_trials_are_published_as_counts_and_judged():
+    doc = json.loads(json.dumps(JEV))
+    doc["report"]["merge_trial"] = {"near_misses": 14, "pairs": 12, "same": 5, "different": 6, "unsure": 1,
+                                    "examples": [{"a": {"title": "SENTINEL a"}, "b": {"title": "SENTINEL b"}, "p": 0.9}]}
+    doc["report"]["topic_trial"] = {"ai": {"own": [44, 50], "other": [1, 120], "adds": 35, "drops": 0},
+                                    "biotech": {"own": [3, 8], "other": [0, 120], "adds": 2, "drops": 1}}
+    summary = notice.jev_summary(doc)
+    assert summary["merge"] == {"near_misses": 14, "pairs": 12, "same": 5, "different": 6, "unsure": 1}
+    assert summary["topics"]["ai"] == {"own": [44, 50], "other": [1, 120], "adds": 35, "drops": 0}
+    line = notice.notice("almanac-eval-jev", summary)
+    assert "SENTINEL" not in line and len(line) < 4000
+    result = ev.evaluate([_row("2026-10-07T01:17:00Z", jev=summary)])
+    verdicts = {job: (verdict, why) for job, verdict, why in result["verdicts"]}
+    assert verdicts["Jev joining stories the rules left apart (trial)"] == ("would help", "across these runs Jev would join 5 of 12 look-alike pairs and keep 6 apart")
+    assert verdicts["Jev tagging ai (trial)"][0] == "ready to try" and "88%" in verdicts["Jev tagging ai (trial)"][1]
+    assert verdicts["Jev tagging biotech (trial)"][0] == "cannot tell yet"
+    assert any(f.startswith("Merge trial: of 12 look-alike story pairs") for f in result["facts"])
+    # A run from before the trials (no merge or topics in its notice) still evaluates.
+    assert "Fixing story groups" in {job for job, *_ in ev.evaluate([_row("2026-10-06T17:17:00Z")])["verdicts"]}

@@ -59,6 +59,10 @@ def jev_summary(doc):
         "groups": {"applied": bool(groups.get("applied")), "split": groups.get("split", 0),
                    "dissolved": groups.get("dissolved", 0), "annotated": groups.get("annotated", 0)},
         "checks": checks,
+        # J35: the two trials, as counts.
+        "merge": {k: (rep.get("merge_trial") or {}).get(k, 0) for k in ("near_misses", "pairs", "same", "different", "unsure")},
+        "topics": {t: {"own": v.get("own"), "other": v.get("other"), "adds": v.get("adds", 0), "drops": v.get("drops", 0)}
+                   for t, v in (rep.get("topic_trial") or {}).items() if isinstance(v, dict)},
     }
 
 

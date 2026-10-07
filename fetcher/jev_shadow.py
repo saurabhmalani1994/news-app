@@ -115,7 +115,9 @@ ARTICLE_QUESTIONS = {
 # hour's keep rule (keep_rule.jev_points), counted only once its opinion check passes.
 TRIAGE_VERSION = "triage-v1"
 TRIAGE_PATH = ".cache/triage.json"
-TRIAGE_SHARE = 0.4  # of the hourly lane; the story checks and article answers keep the rest
+# J35: 0.3, not 0.4: the first real day spent $0.14 of the main $0.15 by 18:00 UTC while the
+# triage had used $0.04 of its $0.10, so the main share was stopping early with money left.
+TRIAGE_SHARE = 0.3  # of the hourly lane; the story checks and article answers keep the rest
 TRIAGE_PER_RUN = 100
 TRIAGE_KINDS = ["Original news reporting", "Analysis or explainer", "Opinion or commentary",
                 "A summary of other outlets' reporting", "A press release or company announcement", "None of these"]
@@ -242,6 +244,122 @@ def article_state(article, source_names):
 def pair_state(a, b):
     return {"headline_a": a.get("title", "")[:300], "summary_a": (a.get("dek") or "")[:300],
             "headline_b": b.get("title", "")[:300], "summary_b": (b.get("dek") or "")[:300]}
+
+
+# J35: two trials that only measure (owner, 2026-10-06, after the first real evaluation
+# showed Jev's same-event answers right on every known pair and its yes/no AI answer
+# agreeing with every rule tag while finding more).
+#
+# Merge trial: story pairs the rules left apart whose headlines share many words (near
+# misses). Jev is asked whether each pair is one event; the report counts how many it
+# would join. Nothing is joined.
+MERGE_MIN_SHARED = 0.25  # share of headline words in common (Jaccard), at least 3 words
+MERGE_WINDOW_H = 48
+MERGE_PAIRS = 40  # near misses looked at each run
+MERGE_NEW_PER_RUN = 20  # new ones asked each run, after everything else
+#
+# Topic trial: Jev's yes/no topic answers (already asked every hour) against outlets that
+# cover one subject. own: of that subject's outlets' articles, how many Jev says are
+# about it. other: of articles from outlets about something else entirely, how many Jev
+# says are about it (false alarms). adds and drops: what would change if Jev's answer set
+# the tag. No tag is changed.
+TOPIC_TRIAL = {
+    "ai": {"keys": ("ai",), "own": ("ai",), "tag": "ai"},
+    "biotech": {"keys": ("industrial_biotech", "clinical"), "own": ("biotech",), "tag": "biotech"},
+}
+TOPIC_OTHER_BUCKETS = ("sudan", "israel_gaza", "africa", "latin_america", "middle_east", "oceania", "europe")
+
+
+def _hours(article):
+    try:
+        return datetime.fromisoformat(article["published_at"].replace("Z", "+00:00")).timestamp() / 3600
+    except (KeyError, ValueError, AttributeError):
+        return None
+
+
+def near_miss_pairs(pool, limit=MERGE_PAIRS):
+    """[(cache key "m:<a>|<b>", id_a, id_b, shared)] for the story pairs the rules left
+    apart whose headlines share the most words: one headline per story (a group's anchor,
+    or the article itself), within MERGE_WINDOW_H of each other, most shared first."""
+    by_id = {a["id"]: a for a in pool.get("articles", [])}
+    grouped = set()
+    reps = []
+    for c in pool.get("clusters", []):
+        ids = [i for i in c.get("article_ids", []) if i in by_id]
+        grouped.update(ids)
+        if ids:
+            reps.append(by_id[cluster_anchor({"article_ids": ids}, by_id)])
+    reps += [a for a in by_id.values() if a["id"] not in grouped]
+    words = {a["id"]: _title_words(a) for a in reps}
+    index = {}
+    for a in reps:
+        for w in words[a["id"]]:
+            index.setdefault(w, []).append(a["id"])
+    seen, out = set(), []
+    for ids in index.values():
+        if len(ids) > 60:  # a word this common says nothing about one event
+            continue
+        for i in range(len(ids)):
+            for j in range(i + 1, len(ids)):
+                a, b = sorted((ids[i], ids[j]))
+                if (a, b) in seen:
+                    continue
+                seen.add((a, b))
+                wa, wb = words[a], words[b]
+                shared = len(wa & wb) / max(1, len(wa | wb))
+                if shared < MERGE_MIN_SHARED or len(wa & wb) < 3:
+                    continue
+                ha, hb = _hours(by_id[a]), _hours(by_id[b])
+                if ha is None or hb is None or abs(ha - hb) > MERGE_WINDOW_H:
+                    continue
+                out.append((f"m:{a}|{b}", a, b, round(shared, 3)))
+    out.sort(key=lambda t: (-t[3], t[0]))
+    return out[:limit]
+
+
+def merge_trial(pool, cache, merges):
+    """How Jev reads this run's near misses: {"pairs", "same", "different", "unsure",
+    "examples"}; same is same_event likely, the pairs Jev would join."""
+    by_id = {a["id"]: a for a in pool.get("articles", [])}
+    names = {s["id"]: s.get("name", s["id"]) for s in pool.get("sources", [])}
+    out = {"near_misses": len(merges), "pairs": 0, "same": 0, "different": 0, "unsure": 0, "examples": []}
+    for key, a, b, shared in merges:
+        ans = (cache["pairs"].get(key) or [{}])[0].get("same_event")
+        if not ans:
+            continue
+        out["pairs"] += 1
+        kind = band(ans)
+        out["same" if kind == "likely" else "different" if kind == "unlikely" else "unsure"] += 1
+        if kind == "likely" and len(out["examples"]) < 4:
+            out["examples"].append({
+                "a": {"id": a, "title": by_id[a].get("title", "")[:140], "source": names.get(by_id[a]["source_id"], by_id[a]["source_id"])},
+                "b": {"id": b, "title": by_id[b].get("title", "")[:140], "source": names.get(by_id[b]["source_id"], by_id[b]["source_id"])},
+                "p": ans["v"]})
+    return out
+
+
+def topic_trial(answered, by_id, buckets):
+    """{topic: {"own": [hits, n], "other": [hits, n], "adds", "drops"}} (see TOPIC_TRIAL)."""
+    out = {}
+    for topic, spec in TOPIC_TRIAL.items():
+        own, other, adds, drops = [0, 0], [0, 0], 0, 0
+        for i, ans in answered.items():
+            bands = [band(ans.get(k)) for k in spec["keys"] if k in ans]
+            if not bands:
+                continue
+            says = "likely" in bands
+            bucket = buckets.get(by_id[i]["source_id"])
+            if bucket in spec["own"]:
+                own[0] += says
+                own[1] += 1
+            elif bucket in TOPIC_OTHER_BUCKETS:
+                other[0] += says
+                other[1] += 1
+            tagged = spec["tag"] in (by_id[i].get("topics") or [])
+            adds += says and not tagged
+            drops += tagged and all(b == "unlikely" for b in bands)
+        out[topic] = {"own": own, "other": other, "adds": adds, "drops": drops}
+    return out
 
 
 def known_pairs(pool, rng, limit=MAX_PAIRS):
@@ -517,7 +635,7 @@ def ask_triage(items, client, cache, now, used, budget, ceiling_left, cost, max_
 # The run ----------------------------------------------------------------------------------
 
 def ask_all(pool, client, cache, now, used, budget, ceiling_left, pairs, cost=neurons, max_seconds=MAX_SECONDS,
-            max_articles=MAX_ARTICLES, groups=()):
+            max_articles=MAX_ARTICLES, groups=(), merges=()):
     """Asks the new articles (newest first) and the known pairs, within the budget and the
     time cap. `cost(tokens)` estimates a call in the route's unit (neurons or dollars);
     a call's own reported cost wins over the estimate. Returns stats; answers land in
@@ -555,6 +673,16 @@ def ask_all(pool, client, cache, now, used, budget, ceiling_left, pairs, cost=ne
             articles.append(("articles", a["id"], article_state(a, names), ARTICLE_QUESTIONS))
     articles.sort(key=lambda t: by_id[t[1]].get("published_at", ""), reverse=True)
     todo += articles[:max_articles]
+    # J35: the merge trial's near misses, last, so it only ever spends what is left.
+    fresh = 0
+    for key, a, b, _shared in merges:
+        hit = cache["pairs"].get(key)
+        if hit:
+            hit[1] = hour
+            stats["cached"] += 1
+        elif fresh < MERGE_NEW_PER_RUN:
+            fresh += 1
+            todo.append(("pairs", key, pair_state(by_id[a], by_id[b]), PAIR_QUESTIONS))
     start = time.monotonic()
     latencies = []
     for kind, key, state, questions in todo:
@@ -604,7 +732,7 @@ def load_buckets(path="sources.json"):
     return {r["id"]: r.get("bucket") for r in rows if isinstance(r, dict) and "id" in r}
 
 
-def report(pool, cache, pairs, buckets=None):
+def report(pool, cache, pairs, buckets=None, merges=None):
     """The Jev report for the articles and known pairs in this pool (see the module doc)."""
     buckets = buckets if buckets is not None else load_buckets()
     by_id = {a["id"]: a for a in pool.get("articles", [])}
@@ -688,6 +816,9 @@ def report(pool, cache, pairs, buckets=None):
         "confidence": statuses,
         "clinical_and_industrial_both_likely": both,
         "ai_rules_vs_jev": {**cells, "examples": examples},
+        # J35: the two trials; they only measure.
+        "merge_trial": merge_trial(pool, cache, merges if merges is not None else near_miss_pairs(pool)),
+        "topic_trial": topic_trial(answered, by_id, buckets),
         "same_event_known": {
             "syndicated_pairs": len(pos), "syndicated_read_same": sum(band(a) == "likely" for a in pos),
             "unrelated_pairs": len(neg), "unrelated_read_different": sum(band(a) == "unlikely" for a in neg),
@@ -731,6 +862,7 @@ def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=e
     used = spent_today(cache_path, day, unit) if cache_status == "hit" else 0.0
     # J28: with a reading list from the fetch step, TRIAGE_SHARE of today's budget is
     # the triage's own, tracked apart, so neither can spend the other's.
+    merges = near_miss_pairs(pool)  # J35: the merge trial's pairs for this run
     triage_items = load_triage(triage_path) if triage_path else []
     triage_budget = budget * TRIAGE_SHARE if triage_items else 0.0
     main_budget = budget - triage_budget
@@ -741,7 +873,7 @@ def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=e
                  "latency_ms": {"n": 0}}
     else:
         stats = ask_all(pool, client, cache, now, used, main_budget, ceiling_left, pairs, cost=cost, max_seconds=max_seconds,
-                        max_articles=max_articles, groups=cluster_pairs(pool))
+                        max_articles=max_articles, groups=cluster_pairs(pool), merges=merges)
         if triage_items:
             triage_stats = ask_triage(triage_items, client, cache, now, used_triage, triage_budget,
                                       ceiling_left - stats["spent"], cost, max_seconds=max_seconds)
@@ -761,7 +893,7 @@ def run(pool, now, env=None, cache_path=CACHE_PATH, post=embed._post_json, get=e
                 "neurons_measured_before": measured,
                 "triage": {**triage_stats, "listed": len(triage_items), "spent_day": budget_state["triage_spent"],
                            "budget_day": round(triage_budget, 6)}},
-        "report": report(pool, cache, pairs),
+        "report": report(pool, cache, pairs, merges=merges),
         "answers": {i: cache["articles"][i][0] for i in sorted(ids) if i in cache["articles"]},
     }
     doc["scorecard"] = scorecard(doc)
