@@ -123,7 +123,7 @@ export function reserveRow(id, input, template, nowMs = Date.now()) {
   li.dataset.sid = id;
   delete li.dataset.face;
   li.dataset.reserve = "1";
-  li.querySelectorAll(".story-media, .story-credit, .dek, .other-side, .lean-hit, .story-coverage, .lean, .meta-read-source").forEach((n) => n.remove());
+  li.querySelectorAll(".story-media, .story-credit, .dek, .other-side, .lean-hit, .story-coverage, .lean, .meta-read-source, .story-marks").forEach((n) => n.remove());
   li.querySelector(".headline").textContent = article.title;
   const link = li.querySelector(".story-link");
   if (link) {

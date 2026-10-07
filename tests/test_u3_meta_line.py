@@ -109,7 +109,7 @@ def test_the_source_name_is_written_in_full_and_the_split_follows_content_only()
     for sid, row in rows.items():
         source = _source_of(page, sid)
         meta = re.search(r'<span class="meta"><span class="meta-line">(.*?)</span>'
-                         r'<span class="meta-line meta-line--2"([^>]*)>(.*?)</span></span>(?:<span class="story-times"[^>]*></span>)?</span></a>', row)
+                         r'<span class="meta-line meta-line--2"([^>]*)>(.*?)</span></span>(?:<span class="story-times"[^>]*></span>)?(?:<span class="story-marks">[^<]*</span>)?</span></a>', row)
         line1, attrs, line2 = meta.group(1, 2, 3)
         name = re.search(r'<span class="meta-source">([^<]*)</span>', line1).group(1)
         assert name == BY_ID[source]["name"].replace("&", "&amp;"), (sid, name)
