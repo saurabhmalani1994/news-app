@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from app.build import TIMES, _times
+from app.build import TIMES, _marks, _times, jev_marks
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -46,3 +46,13 @@ globalThis.document = { querySelectorAll: () => lines };
     assert re.fullmatch(f"Published {stamp} · Added (?:{stamp}|{clock})", both), both
     assert re.fullmatch(f"Published {stamp}", older), "no added time, no added part"
     assert re.fullmatch(f"Published {stamp}", backwards), "an added time before publishing is left out"
+
+
+def test_a_card_says_what_jev_changed_and_says_nothing_otherwise():
+    """J37: an AI tag Jev added and versions Jev joined, in words on the card."""
+    by_id = {"a": {"jev": {"tags": ["ai"], "hard": 0.2}}, "b": {"jev": {"joined": True}}}
+    assert jev_marks(Story(), by_id["a"], by_id) == ["AI tag by Jev", "Joined by Jev"]
+    assert _marks(Story(), by_id["a"], by_id) == '<span class="story-marks">AI tag by Jev \u00b7 Joined by Jev</span>'
+    plain = {"a": {"jev": {"hard": 0.9, "same": 0.8}}, "b": {}}
+    assert jev_marks(Story(), plain["a"], plain) == [] and _marks(Story(), plain["a"], plain) == ""
+    assert jev_marks(Story(), {"jev": {"tags": ["climate_tech"]}}, {}) == ["Climate tech tag by Jev"]

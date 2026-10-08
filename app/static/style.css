@@ -4112,3 +4112,15 @@ body {
   line-height: 16px;
   color: var(--color-meta);
 }
+
+/* J37: what Jev changed about the story (an added tag, joined versions), one quiet line
+   under the times, only on the cards it applies to. */
+.story-marks {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--color-headline);
+}

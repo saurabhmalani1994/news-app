@@ -596,7 +596,7 @@ STORY_ACTS = '<div class="story-acts">{open_act}{coverage}' + STORY_OVERFLOW + '
 STORY = (
     '<li class="story story--{tier}" data-sid="{sid}">{open}'
     '<span class="story-body">{media}<span class="headline{headline_mod}">{title}</span>{dek}'
-    '<span class="meta">{meta}</span>{times}</span>{close}{lean_hit}{acts}{other}</li>'
+    '<span class="meta">{meta}</span>{times}{marks}</span>{close}{lean_hit}{acts}{other}</li>'
 )
 # J22, J29: when the card's article was published and when Almanac first added it, as ISO
 # times the phone writes out with their dates in its own time zone (js/story-times.js, a
@@ -614,6 +614,31 @@ def _times(story, article, by_id):
         return ""
     pulled = article.get("fetched_at") if _parse_time(article.get("fetched_at")) else ""
     return TIMES.format(written=escape(written, quote=True), pulled=escape(pulled, quote=True))
+
+
+# J37: what Jev changed about this story in the hourly run, in a few words on the card
+# itself (the owner asked to see it without opening a menu): a tag Jev added to the
+# card's article (the rules gave none), and versions Jev joined to the story from one the
+# rules had left apart. Its own quiet line under the times, written at build time, and
+# absent from every card Jev changed nothing about.
+MARKS = '<span class="story-marks">{text}</span>'
+TAG_WORDS = {"ai": "AI"}
+
+
+def jev_marks(story, article, by_id):
+    """["AI tag by Jev", "Joined by Jev"] for a row, as far as each applies."""
+    marks = []
+    tags = [TAG_WORDS.get(t, t.replace("_", " ").capitalize()) for t in (article.get("jev") or {}).get("tags") or []]
+    if tags:
+        marks.append(f"{' and '.join(tags)} tag by Jev")
+    if any(((by_id.get(i) or {}).get("jev") or {}).get("joined") for i in story.article_ids):
+        marks.append("Joined by Jev")
+    return marks
+
+
+def _marks(story, article, by_id):
+    marks = jev_marks(story, article, by_id)
+    return MARKS.format(text=escape(f" {MIDDOT} ".join(marks), quote=False)) if marks else ""
 # S13 other-side slot: one attached link under a many-outlet card, to the same story as
 # an outlet of the lean least seen on this page tells it (app/static/js/passes.js says
 # which and why). Its own link beside the card's, never inside it. tiers.js draws the
@@ -847,7 +872,7 @@ def _render_story(story, tier, source_names, now, by_id, other="", coverage="", 
     return STORY.format(
         tier=tier.replace("_", "-"), sid=escape(story.id, quote=True), open=open_, close=close, headline_mod=HEADLINE_MOD[tier],
         title=title, dek=dek, meta=_meta(story, source_names, now, lean=lean, country=country),
-        times=_times(story, article, by_id),
+        times=_times(story, article, by_id), marks=_marks(story, article, by_id),
         other=other, acts=_acts(url, read_from, coverage, visible_sources),
         lean_hit=lean_hit_html(source_id, lean, country) if source_names.get(source_id) else "",
         media=_media(tier, hero_media(_members(story, by_id), article, source_names) if tier == "hero" else None,
