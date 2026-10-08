@@ -192,7 +192,7 @@ if (close) {
   await evaluate("window.__cls = 0");
   await evaluate(`document.querySelector('#section-today li.story[data-sid="${close.row.sid}"] .story-overflow').click()`);
   await sleep(450);
-  await evaluate(`document.querySelector('.sheet-item[data-action="why"]').click()`);
+  await evaluate(`document.querySelector('.sheet-item[data-action="about"]').click()`);
   await sleep(1000);
   const sheet = await evaluate(`(() => ({
     because: document.querySelector(".why-lead-because")?.textContent || "",
@@ -215,7 +215,7 @@ if (close) {
   await shot("b5-row-refronted-light.png");
   await evaluate(`document.querySelector('#section-today li.story[data-sid="${close.row.sid}"] .story-overflow').click()`);
   await sleep(450);
-  await evaluate(`document.querySelector('.sheet-item[data-action="why"]').click()`);
+  await evaluate(`document.querySelector('.sheet-item[data-action="about"]').click()`);
   await sleep(1000);
   await shot("b5-leads-because-light.png");
 }

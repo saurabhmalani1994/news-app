@@ -267,3 +267,22 @@ test("J20: the Jev other-side switch reads absent as on and writes one field", a
   assert.equal(off.passes.other_side.per_page, p.passes.other_side.per_page, "the rest of the setting kept");
   assert.equal(jevOtherSideOn(off), false);
 });
+
+// --- J38: "Less of this topic" from the story menu ---
+test("less of a topic drops its boost first, then steps its level down, and never mutes", async () => {
+  const { withTopicLess } = await import("../../app/static/js/actions/mute-boost.js");
+  const base = { topics: { ai: { label: "AI", affinity: 0.9, half_life_hours: 48, enabled: true },
+    world: { label: "World", affinity: 0.2, half_life_hours: 8, enabled: true } }, boosts: [], mutes: { topics: [], sources: [] } };
+  const boosted = { ...base, boosts: [{ id: "boost-topic-ai", label: "More AI", match_type: "topic", match_value: "ai", amount: 0.4 }] };
+  const first = withTopicLess(boosted, ["ai"]);
+  assert.deepEqual(first.boosts, []);
+  assert.equal(first.topics.ai.affinity, 0.9, "the boost goes first; the level stays");
+  const second = withTopicLess(first, ["ai"]);
+  assert.equal(second.topics.ai.affinity, 0.6, "more to normal");
+  const third = withTopicLess(second, ["ai"]);
+  assert.equal(third.topics.ai.affinity, 0.2, "normal to less");
+  assert.equal(withTopicLess(third, ["ai"]), null, "already at Less: nothing lower short of hiding it");
+  assert.equal(withTopicLess(base, ["world"]), null);
+  assert.equal(withTopicLess(base, []), null);
+  assert.deepEqual(third.mutes, base.mutes, "never a mute");
+});

@@ -187,10 +187,10 @@ for (const color of ["dark", "light"]) {
     const first = following.find((f) => f.follow.startsWith("phrase:") && f.rows.length);
     const phrase = profile.topics[first.follow.slice("phrase:".length)].phrase;
     await evaluate(`document.querySelector('#following-list .follow[data-follow="${first.follow}"] li.story .story-overflow').click()`);
-    await waitFor(`document.querySelector('.sheet-item[data-action="why"]') && !document.getElementById("sheet-root").hidden`);
+    await waitFor(`document.querySelector('.sheet-item[data-action="about"]') && !document.getElementById("sheet-root").hidden`);
     await sleep(400);
-    await evaluate(`document.querySelector('.sheet-item[data-action="why"]').click()`);
-    await waitFor(`document.getElementById("sheet-label")?.textContent === "Why this"`);
+    await evaluate(`document.querySelector('.sheet-item[data-action="about"]').click()`);
+    await waitFor(`document.getElementById("sheet-label")?.textContent === "About this story"`);
     await sleep(500);
     const why = await evaluate(`document.getElementById("sheet-body").textContent`);
     check("why-this-names-the-phrase", why.includes(`“${phrase}”`), { row: first.rows[0], names: why.includes(phrase) });

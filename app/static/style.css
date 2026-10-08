@@ -4124,3 +4124,32 @@ body {
   font-weight: 600;
   color: var(--color-headline);
 }
+
+/* J38: About this story is two parts on one sheet, each under a small label; the
+   publisher's link sits at its foot. More and Less like this open with one line. */
+.about-part {
+  margin: 18px var(--space-gutter) 6px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-meta);
+}
+
+.about-part:first-child {
+  margin-top: 4px;
+}
+
+.about-jev {
+  padding-bottom: 8px;
+}
+
+.about-open {
+  border-top: var(--divider-weight) solid var(--color-divider);
+}
+
+.more-less-note {
+  margin-bottom: 4px;
+}

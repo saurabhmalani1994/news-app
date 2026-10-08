@@ -331,11 +331,11 @@ await shot("today-dark.png");
 // 5. Why this on the dek match names the phrase.
 await tap('#section-today li.story[data-sid="p2"] .story-overflow');
 const menu = await json(`[...document.querySelectorAll("#sheet-body .sheet-item")].filter((b) => !b.hidden).map((b) => b.textContent)`);
-await tap('#sheet-body .sheet-item[data-action="why"]');
-await waitFor(`document.getElementById("sheet-label").textContent === "Why this" && !document.getElementById("sheet-root").hidden`);
+await tap('#sheet-body .sheet-item[data-action="about"]');
+await waitFor(`document.getElementById("sheet-label").textContent === "About this story" && !document.getElementById("sheet-root").hidden`);
 await sleep(300);
-const why = await json(`[...document.querySelectorAll("#sheet-body .why-row-label")].map((s) => s.textContent)`);
-check("why_this_names_the_phrase", why.includes(`Your phrase “${PHRASE}”`) && menu.includes("Follow this story"), { why, menu });
+const why = await json(`[...document.querySelectorAll("#sheet-body .about-why .why-row-label")].map((s) => s.textContent)`);
+check("why_this_names_the_phrase", why.includes(`Your phrase “${PHRASE}”`) && menu.includes("More like this"), { why, menu });
 await shot("why-this-dark.png");
 await evaluate("history.back()");
 await sleep(500);
@@ -343,6 +343,10 @@ await sleep(500);
 // 6. Follow this story from the Sudan cluster's menu: prefilled, one version, synced.
 const vf0 = await versions();
 await tap('#section-today li.story[data-sid="c1"] .story-overflow');
+// J38: Follow this story is inside More like this.
+await tap('#sheet-body .sheet-item[data-action="more"]');
+await waitFor(`document.getElementById("sheet-label").textContent === "More like this" && !!document.querySelector('#sheet-body .sheet-item[data-action="follow"]')`);
+await sleep(300);
 await tap('#sheet-body .sheet-item[data-action="follow"]');
 await waitFor(`document.getElementById("sheet-label").textContent === "Follow this story" && !!document.getElementById("standing-name")`);
 await sleep(300);
