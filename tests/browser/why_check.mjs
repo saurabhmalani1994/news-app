@@ -49,13 +49,13 @@ async function readSheet() {
   return JSON.parse(await evaluate(`JSON.stringify((() => {
     const hidden = document.getElementById("sheet-root").hidden;
     if (hidden) return { hidden: true };
-    const rows = [...document.querySelectorAll(".why-row")].map((r) => ({
+    const rows = [...document.querySelectorAll(".about-why .why-row")].map((r) => ({
       label: r.querySelector(".why-row-label").textContent,
       value: r.querySelector(".why-row-value").textContent,
     }));
     const total = document.querySelector(".why-total span:last-child")?.textContent;
     const passes = [...document.querySelectorAll(".why-pass")].map((p) => p.textContent);
-    const scale = document.querySelector(".why-scale-note")?.textContent || "";
+    const scale = document.querySelector(".about-why .why-scale-note")?.textContent || "";
     const headline = document.querySelector(".why-headline")?.textContent || "";
     const editHref = document.querySelector(".why-edit-link")?.getAttribute("href") || "";
     const label = document.getElementById("sheet-label").textContent;
@@ -69,7 +69,7 @@ const parseSigned = (s) => (s.startsWith("−") ? -1 : 1) * Number(s.slice(1));
 async function openWhyOn(sid) {
   await evaluate(`document.querySelector('li.story[data-sid="${sid}"] .story-overflow').click()`);
   await sleep(400);
-  await evaluate('document.querySelector(\'.sheet-item[data-action="why"]\').click()');
+  await evaluate('document.querySelector(\'.sheet-item[data-action="about"]\').click()');
   await sleep(900); // the actions sheet closes, then the why-this sheet opens (story-actions.js's own 220ms handoff)
 }
 
@@ -88,7 +88,7 @@ await shot("final-dark.png");
 const clsAfterOpen = await evaluate("window.__cls");
 const heroSum = hero.rows.reduce((s, r) => s + parseSigned(r.value), 0);
 check("why-this opens on the hero with every explanation row, text only, sum equal to the total shown",
-  !hero.hidden && hero.isOpen && hero.label === "Why this" && hero.rows.length >= 4 && heroSum === parseSigned(hero.total),
+  !hero.hidden && hero.isOpen && hero.label === "About this story" && hero.rows.length >= 4 && heroSum === parseSigned(hero.total),
   { hero, heroSum });
 check("the point scale is stated once, in the sheet's own caption", hero.scale.length > 0, { scale: hero.scale });
 check("opening the sheet caused zero layout shift", clsAfterOpen === 0, { clsAfterOpen });

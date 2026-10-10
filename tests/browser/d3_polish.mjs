@@ -153,8 +153,8 @@ async function sweepScheme(scheme) {
   await evaluate(`document.querySelector("#section-today .story--hero .story-overflow, #section-today .story-overflow").click()`);
   await sleep(500);
   await shot(`sweep-sheet-${scheme}.png`);
-  if (await evaluate(`!!document.querySelector('.sheet-item[data-action="why"]')`)) {
-    await evaluate(`document.querySelector('.sheet-item[data-action="why"]').click()`);
+  if (await evaluate(`!!document.querySelector('.sheet-item[data-action="about"]')`)) {
+    await evaluate(`document.querySelector('.sheet-item[data-action="about"]').click()`);
     await sleep(600);
     await shot(`sweep-why-${scheme}.png`);
   }

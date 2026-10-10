@@ -32,3 +32,21 @@ export function withTopicBoosted(profile, storyTopics, { amount = BOOST_AMOUNT }
   const boost = { id: boostId, label: `More ${topics[id].label}`, match_type: "topic", match_value: id, amount };
   return { ...profile, topics, boosts: [...boosts, boost] };
 }
+
+/** J38: "Less of this topic" from the story menu, one step and never a mute: a boost on
+ * the topic goes first (that is what made it "more"); else its level steps down, more
+ * to normal, normal to less. Null when the topic is already at Less or off, when the
+ * story has no topic, or when the topic is not one the reader has (nothing to lower). */
+export const LESS_AFFINITY = Object.freeze({ more: 0.6, normal: 0.2 });
+export function withTopicLess(profile, storyTopics) {
+  const id = resolveTopic(storyTopics, profile.topics || {});
+  if (!id) return null;
+  const boostId = `boost-topic-${id}`;
+  const boosts = profile.boosts || [];
+  if (boosts.some((b) => b.id === boostId)) return { ...profile, boosts: boosts.filter((b) => b.id !== boostId) };
+  const topic = (profile.topics || {})[id];
+  if (!topic || topic.enabled === false || typeof topic.affinity !== "number") return null;
+  const next = topic.affinity >= 0.75 ? LESS_AFFINITY.more : topic.affinity >= 0.4 ? LESS_AFFINITY.normal : null;
+  if (next === null) return null;
+  return { ...profile, topics: { ...profile.topics, [id]: { ...topic, affinity: next } } };
+}

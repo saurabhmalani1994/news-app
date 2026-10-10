@@ -64,16 +64,14 @@ const opened = JSON.parse(await evaluate(`JSON.stringify({
   hidden: document.getElementById("sheet-root").hidden,
   isOpen: document.getElementById("sheet-root").classList.contains("is-open"),
   items: [...document.querySelectorAll(".sheet-item")].map((b) => b.dataset.action),
-  whyVisible: document.querySelector('.sheet-item[data-action="why"]').hidden === false,
+  aboutVisible: document.querySelector('.sheet-item[data-action="about"]').hidden === false,
   activeInSheet: document.getElementById("sheet").contains(document.activeElement),
   historyPushed: history.state && history.state.almanacSheet === 1,
 })`));
 await shot("sheet-dark.png");
-// T1: S12 landed after this proof was authored and flipped WHY_THIS_ENABLED on, so
-// "why" is a visible menu item now, not a hidden one held back for a later slice.
-check("sheet opens with every menu item, focus inside it, why-this visible (S12), history pushed",
-  opened.hidden === false && opened.isOpen && opened.items.includes("save") && opened.items.includes("mute-source")
-    && opened.items.includes("mute-topic") && opened.items.includes("boost-topic") && opened.whyVisible
+// J38: four items, named by what the reader wants; the older ones are one tap inside.
+check("sheet opens with its four items (J38), focus inside it, history pushed",
+  opened.hidden === false && opened.isOpen && opened.items.join(",") === "save,more,less,about" && opened.aboutVisible
     && opened.activeInSheet && opened.historyPushed,
   opened);
 
@@ -131,6 +129,13 @@ await evaluate(`(() => {
   li.querySelector(".story-overflow").click();
 })()`);
 await sleep(400);
+// J38: hiding an outlet is inside Less like this.
+await evaluate('document.querySelector(\'.sheet-item[data-action="less"]\').click()');
+await sleep(900);
+const lessItems = JSON.parse(await evaluate(`JSON.stringify({ label: document.getElementById("sheet-label").textContent,
+  items: [...document.querySelectorAll(".sheet-item")].map((b) => b.dataset.action) })`));
+check("Less like this opens the stronger choices (J38)", lessItems.label === "Less like this"
+  && lessItems.items.includes("mute-source") && lessItems.items.includes("mute-topic") && lessItems.items.includes("down"), lessItems);
 await evaluate('document.querySelector(\'.sheet-item[data-action="mute-source"]\').click()');
 await sleep(600);
 

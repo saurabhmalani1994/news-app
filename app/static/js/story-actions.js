@@ -1,7 +1,8 @@
 // S24: per-story actions (DESIGN-v1.1 "Story actions", R19). The quiet three-dot
-// button every card carries (app/build.py STORY) opens the reusable sheet (sheet.js)
-// with Open at source, Save, thumbs up/down, Mute source, Mute topic, Boost topic and
-// Why this (S12, present but hidden behind WHY_THIS_ENABLED until that slice lands).
+// button every card carries (app/build.py STORY) opens the reusable sheet (sheet.js).
+// J38 (owner, 2026-10-08): four items, Save, More like this, Less like this and About
+// this story; the nine older ones (thumbs, Boost topic, Mute topic, Mute source, Follow
+// this story, Why this, Jev's read, Open at source) live one tap inside those.
 //
 // Save and thumbs write to actions/store.js (IndexedDB, local only, never sent
 // anywhere, never touches profile.json: R19 holds because thumbs.js never imports
@@ -32,8 +33,8 @@ import { syncSavePin, syncUndoPin } from "./actions/save-pin.js";
 import { bodyCache } from "./reader/cache.js";
 import { loadBody } from "./reader/core.js";
 import { toggleThumb, undoThumb } from "./actions/thumbs.js";
-import { withSourceMuted, withTopicMuted, withTopicBoosted } from "./actions/mute-boost.js";
-import { topicLabel } from "./actions/topic-resolve.js";
+import { withSourceMuted, withTopicMuted, withTopicBoosted, withTopicLess } from "./actions/mute-boost.js";
+import { topicLabel, resolveTopic } from "./actions/topic-resolve.js";
 import { anchoredRerender } from "./actions/scroll-anchor.js";
 import { explainLead, renderWhyContent } from "./why-this.js";
 // S15: "opened" (R17, R23), and the seen-penalty term (history/penalty.js) so the
@@ -58,10 +59,6 @@ import { renderAnalysis } from "./jev/story-view.js";
 function currentHistoryTerms() {
   return [seenPenaltyTerm(summaryToHistory(readSummary(window.localStorage)))];
 }
-
-// S12: the why-this sheet reads the same rankPages() output the device re-rank and the
-// build already agree on, so the item can stay on from here.
-const WHY_THIS_ENABLED = true;
 
 // Generic geometric glyphs (Material-style single path, no text, no brand marks), the
 // same filled-icon convention as the bottom nav and the reader bar (app/build.py).
@@ -165,17 +162,16 @@ async function openStoryMenu(li) {
   const facts = cardFacts(li, input);
   const [saved, thumb] = await Promise.all([savesStore.get(sid), thumbsStore.get(sid)]);
 
-  const items = [];
-  if (facts.url) items.push(menuItem({ action: "open", icon: ICONS.open, text: "Open at source", href: facts.url }));
-  items.push(menuItem({ action: "save", icon: ICONS.save, text: saved ? "Saved" : "Save", pressed: Boolean(saved) }));
-  items.push(menuItem({ action: "up", icon: ICONS.up, text: "Thumbs up", pressed: thumb?.direction === "up" }));
-  items.push(menuItem({ action: "down", icon: ICONS.down, text: "Thumbs down", pressed: thumb?.direction === "down" }));
-  items.push(menuItem({ action: "mute-source", icon: ICONS.mute, text: attrs.source_name ? `Mute ${attrs.source_name}` : "Mute source" }));
-  items.push(menuItem({ action: "mute-topic", icon: ICONS.mute, text: "Mute topic" }));
-  items.push(menuItem({ action: "boost-topic", icon: ICONS.boost, text: "Boost topic" }));
-  items.push(menuItem({ action: "follow", icon: ICONS.follow, text: "Follow this story" }));
-  items.push(menuItem({ action: "why", icon: ICONS.why, text: "Why this", hidden: !WHY_THIS_ENABLED }));
-  items.push(menuItem({ action: "jev", icon: ICONS.jev, text: "Jev's read" }));
+  // J38 (owner): four items, named by what the reader wants. More like this and Less
+  // like this each count as a thumb and open the stronger choices (a boost, a follow;
+  // less of a topic, hiding a topic or an outlet); About this story is Why this and
+  // Jev's read on one sheet. Everything the nine old items did is still here.
+  const items = [
+    menuItem({ action: "save", icon: ICONS.save, text: saved ? "Saved" : "Save", pressed: Boolean(saved) }),
+    menuItem({ action: "more", icon: ICONS.up, text: "More like this", pressed: thumb?.direction === "up" }),
+    menuItem({ action: "less", icon: ICONS.down, text: "Less like this", pressed: thumb?.direction === "down" }),
+    menuItem({ action: "about", icon: ICONS.why, text: "About this story" }),
+  ];
 
   const menu = document.createElement("div");
   menu.className = "sheet-menu";
@@ -184,12 +180,6 @@ async function openStoryMenu(li) {
   menu.addEventListener("click", (event) => {
     const button = event.target.closest(".sheet-item[data-action]");
     if (!button) return;
-    if (button.tagName === "A") {
-      // "Open at source": let the link navigate (target="_blank"); record opened (S15).
-      recordOpened(openedStore, sid, { ...attrs, ...facts }, nowIso, (snapshot) => noteSeen(window.localStorage, "opened", snapshot.id, snapshot.time)).catch(() => {});
-      closeSheet();
-      return;
-    }
     event.preventDefault();
     handleAction(button.dataset.action, { li, sid, attrs, facts });
   });
@@ -198,14 +188,70 @@ async function openStoryMenu(li) {
 
 function handleAction(action, ctx) {
   if (action === "save") return doSave(ctx);
+  if (action === "more") return doMoreLess("up", ctx);
+  if (action === "less") return doMoreLess("down", ctx);
+  if (action === "about") return doAbout(ctx);
   if (action === "up" || action === "down") return doThumb(action, ctx);
   if (action === "mute-source") return doMuteSource(ctx);
   if (action === "mute-topic") return doMuteTopic(ctx);
+  if (action === "less-topic") return doLessTopic(ctx);
   if (action === "boost-topic") return doBoostTopic(ctx);
   if (action === "follow") return doFollow(ctx);
-  if (action === "why") return doWhy(ctx);
-  if (action === "jev") return doJev(ctx);
   return null;
+}
+
+/** J38: the second sheet of More like this (direction "up") or Less like this ("down").
+ * Opening it counts as that thumb (the weekly review reads it; nothing changes at
+ * once), and the sheet offers the choices that do change the feed at once. */
+async function doMoreLess(direction, ctx) {
+  const { li, sid, attrs } = ctx;
+  const opener = li.querySelector(".story-overflow");
+  const up = direction === "up";
+  const before = await thumbsStore.get(sid);
+  if (before?.direction !== direction) await toggleThumb(thumbsStore, sid, direction, attrs, nowIso);
+  let profile = null;
+  try {
+    profile = (await getStore()).current();
+  } catch {
+    profile = buildDefaultProfile(getInput().now);
+  }
+  const topicId = resolveTopic(attrs.topics, profile.topics || {});
+  const topic = topicId ? profile.topics?.[topicId]?.label || topicLabel(topicId) : "";
+  const boosted = (profile.boosts || []).some((b) => b.id === `boost-topic-${topicId}`);
+  closeSheet();
+  const note = document.createElement("p");
+  note.className = "why-scale-note more-less-note";
+  note.textContent = up
+    ? "Noted that you liked this. Your weekly review counts it. To change your feed now:"
+    : "Noted that you did not like this. Your weekly review counts it. To change your feed now:";
+  const items = up
+    ? [
+      topic && !boosted ? menuItem({ action: "boost-topic", icon: ICONS.boost, text: `More ${topic}` }) : null,
+      menuItem({ action: "follow", icon: ICONS.follow, text: "Follow this story" }),
+      menuItem({ action: "up", icon: ICONS.up, text: "Take back my thumbs up" }),
+    ]
+    : [
+      topic && withTopicLess(profile, attrs.topics) ? menuItem({ action: "less-topic", icon: ICONS.down, text: `Less ${topic}` }) : null,
+      topic ? menuItem({ action: "mute-topic", icon: ICONS.mute, text: `Hide ${topic}` }) : null,
+      menuItem({ action: "mute-source", icon: ICONS.mute, text: attrs.source_name ? `Hide ${attrs.source_name}` : "Hide this outlet" }),
+      menuItem({ action: "down", icon: ICONS.down, text: "Take back my thumbs down" }),
+    ];
+  const menu = document.createElement("div");
+  menu.className = "sheet-menu";
+  menu.setAttribute("role", "menu");
+  menu.append(...items.filter(Boolean));
+  menu.addEventListener("click", (event) => {
+    const button = event.target.closest(".sheet-item[data-action]");
+    if (!button) return;
+    event.preventDefault();
+    handleAction(button.dataset.action, ctx);
+  });
+  await sheetClosed();
+  openSheet({ title: up ? "More like this" : "Less like this", content: [note, menu], opener });
+}
+
+function doLessTopic({ li, attrs }) {
+  return runProfileAction(li, (profile) => withTopicLess(profile, attrs.topics), "Showing less of this topic");
 }
 
 /** S12: the story on the tab it is shown on, ranked with the device's current profile
@@ -254,19 +300,6 @@ async function sheetClosed() {
   await paint();
 }
 
-async function doWhy({ li, sid, facts }) {
-  const opener = li.querySelector(".story-overflow");
-  const { story, profile, input } = await storyForWhy(li, sid);
-  closeSheet();
-  if (!story) return;
-  const nowMs = typeof input.now === "number" ? input.now : Date.parse(input.now) || Date.now();
-  const lead = explainLead(input, sid, profile);
-  const content = renderWhyContent({ story, profile, nowMs, names: input.names || {}, headline: facts.title, lead });
-  content.push(...jevChangeNote(sid)); // J36: a tag Jev added or versions it joined feed these numbers
-  await sheetClosed();
-  openSheet({ title: "Why this", content, opener });
-}
-
 // J1, J33: Jev's read shows what Jev has already said about a story: the hourly run's
 // answers, with Read with Jev's saved ones for an article read on this phone. It never
 // asks Jev itself; Read with Jev, in the open article, does.
@@ -295,35 +328,53 @@ function storyArticleIds(sid, attrs) {
 // and with no call; only the sheet's own button asks Jev live, reading the full article
 // when Almanac has it, for what the hourly run does not ask. A story read live before
 // opens with its full result.
-async function doJev({ li, sid, attrs, facts }) {
+/** J38: About this story, one sheet in two parts. "Why it is here" is the ranker's own
+ * explanation for the tab the card is on (why-this.js, no AI). "What Jev says" is what
+ * Jev has already said about it: the hourly run's answers, with Read with Jev's saved
+ * ones for an article read on this phone, and any tag it added or versions it joined.
+ * It asks Jev nothing. The publisher's page is linked at the foot. */
+async function doAbout({ li, sid, attrs, facts }) {
   const opener = li.querySelector(".story-overflow");
-  const full = jevCache.get(sid);
+  const [{ story, profile, input }, hourlyAll] = await Promise.all([storyForWhy(li, sid), hourlyDoc()]);
+  const hourly = hourlyAnswers(hourlyAll, storyArticleIds(sid, attrs));
   closeSheet();
-  const hourly = hourlyAnswers(await hourlyDoc(), storyArticleIds(sid, attrs));
+  const part = (text) => {
+    const h = document.createElement("h3");
+    h.className = "about-part";
+    h.textContent = text;
+    return h;
+  };
+  const why = document.createElement("div");
+  why.className = "about-why";
+  if (story) {
+    const nowMs = typeof input.now === "number" ? input.now : Date.parse(input.now) || Date.now();
+    why.append(...renderWhyContent({ story, profile, nowMs, names: input.names || {}, headline: facts.title, lead: explainLead(input, sid, profile) }));
+  }
+  const jev = document.createElement("div");
+  jev.className = "about-jev";
+  const full = jevCache.get(sid);
+  const ruleTopics = ruleTopicsOf(attrs.article_id || sid);
   if (full) {
     // J33: Read with Jev saves only the questions the hourly run skips; show both.
     const merged = { ...full, answers: { ...(hourly?.answers || {}), ...full.answers },
       hourly: full.hourly || (hourly ? Object.keys(hourly.answers).length : 0) };
-    await sheetClosed();
-    openSheet({ title: "Jev's read", content: [...analysisContent(merged, facts, true, ruleTopicsOf(attrs.article_id || sid)), ...jevChangeNote(sid)], opener });
-    return;
+    jev.append(...analysisContent(merged, { ...facts, title: "" }, true, ruleTopics));
+  } else if (hourly) {
+    jev.append(...renderAnalysis({ answers: hourly.answers, headline: "", hourly: Object.keys(hourly.answers).length, live: false, ruleTopics }));
   }
-  const content = [];
-  if (hourly) {
-    content.push(...renderAnalysis({ answers: hourly.answers, headline: facts.title, hourly: Object.keys(hourly.answers).length, live: false,
-      ruleTopics: ruleTopicsOf(attrs.article_id || sid) }));
-  } else {
-    const h = document.createElement("p");
-    h.className = "why-headline";
-    h.textContent = facts.title;
-    content.push(h);
+  jev.append(...jevChangeNote(sid), askInArticle(facts.has_body, Boolean(hourly)));
+  const content = [part("Why it is here"), why, part("What Jev says"), jev];
+  if (facts.url) {
+    const open = menuItem({ action: "open", icon: ICONS.open, text: "Open at source", href: facts.url });
+    open.classList.add("about-open");
+    open.addEventListener("click", () => {
+      recordOpened(openedStore, sid, { ...attrs, ...facts }, nowIso, (snapshot) => noteSeen(window.localStorage, "opened", snapshot.id, snapshot.time)).catch(() => {});
+      closeSheet();
+    });
+    content.push(open);
   }
-  // J32 (owner): asking Jev for more happens only with the article open, from its
-  // Jev bar (js/jev/read-view.js); this sheet shows what Jev has already said.
-  content.push(...jevChangeNote(sid));
-  content.push(askInArticle(facts.has_body, Boolean(hourly)));
   await sheetClosed();
-  openSheet({ title: "Jev's read", content, opener });
+  openSheet({ title: "About this story", content, opener });
 }
 
 /** J32: where to ask Jev more about a story: in the article, when Almanac can open it. */
