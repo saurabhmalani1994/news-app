@@ -81,13 +81,15 @@ def test_the_rule_fills_the_same_bytes_keeps_every_outlet_and_each_groups_share(
     assert set(dropped) == {"cap", "score"}
 
 
-def test_the_same_candidates_in_any_order_give_the_same_selection():
+def test_the_same_candidates_and_feed_order_give_the_same_selection():
+    """J39: an outlet's feed order is read once, when the context is built; after that
+    the order the candidates are handed over in changes nothing."""
     cands = candidates()
     ctx = ctx_for(cands)
     first, _ = keep_rule.select_pool(cands, ctx, 40_000, {"singapore": 15_000, "general": 20_000, "ai": 5_000})
     shuffled = cands[:]
     random.Random(7).shuffle(shuffled)
-    again, _ = keep_rule.select_pool(shuffled, ctx_for(shuffled), 40_000, {"singapore": 15_000, "general": 20_000, "ai": 5_000})
+    again, _ = keep_rule.select_pool(shuffled, ctx, 40_000, {"singapore": 15_000, "general": 20_000, "ai": 5_000})
     assert first == again
 
 
@@ -379,3 +381,28 @@ def test_a_tag_keeps_at_least_the_old_rules_count():
     with_floor, why = keep_rule.select_pool(cands, ctx, 10 ** 9, {"general": 6, "singapore": 4, "ai": 2}, {"singapore": 3})
     assert sum(1 for i in with_floor if why[i] == "floor_tag") >= 1
     assert all(i in with_floor for i in ("left1_6", "left1_7", "right1_7"))
+
+
+# --- J39: version 3, the outlet's own feed order ---
+
+def test_an_outlets_lead_items_are_kept_unless_stale():
+    """The first FRONT_KEEP items in an outlet's own feed order are kept whatever their
+    score; a stale one is not, and feed order is the order the candidates arrive in."""
+    cands = []
+    for k, hours in enumerate((30, 20, 28, 50, 10, 2, 1, 3)):  # feed order: not newest first
+        cands.append(art(f"lead_{k}", "left1", hours))
+    cands += [art(f"other_{k}", "right1", 1 + k) for k in range(8)]
+    ctx = ctx_for(cands)
+    assert [ctx["feed_pos"][f"lead_{k}"] for k in range(8)] == list(range(8))
+    ids, why = keep_rule.select_pool(cands, ctx, 10 ** 9, {"general": 0})
+    floor = {i for i in ids if why[i] == "floor_source" and i.startswith("lead_")}
+    assert {"lead_0", "lead_1", "lead_2", "lead_4"} <= floor, "its first five feed items, the fresh ones"
+    assert "lead_3" not in floor, "the fourth is over 36 hours old"
+    assert "lead_6" in floor, "and its newest item of the last 3 hours, wherever the feed put it"
+    assert keep_rule.fact_terms(cands[0], ctx)["front"] == 0, "position earns no points: the floor does the work"
+
+
+def test_version_three_starts_its_own_week():
+    assert keep_rule.RULE_VERSION == 3 and keep_rule.FRONT_KEEP == 5
+    v2 = [{**h, "rv": 2} for h in _history(7.5)]
+    assert keep_rule.gate(v2, NOW.timestamp())["runs"] == 0

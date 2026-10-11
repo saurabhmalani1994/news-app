@@ -38,8 +38,9 @@ Fact terms, whole points (the same style as fetcher/best_version.py):
                  and named sources up, press releases and summaries of others down
 
 Deterministic: no clock (now is passed in), no randomness, ties broken by
-(score desc, published_at desc, id), so the same candidates in any order give the same
-selection.
+(score desc, published_at desc, id). The one order that matters is each outlet's own
+feed order (J39), read once from the candidates when the context is built; after that
+the same candidates in any order give the same selection.
 """
 import json
 import math
@@ -52,7 +53,7 @@ from fetcher.fetch import _plain
 from fetcher.jev_shadow import SPLIT_BELOW, band, choice_status
 
 SCHEMA_VERSION = 1
-TERMS = ("corroboration", "lean_span", "original", "complete", "health", "paywall", "hard", "recency", "incumbent", "early", "jev")
+TERMS = ("corroboration", "lean_span", "original", "complete", "health", "paywall", "hard", "recency", "incumbent", "early", "front", "jev")
 
 FLOOR_PER_SOURCE = 2
 SOURCE_CEIL = 12
@@ -79,7 +80,7 @@ SIZE_MARGIN = 0.975
 # tag at the old rule's own count; 2.5% less room, not 4% (a forced live run was 2.6%
 # over the old pool at none). A changed rule earns a fresh week: the gate reads only
 # this version's runs.
-RULE_VERSION = 2
+RULE_VERSION = 3  # J39: the outlet's own feed order (FRONT_KEEP); a fresh week again
 EARLY_POINTS = 12
 EARLY_FULL_H = 6
 EARLY_HALF_H = 12
@@ -92,6 +93,22 @@ WHY = ("floor_source", "floor_story", "floor_bucket", "floor_tag", "fill")
 # only one outlet has so far (a scoop, breaking local news) is not cut for lacking
 # coverage it has not had time to get.
 FRESH_H = 3
+FRESH_KEEP = 1  # how many of an outlet's newest items, FRESH_H old or newer, are always kept
+# J39: an outlet's own feed order. Many outlets lead their feed with what they judge most
+# important, not with what is newest; the old rule (first 5 in feed order) used that
+# without saying so, and version 2 ignored it and missed stories for it. FRONT_KEEP of an
+# outlet's first feed items, STALE_H old or newer, are always kept; `front` points go to
+# its first FRONT_N[0] and FRONT_N[1] feed positions.
+#
+# Tuned on two live rounds on 2026-10-11 (fetch, then count each variant's dropped fresh
+# single-outlet stories that 2 or more outlets carried 140 minutes later). Round two:
+# the old rule missed 4, version 2 missed 8, keeping an outlet's newest 3 missed 6, its
+# first 4 feed items 5, and its first 5 feed items 4, with the fewest stale articles of
+# all (227 against the old rule's 253). Points for feed position, without the floor, did
+# not help (6), so FRONT_POINTS stays at zero.
+FRONT_KEEP = 5
+FRONT_N = (3, 5)
+FRONT_POINTS = (0, 0)
 
 # J28: Jev's reading of an article near the cut (fetcher/jev_shadow.py TRIAGE_QUESTIONS).
 # kind: points per answer, weighted by Jev's own probabilities over every answer, full
@@ -161,7 +178,12 @@ def build_context(sources, candidates, all_clusters, body_candidates=None, previ
         if isinstance(value, list) and value and isinstance(value[0], dict):
             triage[key] = value[0]
     ctx_jev = {"triage": triage, "split": split}
+    feed_pos, seen = {}, Counter()
+    for a in candidates:  # candidates come source by source, each in its feed's own order
+        feed_pos[a["id"]] = seen[a["source_id"]]
+        seen[a["source_id"]] += 1
     return {
+        "feed_pos": feed_pos,
         "jev": ctx_jev,
         "by_id": by_id, "sources": sources_by_id, "syndication": syndication, "lean": lean,
         "cluster_of": cluster_of, "body_chars": body_chars, "previous_health": previous_health or {},
@@ -228,6 +250,14 @@ def _early(article, cl, ctx):
     return EARLY_POINTS if age <= EARLY_FULL_H else EARLY_POINTS // 2 if age <= EARLY_HALF_H else 0
 
 
+def _front(article, ctx):
+    """J39: points for where the outlet itself placed the item in its feed."""
+    pos = ctx.get("feed_pos", {}).get(article["id"])
+    if pos is None:
+        return 0
+    return FRONT_POINTS[0] if pos < FRONT_N[0] else FRONT_POINTS[1] if pos < FRONT_N[1] else 0
+
+
 def fact_terms(article, ctx):
     """{term: points} for one candidate, facts only."""
     source = ctx["sources"].get(article["source_id"]) or {"id": article["source_id"]}
@@ -245,6 +275,7 @@ def fact_terms(article, ctx):
         "recency": round(20 * 2 ** (-age_hours(article, ctx) / 12)),
         "incumbent": 6 if article["id"] in ctx["previous_ids"] else 0,
         "early": _early(article, cl, ctx),
+        "front": _front(article, ctx),
         # J28: Jev's points, counted only once its check passes (ctx["jev"]["counts"]).
         "jev": jev_points(article, ctx) if ctx.get("jev", {}).get("counts") else 0,
     }
@@ -329,8 +360,13 @@ def select_pool(candidates, ctx, budget, bucket_budget=None, tag_floor=None):
         fresh = [a for a in items if age_hours(a, ctx) <= STALE_H]
         newest = sorted(items, key=lambda a: (-(_epoch(a.get("published_at")) or 0), a["id"]))
         # J28: the outlet's newest item of the last FRESH_H hours first, then the best.
-        latest = [a for a in newest[:1] if age_hours(a, ctx) <= FRESH_H]
-        picks = (latest + [a for a in fresh if a not in latest])[:FLOOR_PER_SOURCE] or newest[:1]
+        latest = [a for a in newest[:FRESH_KEEP] if age_hours(a, ctx) <= FRESH_H]
+        # J39: then the first FRONT_KEEP items of its feed's own order, if not stale.
+        pos = ctx.get("feed_pos", {})
+        front = [a for a in sorted(items, key=lambda a: pos.get(a["id"], 10 ** 6))[:FRONT_KEEP]
+                 if age_hours(a, ctx) <= STALE_H and a not in latest]
+        first = latest + front
+        picks = (first + [a for a in fresh if a not in first])[:max(FLOOR_PER_SOURCE, len(first))] or newest[:1]
         for a in picks:
             if fits(a, ceilings="none"):
                 take(a, "floor_source")

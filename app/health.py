@@ -919,7 +919,9 @@ def render_keep(doc, pool):
                                  lines="".join(JEV_LINE.format(text=_esc(t)) for _k, t in KEEP_TERM_WORDS)
                                  + JEV_LINE.format(text=_esc("Nothing about you counts: your topics, trust and reading stay on your phone. "
                                                              "Each outlet group (Singapore, AI, biotech ...) keeps the same space it has today; "
-                                                             "the rule picks better articles inside it."))))
+                                                             "the rule picks better articles inside it. "
+                                                             "Before any points: each outlet's first five items in its own feed order are kept "
+                                                             "unless they are over 36 hours old, since many outlets lead with their most important stories."))))
     body.append(KEEP_FOLD.format(label="Missed stories: what the count means", value="",
                                  lines=JEV_LINE.format(text=_esc(
                                      "A fresh story only one outlet had, which a rule dropped, and which 2 or more outlets "
