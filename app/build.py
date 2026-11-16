@@ -216,6 +216,15 @@ ASK_BAR = """<form class="ask-bar" id="ask-bar" role="search" aria-label="Ask Je
 # J22: Today's order switch (js/today-order-ui.js, js/today-order.js). rank-gate.js sets
 # the order-* class on <html> before first paint, so the stored choice shows at once.
 
+def ask_bar_html(paused=None):
+    """J40: the Ask bar and its help, then the Today order switch; while Jev is paused
+    only the order switch, so nothing on the page offers to ask Jev."""
+    from fetcher.jev_switch import jev_paused
+    if paused is None:
+        paused = jev_paused()
+    return ASK_BAR[ASK_BAR.index('<div class="today-order"'):] if paused else ASK_BAR
+
+
 # S24: the reusable bottom sheet (js/sheet.js), an NYT-style overflow/share sheet.
 # Static chrome only, empty and hidden until a caller opens it: this slice's own
 # story-actions menu, and S12's why-this sheet and S14's coverage view after it, each
@@ -1026,7 +1035,7 @@ def render(pool, ranking=None, chars=None):
         versions=VERSIONS,
         reader=READER,
         sheet=SHEET,
-        ask_bar=ASK_BAR,
+        ask_bar=ask_bar_html(),
         toast=TOAST,
         rank_key=escape(ranking["key"], quote=True),
         notices=render_notices(ranking.get("notices", [])),

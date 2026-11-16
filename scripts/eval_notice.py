@@ -32,6 +32,8 @@ def _r(x, n=3):
 
 def jev_summary(doc):
     """The Jev report as counts, or {"state": "none"} without one."""
+    if isinstance(doc, dict) and doc.get("paused"):
+        return {"v": VERSION, "state": "paused", "at": doc.get("generated_at")}  # J40
     if not isinstance(doc, dict) or not isinstance(doc.get("report"), dict):
         return {"v": VERSION, "state": "none"}
     run, rep = doc.get("run") or {}, doc["report"]

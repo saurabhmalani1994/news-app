@@ -32,7 +32,7 @@ const SCHEMAS = {
 };
 
 const LOCAL = "http://localhost:8788";
-const DEV_ENV = { ACCESS_DEV_EMAIL: "dev@example.com" };
+const DEV_ENV = { ACCESS_DEV_EMAIL: "dev@example.com", JEV_PAUSED: "0" }; // J40: these tests run Jev; the pause has its own
 
 function post(body, { origin = LOCAL, headers = {}, raw = false } = {}) {
   const text = raw ? body : JSON.stringify(body);
@@ -488,7 +488,7 @@ test("GET /api/jev reports the route and whether the key is set, never the key",
   const env = { ...DEV_ENV, OPENROUTER_API_KEY: " sk-or-v1-secret\n" };
   const res = await handle(new Request(`${LOCAL}/api/jev`, { method: "GET" }), env);
   const body = await res.json();
-  assert.deepEqual(body, { route: "openrouter", model: OPENROUTER_MODEL, key_set: true, key_trimmed: true, key_prefix_ok: true,
+  assert.deepEqual(body, { paused: false, route: "openrouter", model: OPENROUTER_MODEL, key_set: true, key_trimmed: true, key_prefix_ok: true,
     phone_budget: { cap_usd: 0.05, unenforced: true } });
   assert.ok(!JSON.stringify(body).includes("secret"));
   const none = await (await handle(new Request(`${LOCAL}/api/jev`, { method: "GET" }), DEV_ENV)).json();
@@ -791,4 +791,23 @@ test("Read with Jev's story line names only what Jev was sure of or leaning towa
   assert.equal(aboutLine({ ...sure, significance: { label: "Important", confidence: 0.2 } }), "Analysis \u00b7 Calm headline", "an unsure answer is left out");
   assert.equal(aboutLine({ sentiment: { label: "Good news", confidence: 0.9 } }), "", "only the three story questions");
   assert.equal(aboutLine(null), "");
+});
+
+
+// --- J40: the pause ---
+
+test("while Jev is paused nothing reaches the model, and the phone says so", async () => {
+  const { JEV_PAUSED } = await import("../../app/static/js/jev/switch.js");
+  assert.equal(JEV_PAUSED, true, "paused in the repo (owner, 2026-11-16)");
+  let called = 0;
+  const fetch = async () => { called += 1; return { ok: true, status: 200, json: async () => ({ answers: {} }) }; };
+  const paused = { ...DEV_ENV, JEV_PAUSED: undefined, OPENROUTER_API_KEY: "sk-or-v1-x" };
+  const res = await handle(post({ v: 1, state: STATE, questions: QUESTIONS }), paused, { fetch });
+  assert.equal(res.status, 503);
+  assert.equal((await res.json()).reason, "paused");
+  assert.equal(called, 0, "no call, no spend");
+  const status = await (await handle(new Request(`${LOCAL}/api/jev`, { method: "GET" }), paused)).json();
+  assert.equal(status.paused, true);
+  const fetchImpl = async () => ({ ok: false, status: 503, redirected: false, json: async () => ({ reason: "paused" }) });
+  await assert.rejects(askJev({}, {}, { fetchImpl, online: true }), (e) => e.kind === "paused" && e.message === "Jev is paused for now.");
 });

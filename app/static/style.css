@@ -3932,6 +3932,10 @@ body {
    article, a small label in the app's own words before each paragraph it was sure
    about, the key sentences highlighted in place (the Custom Highlight API, no markup),
    and Skim folding the paragraphs that are background, reaction or analysis. */
+.jev-read-bar[hidden] {
+  display: none; /* J40: paused, with nothing saved to show */
+}
+
 .jev-read-bar {
   display: flex;
   flex-wrap: wrap;

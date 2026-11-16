@@ -96,6 +96,7 @@ from fetcher import best_version, locality
 from fetcher.topics import hard_news_topics, load_topics, tag_article
 from fetcher.health import compute_source_health, fetch_previous_pool, parse_previous_health
 from fetcher import keep_rule
+from fetcher.jev_switch import jev_paused
 from fetcher.state import (DEFAULT_STATE_PATH, embed_budget_from, first_seen_from, load_state, select_dropped_from,
                            select_history_from, stamp_first_seen, write_state)
 from fetcher.truth_archive import TRUTH_ARCHIVE_URL, link_clusters, load_archive
@@ -994,7 +995,8 @@ def main(argv=None):
     select_live, select_why = keep_rule.decide(os.environ.get("SELECT_MODE", "auto").strip().lower(),
                                                select_history, now.timestamp())
     select_prev = {"ids": set(first_seen), "dropped": select_dropped_from(state_bytes), "live": select_live,
-                   "jev_cache": _read_json(args.jev_cache)}  # J28: Jev's earlier answers, read only
+                   # J28: Jev's earlier answers, read only; J40: none while Jev is paused
+                   "jev_cache": None if jev_paused() else _read_json(args.jev_cache)}
 
     def _build(watch):
         return stamp_first_seen(build_pool_fanout(

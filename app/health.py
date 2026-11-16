@@ -710,9 +710,17 @@ def _jev_features(card):
                                review="\n" + JEV_REVIEW.format(rows="\n".join(review)) if review else "")
 
 
+JEV_PAUSED_SECTION = """<section class="settings-section" aria-labelledby="jev-label" id="jev-report">
+<h2 class="settings-label" id="jev-label">Jev today</h2>
+<p class="settings-hint">Jev is paused. This edition asked Jev nothing and Jev changed nothing in it: story groups, tags and the order of your feed come from the rules and your settings alone. Answers already saved on your phone still show. To resume, set JEV_PAUSED to false in app/static/js/jev/switch.js.</p>
+</section>"""
+
+
 def render_jev(doc):
     """The Jev area of Health (today, features and checks, more numbers), or '' when
-    there is no report to show."""
+    there is no report to show; J40: one line when Jev is paused."""
+    if isinstance(doc, dict) and doc.get("paused"):
+        return JEV_PAUSED_SECTION
     if not isinstance(doc, dict) or not isinstance(doc.get("report"), dict):
         return ""
     r, run = doc["report"], doc.get("run") or {}
@@ -960,7 +968,7 @@ def render(pool, sources_path=None, now=None, jev=None, keep=None):
         ledger=_render_ledger(counts),
         keep=render_keep(keep, pool),
         sources=_render_sources(pool, sources_path),
-        jev=render_jev(_with_sorted_counts(jev, pool)) + ("\n" + render_jev_articles(jev, pool) if jev else ""),
+        jev=render_jev(_with_sorted_counts(jev, pool)) + ("\n" + render_jev_articles(jev, pool) if jev and not jev.get("paused") else ""),
     )
 
 

@@ -14,6 +14,7 @@ export const FAILURES = Object.freeze({
   signed_out: "Your sign-in has expired. Reload the page to sign in again.",
   no_answer: "Jev didn't answer. Try again in a moment.",
   budget: "Jev's budget for today is used up. It resets at midnight UTC.",
+  paused: "Jev is paused for now.",
 });
 
 export class JevError extends Error {
@@ -45,7 +46,15 @@ export async function askJev(state, questions, { fetchImpl = globalThis.fetch, t
   }
   // Access answers a lapsed session with a redirect to its login page.
   if (response.redirected || response.status === 401 || response.status === 403) throw new JevError("signed_out");
-  if (response.status === 503) throw new JevError("not_set_up");
+  if (response.status === 503) {
+    let reason = "";
+    try {
+      reason = (await response.json())?.reason || "";
+    } catch {
+      reason = "";
+    }
+    throw new JevError(reason === "paused" ? "paused" : "not_set_up"); // J40
+  }
   if (response.status === 429) throw new JevError("budget"); // J25: the phone's daily budget
   if (!response.ok) {
     // J7: the server's short reason ("openrouter_401: ...", "timeout"), shown after the

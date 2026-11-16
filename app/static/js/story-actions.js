@@ -54,6 +54,7 @@ import { raisedTopics, loadReserve, mergeReserve, reserveRow, addedMessage } fro
 // J1: "Analyse with Jev", a typed read of the story (js/jev/*): answers are the app's own
 // labels only, cached per story on this phone, and change nothing in the profile.
 import { analysisCache, hourlyAnswers } from "./jev/story.js";
+import { JEV_PAUSED } from "./jev/switch.js";
 import { renderAnalysis } from "./jev/story-view.js";
 
 function currentHistoryTerms() {
@@ -381,6 +382,10 @@ async function doAbout({ li, sid, attrs, facts }) {
 function askInArticle(hasBody, hourly) {
   const p = document.createElement("p");
   p.className = "why-scale-note jev-note";
+  if (JEV_PAUSED) { // J40
+    p.textContent = "Jev is paused, so it has nothing new to say about this story.";
+    return p;
+  }
   const first = hourly ? "" : "Jev hasn't read this story in its hourly run yet. ";
   p.textContent = first + (hasBody
     ? "For more (the key sentences, the kind of story, its significance, the headline's tone), open the article with Read here and tap Read with Jev at the top."
