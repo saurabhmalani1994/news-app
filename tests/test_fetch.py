@@ -159,8 +159,18 @@ def test_fetch_feed_sends_honest_user_agent_and_feed_accept_header(monkeypatch):
     assert "xml" in seen["headers"]["Accept"].lower()
 
 
+class _SampleDay(datetime):
+    """The clock pinned to the day after the sample feed's items (Sep 23, 2026), so the
+    fetcher's 30-day absurd-date rule never ages them out as the calendar moves on."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return datetime(2026, 9, 24, 4, 0, tzinfo=tz or timezone.utc)
+
+
 def test_main_writes_valid_pool_offline(tmp_path, monkeypatch):
     monkeypatch.setattr(fetch, "fetch_feed", lambda url, timeout=20: SAMPLE)
+    monkeypatch.setattr(fetch, "datetime", _SampleDay)
     out = tmp_path / "pool.json"
     assert fetch.main(["--out", str(out)]) == 0
     pool = json.loads(out.read_text(encoding="utf-8"))
