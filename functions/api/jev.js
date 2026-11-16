@@ -33,6 +33,14 @@
 import { accessIdentity, readLimited } from "./interests.js";
 import { validateQuestions, validateState, normalizeAnswers, toWire } from "../../app/static/js/jev/contract.js";
 import { mockJev } from "../../app/static/js/jev/mock.js";
+import { JEV_PAUSED } from "../../app/static/js/jev/switch.js";
+
+/** J40: paused by the repo's switch (app/static/js/jev/switch.js), or JEV_PAUSED "1" or
+ * "0" in the environment for a local run or a test. */
+export function jevPaused(env = {}) {
+  const set = String(env.JEV_PAUSED ?? "").trim();
+  return set === "1" ? true : set === "0" ? false : JEV_PAUSED;
+}
 
 export const JEV_MODEL = "typesafe/jev";
 export const OPENROUTER_MODEL = "typesafe/jev-1.13";
@@ -189,6 +197,8 @@ export async function handle(request, env = {}, deps = {}) {
   if (request.method !== "POST") return reply(405, { error: "GET or POST only" }, { allow: "GET, POST" });
   const who = await accessIdentity(request, env, deps);
   if (!who.ok) return reply(who.status, { error: who.error });
+  // J40: paused, so nothing reaches the model and nothing is spent.
+  if (jevPaused(env)) return reply(503, { error: "Jev is paused", reason: "paused" });
   if (!route(env, deps)) return reply(503, { error: "Jev is not set up on this site yet" });
 
   const origin = request.headers.get("origin");
@@ -250,6 +260,7 @@ async function status(request, env, deps) {
   const raw = String(env.OPENROUTER_API_KEY || "");
   const which = route(env, deps);
   return reply(200, {
+    paused: jevPaused(env),
     route: which || "not_set_up",
     model: which === "openrouter" ? env.JEV_MODEL || OPENROUTER_MODEL : which === "workers" ? env.JEV_MODEL || JEV_MODEL : null,
     key_set: Boolean(raw),

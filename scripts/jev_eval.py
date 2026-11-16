@@ -78,10 +78,15 @@ def evaluate(rows):
     keep = [r["keep"] for r in rows if r.get("keep", {}).get("state") == "ok"]
     mock = sum(1 for r in rows if r.get("jev", {}).get("mock"))
     facts, verdicts = [], []
+    paused = sum(1 for r in rows if r.get("jev", {}).get("state") == "paused")
+    if paused:  # J40
+        facts.append(f"Jev was paused in {paused} of these {len(rows)} runs: it asked nothing and changed nothing.")
     if not jev and not keep:
         why = ("these runs used the stand-in, not the real Jev" if mock else
                "no almanac-eval notices in these runs: they start with the first run after J34 is merged")
-        return {"runs": len(rows), "facts": [f"Nothing to evaluate: {why}."], "verdicts": []}
+        if paused == len(rows):
+            why = "Jev was paused in every one of these runs"
+        return {"runs": len(rows), "facts": facts + [f"Nothing to evaluate: {why}."], "verdicts": []}
 
     if jev:
         last = jev[-1]

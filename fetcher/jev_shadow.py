@@ -1251,6 +1251,15 @@ def main(argv=None):
     ap.add_argument("--triage", default=os.environ.get("JEV_TRIAGE_PATH", TRIAGE_PATH),
                     help="J28: the fetch step's reading list for the keep rule")
     args = ap.parse_args(argv)
+    # J40: paused (app/static/js/jev/switch.js): ask nothing, change nothing, keep the
+    # cache for when it resumes, and say so on Health.
+    from fetcher.jev_switch import jev_paused
+    if jev_paused():
+        Path(args.out).write_text(json.dumps({"schema_version": 1, "paused": True,
+                                              "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}),
+                                  encoding="utf-8")
+        print("jev: paused (app/static/js/jev/switch.js); asked nothing, pool unchanged")
+        return 0
     pool = json.loads(Path(args.pool).read_text(encoding="utf-8"))
     doc = run(pool, datetime.now(timezone.utc), cache_path=args.cache, max_seconds=args.max_seconds,
               max_articles=args.max_articles, daily_usd=args.daily_usd, triage_path=args.triage)

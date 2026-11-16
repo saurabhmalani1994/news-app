@@ -10,6 +10,7 @@ import { askJev } from "./client.js";
 import { readingBlocks, readingQuestions, readingView, readingDensity, readCache } from "./read.js";
 // J19: each read and each Skim or Hide marks, recorded on this phone for the Health screen.
 import { recordRead, recordEvent } from "./read-stats.js";
+import { JEV_PAUSED } from "./switch.js";
 import { whenRead } from "./story-view.js";
 import { analysisCache, aboutLine, STORY_QUESTIONS } from "./story.js";
 
@@ -147,6 +148,13 @@ export function readBar({ id, body, headline, outlet, sid = "" }) {
   hide.type = "button";
   hide.hidden = true;
   bar.append(read, skim, hide, note);
+  // J40: while Jev is paused the bar offers nothing new; an article Jev already read on
+  // this phone still opens with its marks (below), and with none the bar stays hidden.
+  if (JEV_PAUSED) {
+    read.hidden = true;
+    note.textContent = "Jev is paused, so it cannot read new articles for now.";
+    if (!cache.get(id)) bar.hidden = true;
+  }
 
   const show = (answers, { savedAt = null } = {}) => {
     const elements = paragraphsOf(body);
@@ -216,7 +224,7 @@ export function readBar({ id, body, headline, outlet, sid = "" }) {
     skim.hidden = true;
     hide.hidden = true;
     skim.setAttribute("aria-pressed", "false");
-    read.hidden = false;
+    read.hidden = JEV_PAUSED;
     const again = cache.get(id);
     read.textContent = again ? "Show Jev's marks" : "Read with Jev";
     note.textContent = again ? "Jev has read this article. Showing its marks again asks Jev nothing." : INTRO;
